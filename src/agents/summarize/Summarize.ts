@@ -1,6 +1,6 @@
-import { getInstance as getLogger } from '../logger.ts';
+import { getInstance as getLogger } from '../../logger.ts';
 import { v4 as uuid } from 'uuid';
-import { DagNode, KnowledgeGraphManager, SummaryNode } from '../engine/KnowledgeGraph.ts';
+import { DagNode, KnowledgeGraphManager, SummaryNode } from '../../engine/KnowledgeGraph.ts';
 import { SummarizerAgent } from './SummarizerAgent.ts';
 
 /**
@@ -17,9 +17,7 @@ export class SummarizationAgent {
    * Creates a new SummarizationAgent.
    * @param knowledgeGraph The knowledge graph manager instance
    */
-  constructor(
-    private readonly knowledgeGraph: KnowledgeGraphManager,
-  ) {
+  constructor(private readonly knowledgeGraph: KnowledgeGraphManager) {
     this.summarizerAgent = new SummarizerAgent({ logger: getLogger() });
   }
 
@@ -35,9 +33,9 @@ export class SummarizationAgent {
 
       // Use the TypeScript SummarizerAgent
       const result = await this.summarizerAgent.summarize(nodes);
-      
+
       getLogger().info({ summaryLength: result.summary.length }, 'Summarization agent output');
-      
+
       return result;
     } catch (error) {
       const err = error as Error;

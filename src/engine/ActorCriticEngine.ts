@@ -1,7 +1,7 @@
-import { Critic } from '../agents/Critic.ts';
 import { Actor } from '../agents/Actor.ts';
+import { Critic } from '../agents/critic/Critic.ts';
+import { SummarizationAgent } from '../agents/summarize/Summarize.ts';
 import { KnowledgeGraphManager, type DagNode, FILE_REF } from './KnowledgeGraph.ts';
-import { SummarizationAgent } from '../agents/Summarize.ts';
 import { z } from 'zod';
 import { getModelConfigFromPath } from '../config/models.ts';
 // -----------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 import { v4 as uuid } from 'uuid';
-import { KnowledgeGraphManager, DagNode } from '../engine/KnowledgeGraph.ts';
-import { getInstance as getLogger } from '../logger.ts';
+import { KnowledgeGraphManager, DagNode } from '../../engine/KnowledgeGraph.ts';
+import { getInstance as getLogger } from '../../logger.ts';
 import { CriticAgent } from './CriticAgent.ts';
 import { z } from 'zod';
 

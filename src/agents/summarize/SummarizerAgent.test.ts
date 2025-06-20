@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SummarizerAgent, SummaryOutputSchema, type SummaryResponse } from './SummarizerAgent.ts';
-import { createLogger } from '../logger.ts';
-import { DagNode } from '../engine/KnowledgeGraph.ts';
+import { createLogger } from '../../logger.ts';
+import { DagNode } from '../../engine/KnowledgeGraph.ts';
 
 // Mock the dependencies
-vi.mock('../config/models.ts', () => ({
+vi.mock('../../config/models.ts', () => ({
   createModel: vi.fn().mockReturnValue({
     generateObject: vi.fn(),
     generateText: vi.fn(),
@@ -17,7 +17,7 @@ vi.mock('../config/models.ts', () => ({
   }),
 }));
 
-vi.mock('../config/index.ts', () => ({
+vi.mock('../../config/index.ts', () => ({
   getConfig: vi.fn().mockReturnValue({
     get: vi.fn().mockReturnValue('openai.gpt-4o-mini'),
   }),
@@ -96,7 +96,7 @@ describe('SummarizerAgent', () => {
     });
 
     it('should handle missing model reference gracefully', async () => {
-      const { getModelReference } = vi.mocked(await import('../config/models.ts'));
+      const { getModelReference } = vi.mocked(await import('../../config/models.ts'));
       getModelReference.mockReturnValueOnce(null);
 
       expect(() => new SummarizerAgent({ logger: mockLogger })).not.toThrow();
@@ -333,7 +333,7 @@ describe('SummarizerAgent', () => {
     });
 
     it('should return false when agent is disabled', async () => {
-      const { getModelConfigFromPath } = vi.mocked(await import('../config/models.ts'));
+      const { getModelConfigFromPath } = vi.mocked(await import('../../config/models.ts'));
 
       // Clear existing mock and set up new behavior
       getModelConfigFromPath.mockClear();
@@ -350,7 +350,7 @@ describe('SummarizerAgent', () => {
 
   describe('Error Handling', () => {
     it('should propagate configuration errors', async () => {
-      const { createModel } = vi.mocked(await import('../config/models.ts'));
+      const { createModel } = vi.mocked(await import('../../config/models.ts'));
       createModel.mockImplementationOnce(() => {
         throw new Error('Invalid model configuration');
       });

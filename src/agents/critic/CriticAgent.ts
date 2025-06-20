@@ -1,8 +1,8 @@
-import { BaseAgent, type AgentConfig } from './BaseAgent.ts';
-import { createModel, getModelReference, getModelConfigFromPath } from '../config/models.ts';
-import { getConfig } from '../config/index.ts';
+import { BaseAgent, type AgentConfig } from '../BaseAgent.ts';
+import { createModel, getModelReference, getModelConfigFromPath } from '../../config/models.ts';
+import { getConfig } from '../../config/index.ts';
 import { Logger } from 'pino';
-import { DagNode } from '../engine/KnowledgeGraph.ts';
+import { DagNode } from '../../engine/KnowledgeGraph.ts';
 import { z } from 'zod';
 
 /**

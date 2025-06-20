@@ -1,13 +1,13 @@
 import { McpServer, ToolCallback } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { ActorCriticEngine, ActorThinkSchema } from '../engine/ActorCriticEngine.js';
-import { KnowledgeGraphManager } from '../engine/KnowledgeGraph.js';
-import { Critic } from '../agents/Critic.js';
-import { Actor } from '../agents/Actor.js';
-import { SummarizationAgent } from '../agents/Summarize.js';
-import { CodeLoopsLogger, getInstance as getLogger, setGlobalLogger } from '../logger.js';
-import { extractProjectName } from '../utils/project.js';
-import { getGitDiff } from '../utils/git.js';
+import { ActorCriticEngine, ActorThinkSchema } from '../engine/ActorCriticEngine.ts';
+import { KnowledgeGraphManager } from '../engine/KnowledgeGraph.ts';
+import { Critic } from '../agents/critic/Critic.ts';
+import { Actor } from '../agents/Actor.ts';
+import { SummarizationAgent } from '../agents/summarize/Summarize.ts';
+import { CodeLoopsLogger, getInstance as getLogger, setGlobalLogger } from '../logger.ts';
+import { extractProjectName } from '../utils/project.ts';
+import { getGitDiff } from '../utils/git.ts';
 
 // Shared dependencies interface
 interface ToolDependencies {

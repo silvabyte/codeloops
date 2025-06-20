@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CriticAgent, CriticOutputSchema, type CriticResponse } from './CriticAgent.ts';
-import { createLogger } from '../logger.ts';
-import { DagNode } from '../engine/KnowledgeGraph.ts';
+import { createLogger } from '../../logger.ts';
+import { DagNode } from '../../engine/KnowledgeGraph.ts';
 
 // Mock the dependencies
 vi.mock('../config/models.ts', () => ({
@@ -47,22 +47,22 @@ describe('CriticAgent', () => {
   describe('Schema Validation', () => {
     it('should have valid CriticOutputSchema', () => {
       expect(CriticOutputSchema).toBeDefined();
-      
+
       // Test valid responses
       const validResponse = {
         verdict: 'approved' as const,
         verdictReason: 'Good implementation',
         recommendations: ['Keep up the good work'],
       };
-      
+
       const result = CriticOutputSchema.safeParse(validResponse);
       expect(result.success).toBe(true);
     });
 
     it('should validate verdict enum values', () => {
       const validVerdicts = ['approved', 'needs_revision', 'reject'] as const;
-      
-      validVerdicts.forEach(verdict => {
+
+      validVerdicts.forEach((verdict) => {
         const response = { verdict };
         const result = CriticOutputSchema.safeParse(response);
         expect(result.success).toBe(true);
@@ -73,7 +73,7 @@ describe('CriticAgent', () => {
       const invalidResponse = {
         verdict: 'invalid_verdict',
       };
-      
+
       const result = CriticOutputSchema.safeParse(invalidResponse);
       expect(result.success).toBe(false);
     });
@@ -82,7 +82,7 @@ describe('CriticAgent', () => {
       const minimalResponse = {
         verdict: 'approved' as const,
       };
-      
+
       const result = CriticOutputSchema.safeParse(minimalResponse);
       expect(result.success).toBe(true);
     });
@@ -94,9 +94,9 @@ describe('CriticAgent', () => {
     });
 
     it('should handle missing model reference gracefully', async () => {
-      const { getModelReference } = vi.mocked(await import('../config/models.ts'));
+      const { getModelReference } = vi.mocked(await import('../../config/models.ts'));
       getModelReference.mockReturnValueOnce(null);
-      
+
       expect(() => new CriticAgent({ logger: mockLogger })).not.toThrow();
     });
   });
@@ -136,17 +136,17 @@ describe('CriticAgent', () => {
     it('should reject non-actor nodes', async () => {
       const mockCriticNode = createMockActorNode({ role: 'critic' });
 
-      await expect(criticAgent.reviewActorNode(mockCriticNode))
-        .rejects
-        .toThrow('Cannot review non-actor node. Node role: critic');
+      await expect(criticAgent.reviewActorNode(mockCriticNode)).rejects.toThrow(
+        'Cannot review non-actor node. Node role: critic',
+      );
     });
 
     it('should handle summary nodes rejection', async () => {
       const mockSummaryNode = createMockActorNode({ role: 'summary' });
 
-      await expect(criticAgent.reviewActorNode(mockSummaryNode))
-        .rejects
-        .toThrow('Cannot review non-actor node. Node role: summary');
+      await expect(criticAgent.reviewActorNode(mockSummaryNode)).rejects.toThrow(
+        'Cannot review non-actor node. Node role: summary',
+      );
     });
 
     it('should include node context in prompt', async () => {
@@ -178,7 +178,7 @@ describe('CriticAgent', () => {
 
     it('should handle different verdict types', async () => {
       const mockActorNode = createMockActorNode();
-      
+
       const testCases = [
         { verdict: 'approved' as const, reason: undefined },
         { verdict: 'needs_revision' as const, reason: 'Needs more detail' },
@@ -206,9 +206,9 @@ describe('CriticAgent', () => {
 
       vi.spyOn(criticAgent, 'send').mockRejectedValueOnce(sendError);
 
-      await expect(criticAgent.reviewActorNode(mockActorNode))
-        .rejects
-        .toThrow('AI model temporarily unavailable');
+      await expect(criticAgent.reviewActorNode(mockActorNode)).rejects.toThrow(
+        'AI model temporarily unavailable',
+      );
     });
 
     it('should handle empty thought content', async () => {
@@ -228,9 +228,7 @@ describe('CriticAgent', () => {
 
       vi.spyOn(criticAgent, 'send').mockResolvedValueOnce(mockResponse);
 
-      await expect(criticAgent.reviewActorNode(mockActorNode))
-        .resolves
-        .toEqual(mockResponse);
+      await expect(criticAgent.reviewActorNode(mockActorNode)).resolves.toEqual(mockResponse);
     });
 
     it('should handle nodes with many artifacts', async () => {
@@ -244,9 +242,7 @@ describe('CriticAgent', () => {
 
       vi.spyOn(criticAgent, 'send').mockResolvedValueOnce(mockResponse);
 
-      await expect(criticAgent.reviewActorNode(mockActorNode))
-        .resolves
-        .toEqual(mockResponse);
+      await expect(criticAgent.reviewActorNode(mockActorNode)).resolves.toEqual(mockResponse);
     });
   });
 
@@ -256,8 +252,8 @@ describe('CriticAgent', () => {
     });
 
     it('should return false when agent is disabled', async () => {
-      const { getModelConfigFromPath } = vi.mocked(await import('../config/models.ts'));
-      
+      const { getModelConfigFromPath } = vi.mocked(await import('../../config/models.ts'));
+
       // Clear existing mock and set up new behavior
       getModelConfigFromPath.mockClear();
       getModelConfigFromPath.mockReturnValue({
@@ -273,13 +269,12 @@ describe('CriticAgent', () => {
 
   describe('Error Handling', () => {
     it('should propagate configuration errors', async () => {
-      const { createModel } = vi.mocked(await import('../config/models.ts'));
+      const { createModel } = vi.mocked(await import('../../config/models.ts'));
       createModel.mockImplementationOnce(() => {
         throw new Error('Invalid model configuration');
       });
 
-      expect(() => new CriticAgent({ logger: mockLogger }))
-        .toThrow('Invalid model configuration');
+      expect(() => new CriticAgent({ logger: mockLogger })).toThrow('Invalid model configuration');
     });
 
     it('should handle malformed node data', async () => {
@@ -293,9 +288,7 @@ describe('CriticAgent', () => {
       vi.spyOn(criticAgent, 'send').mockResolvedValueOnce(mockResponse);
 
       // Should not throw, but handle gracefully
-      await expect(criticAgent.reviewActorNode(malformedNode))
-        .resolves
-        .toEqual(mockResponse);
+      await expect(criticAgent.reviewActorNode(malformedNode)).resolves.toEqual(mockResponse);
     });
   });
 
