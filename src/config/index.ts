@@ -155,7 +155,7 @@ export function getConfig(): Conf<CodeLoopsConfig> {
             max_tokens: 2000,
           },
           summarizer: {
-            enabled: true,
+            enabled: false,
             model: 'anthropic.haiku',
             temperature: 0.5,
             max_tokens: 1000,
