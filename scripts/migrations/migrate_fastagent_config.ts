@@ -8,7 +8,7 @@
  * 4. Maps FastAgent LLM provider settings to CodeLoops configuration schema
  * 5. Provides backup and rollback capabilities
  *
- * Usage: ts-node scripts/migrations/migrate_fastagent_config.ts
+ * Usage: npx tsx scripts/migrations/migrate_fastagent_config.ts
  */
 
 import { promises as fs } from 'node:fs';
@@ -19,14 +19,15 @@ import { getInstance as getLogger } from '../../src/logger.ts';
 import { createCodeLoopsAscii } from '../../src/utils/fun.ts';
 import { dataDir } from '../../src/config/index.ts';
 import { CodeLoopsConfig } from '../../src/config/index.ts';
+import os from 'node:os';
 
 const logger = getLogger({ withDevStdout: true, sync: true });
 
 // Paths to agent configuration files
 const AGENT_DIRS = ['agents/critic', 'agents/summarize'];
 const PROJECT_ROOT = process.cwd();
-// Note: No longer generating .env files - everything goes in config
-const CONFIG_FILE_PATH = path.resolve(PROJECT_ROOT, 'codeloops.config.json');
+// Use the global config location to match the updated config system
+const CONFIG_FILE_PATH = path.join(os.homedir(), '.config', 'codeloops', 'codeloops.config.json');
 const BACKUP_DIR = path.resolve(dataDir, 'backup');
 
 // Ensure backup directory exists
@@ -190,6 +191,12 @@ function getProviderModels(provider: string): Record<string, ModelConfig> {
         reasoning_effort: 'low',
         description: 'Smaller reasoning model',
       },
+      'o3-mini': {
+        id: 'o3-mini',
+        max_tokens: 65536,
+        reasoning_effort: 'low',
+        description: 'Latest reasoning model',
+      },
     },
     deepseek: {
       'deepseek-chat': {
@@ -235,7 +242,7 @@ function mapFastAgentModel(modelString: string): string {
     'gpt-4.1-mini': 'openai.gpt-4o-mini',
     'o1': 'openai.o1-preview',
     'o1-mini': 'openai.o1-mini',
-    'o3-mini': 'openai.o1-mini',
+    'o3-mini': 'openai.o3-mini',
   };
 
   if (aliasMap[modelString]) {
@@ -289,8 +296,8 @@ async function processAgentDir(agentDir: string, codeloopsConfig: CodeLoopsConfi
 
   logger.info(`Processing agent directory: ${agentDir}`);
 
-  const config: FastAgentConfig = await readYamlFile(configPath);
-  const secrets: FastAgentSecrets = await readYamlFile(secretsPath);
+  const config = await readYamlFile(configPath) as FastAgentConfig | null;
+  const secrets = await readYamlFile(secretsPath) as FastAgentSecrets | null;
 
   const warnings: string[] = [];
   const errors: string[] = [];
@@ -417,6 +424,12 @@ async function processAgentDir(agentDir: string, codeloopsConfig: CodeLoopsConfi
  */
 async function writeConfigFile(config: CodeLoopsConfig): Promise<void> {
   const jsonContent = JSON.stringify(config, null, 2);
+
+  // Ensure the config directory exists
+  const configDir = path.dirname(CONFIG_FILE_PATH);
+  if (!fsSync.existsSync(configDir)) {
+    fsSync.mkdirSync(configDir, { recursive: true });
+  }
 
   await fs.writeFile(CONFIG_FILE_PATH, jsonContent, 'utf8');
   logger.info(`Created CodeLoops configuration file: ${CONFIG_FILE_PATH}`);

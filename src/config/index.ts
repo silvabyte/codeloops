@@ -2,6 +2,7 @@ import Conf from 'conf';
 import { z } from 'zod';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import os from 'node:os';
 
 // -----------------------------------------------------------------------------
 // Path Configuration ----------------------------------------------------------
@@ -115,7 +116,7 @@ export function getConfig(): Conf<CodeLoopsConfig> {
       projectName: 'codeloops',
       configName: 'codeloops.config', // Name of the config file (without extension)
       fileExtension: 'json', // Config file extension
-      cwd: process.cwd(), // Config file location - current working directory
+      cwd: path.join(os.homedir(), '.config', 'codeloops'), // Global config location
       clearInvalidConfig: false, // Don't auto-clear invalid configs to preserve user data
       accessPropertiesByDotNotation: true, // Enable path-based access like 'agents.critic.model'
       defaults: {
