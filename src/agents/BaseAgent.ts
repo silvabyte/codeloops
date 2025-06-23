@@ -167,6 +167,7 @@ export class Agent {
         hooks,
         markdown: config.markdown ?? false,
         // Keep it simple for now - advanced features can be added later
+        memory: false,
         tools: [],
         subAgents: [],
       });
