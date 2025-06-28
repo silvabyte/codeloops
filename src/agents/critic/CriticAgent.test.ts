@@ -4,7 +4,7 @@ import { createLogger } from '../../logger.ts';
 import { DagNode } from '../../engine/KnowledgeGraph.ts';
 
 // Mock the dependencies
-vi.mock('../config/models.ts', () => ({
+vi.mock('../../config/models.ts', () => ({
   createModel: vi.fn().mockReturnValue({
     generateObject: vi.fn(),
     generateText: vi.fn(),
@@ -15,12 +15,33 @@ vi.mock('../config/models.ts', () => ({
     maxTokens: 2000,
     enabled: true,
   }),
+  getModelConfig: vi.fn().mockReturnValue({
+    provider: 'openai',
+    model: {
+      id: 'gpt-4o-mini',
+      max_tokens: 16384,
+      description: 'Smaller, faster GPT-4 model'
+    }
+  }),
 }));
 
-vi.mock('../config/index.ts', () => ({
+vi.mock('../../config/index.ts', () => ({
   getConfig: vi.fn().mockReturnValue({
-    get: vi.fn().mockReturnValue('openai.gpt-4o-mini'),
+    get: vi.fn().mockImplementation((path: string) => {
+      if (path === 'agents.critic.model') return 'openai.gpt-4o-mini';
+      if (path === 'default_model') return 'openai.gpt-4o-mini';
+      return 'openai.gpt-4o-mini';
+    }),
   }),
+  getModelConfig: vi.fn().mockReturnValue({
+    provider: 'openai',
+    model: {
+      id: 'gpt-4o-mini',
+      max_tokens: 16384,
+      description: 'Smaller, faster GPT-4 model'
+    }
+  }),
+  getProviderApiKey: vi.fn().mockReturnValue('test-api-key'),
 }));
 
 vi.mock('@voltagent/core', () => ({
