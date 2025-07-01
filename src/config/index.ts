@@ -1,16 +1,13 @@
 import Conf from 'conf';
 import { z } from 'zod';
+import envPaths from 'env-paths';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import os from 'node:os';
 
 // -----------------------------------------------------------------------------
 // Path Configuration ----------------------------------------------------------
 // -----------------------------------------------------------------------------
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-export const dataDir = path.resolve(__dirname, '..', '..', 'data');
+export const APP_PATHS = envPaths('codeloops', { suffix: '' });
 
 // Define the configuration schema
 const ModelConfigSchema = z.object({
@@ -116,7 +113,6 @@ export function getConfig(): Conf<CodeLoopsConfig> {
       projectName: 'codeloops',
       configName: 'codeloops.config', // Name of the config file (without extension)
       fileExtension: 'json', // Config file extension
-      cwd: path.join(os.homedir(), '.config', 'codeloops'), // Global config location
       clearInvalidConfig: false, // Don't auto-clear invalid configs to preserve user data
       accessPropertiesByDotNotation: true, // Enable path-based access like 'agents.critic.model'
       defaults: {
@@ -193,7 +189,7 @@ export function getConfig(): Conf<CodeLoopsConfig> {
           },
           file_logging: {
             enabled: true, // Enable file logging by default
-            path: './logs/codeloops.log',
+            path: path.join(APP_PATHS.log, 'codeloops.log'),
           },
         },
         features: {

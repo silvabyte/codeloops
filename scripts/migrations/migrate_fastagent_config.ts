@@ -17,9 +17,12 @@ import * as path from 'node:path';
 import { parse as yamlParse } from 'yaml';
 import { getInstance as getLogger } from '../../src/logger.ts';
 import { createCodeLoopsAscii } from '../../src/utils/fun.ts';
-import { dataDir } from '../../src/config/index.ts';
+import { APP_PATHS } from '../../src/config/index.ts';
 import { CodeLoopsConfig } from '../../src/config/index.ts';
-import os from 'node:os';
+import { fileURLToPath } from 'node:url';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+export const oldDataDir = path.resolve(__dirname, '..', '..', 'data');
 
 const logger = getLogger({ withDevStdout: true, sync: true });
 
@@ -27,8 +30,8 @@ const logger = getLogger({ withDevStdout: true, sync: true });
 const AGENT_DIRS = ['agents/critic', 'agents/summarize'];
 const PROJECT_ROOT = process.cwd();
 // Use the global config location to match the updated config system
-const CONFIG_FILE_PATH = path.join(os.homedir(), '.config', 'codeloops', 'codeloops.config.json');
-const BACKUP_DIR = path.resolve(dataDir, 'backup');
+const CONFIG_FILE_PATH = path.join(APP_PATHS.config, 'codeloops.config.json');
+const BACKUP_DIR = path.resolve(oldDataDir, 'backup');
 
 // Ensure backup directory exists
 if (!fsSync.existsSync(BACKUP_DIR)) {
@@ -240,7 +243,7 @@ function mapFastAgentModel(modelString: string): string {
     opus3: 'anthropic.opus',
     'gpt-4.1': 'openai.gpt-4o',
     'gpt-4.1-mini': 'openai.gpt-4o-mini',
-    'o1': 'openai.o1-preview',
+    o1: 'openai.o1-preview',
     'o1-mini': 'openai.o1-mini',
     'o3-mini': 'openai.o3-mini',
   };
@@ -256,8 +259,8 @@ function mapFastAgentModel(modelString: string): string {
 
   // Try to map to provider.model format
   const providerModels = getProviderModels(provider);
-  const modelKey = Object.keys(providerModels).find(key =>
-    providerModels[key].id === model || key === model
+  const modelKey = Object.keys(providerModels).find(
+    (key) => providerModels[key].id === model || key === model,
   );
 
   if (modelKey) {
@@ -289,15 +292,18 @@ async function readYamlFile(filePath: string): Promise<unknown> {
 /**
  * Process a single agent directory
  */
-async function processAgentDir(agentDir: string, codeloopsConfig: CodeLoopsConfig): Promise<Partial<MigrationResult>> {
+async function processAgentDir(
+  agentDir: string,
+  codeloopsConfig: CodeLoopsConfig,
+): Promise<Partial<MigrationResult>> {
   const configPath = path.resolve(PROJECT_ROOT, agentDir, 'fastagent.config.yaml');
   const secretsPath = path.resolve(PROJECT_ROOT, agentDir, 'fastagent.secrets.yaml');
   const agentName = path.basename(agentDir); // 'critic' or 'summarizer'
 
   logger.info(`Processing agent directory: ${agentDir}`);
 
-  const config = await readYamlFile(configPath) as FastAgentConfig | null;
-  const secrets = await readYamlFile(secretsPath) as FastAgentSecrets | null;
+  const config = (await readYamlFile(configPath)) as FastAgentConfig | null;
+  const secrets = (await readYamlFile(secretsPath)) as FastAgentSecrets | null;
 
   const warnings: string[] = [];
   const errors: string[] = [];
@@ -361,11 +367,22 @@ async function processAgentDir(agentDir: string, codeloopsConfig: CodeLoopsConfi
 
   // Skip execution_engine - it's a FastAgent paradigm not needed for CodeLoops
   if (config?.execution_engine) {
-    warnings.push(`FastAgent execution_engine found but not migrated - CodeLoops uses native TypeScript execution`);
+    warnings.push(
+      `FastAgent execution_engine found but not migrated - CodeLoops uses native TypeScript execution`,
+    );
   }
 
   // Process all provider configurations from secrets
-  const providers = ['openai', 'anthropic', 'azure', 'deepseek', 'google', 'openrouter', 'generic', 'tensorzero'];
+  const providers = [
+    'openai',
+    'anthropic',
+    'azure',
+    'deepseek',
+    'google',
+    'openrouter',
+    'generic',
+    'tensorzero',
+  ];
 
   for (const provider of providers) {
     const providerConfig = secrets?.[provider as keyof FastAgentSecrets];
@@ -378,16 +395,16 @@ async function processAgentDir(agentDir: string, codeloopsConfig: CodeLoopsConfi
       }
 
       if (!codeloopsConfig.providers[provider as keyof typeof codeloopsConfig.providers]) {
-        (codeloopsConfig.providers)[provider] = { models: {} } as ProviderConfig;
+        codeloopsConfig.providers[provider] = { models: {} } as ProviderConfig;
       }
 
       // Merge provider config while preserving model definitions
-      const currentProvider = (codeloopsConfig.providers)[provider] as ProviderConfig;
+      const currentProvider = codeloopsConfig.providers[provider] as ProviderConfig;
       const existingModels = currentProvider?.models || {};
-      (codeloopsConfig.providers)[provider] = {
+      codeloopsConfig.providers[provider] = {
         ...currentProvider,
         ...providerConfig,
-        models: { ...existingModels }
+        models: { ...existingModels },
       } as ProviderConfig;
 
       if ('api_key' in providerConfig && providerConfig.api_key) {
@@ -403,21 +420,25 @@ async function processAgentDir(agentDir: string, codeloopsConfig: CodeLoopsConfi
   // - CodeLoops-specific MCP integrations
 
   if (config?.logger) {
-    warnings.push(`FastAgent logging configuration found but not migrated - CodeLoops uses pino logger`);
+    warnings.push(
+      `FastAgent logging configuration found but not migrated - CodeLoops uses pino logger`,
+    );
   }
 
   if (config?.mcp) {
-    warnings.push(`FastAgent MCP configuration found but not migrated - CodeLoops has its own MCP setup`);
+    warnings.push(
+      `FastAgent MCP configuration found but not migrated - CodeLoops has its own MCP setup`,
+    );
   }
 
   if (config?.otel) {
-    warnings.push(`FastAgent OpenTelemetry configuration found but not migrated - CodeLoops has custom OTEL`);
+    warnings.push(
+      `FastAgent OpenTelemetry configuration found but not migrated - CodeLoops has custom OTEL`,
+    );
   }
 
   return { warnings, errors };
 }
-
-
 
 /**
  * Write CodeLoops configuration to JSON file
@@ -434,7 +455,6 @@ async function writeConfigFile(config: CodeLoopsConfig): Promise<void> {
   await fs.writeFile(CONFIG_FILE_PATH, jsonContent, 'utf8');
   logger.info(`Created CodeLoops configuration file: ${CONFIG_FILE_PATH}`);
 }
-
 
 /**
  * Create backup of existing config file

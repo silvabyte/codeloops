@@ -4,7 +4,7 @@ import * as fsSync from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import readline from 'node:readline';
-import { dataDir } from '../config/index.ts';
+import { APP_PATHS } from '../config/index.ts';
 import { CodeLoopsLogger } from '../logger.ts';
 
 // -----------------------------------------------------------------------------
@@ -88,9 +88,12 @@ export interface DependentNode {
 // -----------------------------------------------------------------------------
 
 export class KnowledgeGraphManager {
-  private logFilePath: string = path.resolve(dataDir, 'knowledge_graph.ndjson');
-  private deletedLogFilePath: string = path.resolve(dataDir, 'knowledge_graph.deleted.ndjson');
-  private backupDir: string = path.resolve(dataDir, 'backup');
+  private logFilePath: string = path.resolve(APP_PATHS.data, 'knowledge_graph.ndjson');
+  private deletedLogFilePath: string = path.resolve(
+    APP_PATHS.data,
+    'knowledge_graph.deleted.ndjson',
+  );
+  private backupDir: string = path.resolve(APP_PATHS.data, 'backup');
   private logger: CodeLoopsLogger;
 
   constructor(logger: CodeLoopsLogger) {
