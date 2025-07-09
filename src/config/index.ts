@@ -101,6 +101,118 @@ export type CodeLoopsConfig = z.infer<typeof ConfigSchema>;
 export type ProviderConfig = z.infer<typeof ProviderConfigSchema>;
 export type ModelConfig = z.infer<typeof ModelConfigSchema>;
 
+// Default configuration - shared between main config and migrations
+const DEFAULT_CONFIG: CodeLoopsConfig = {
+  version: '1.0.0',
+  default_model: 'anthropic.haiku',
+  providers: {
+    anthropic: {
+      models: {
+        haiku: {
+          id: 'claude-3-haiku-20240307',
+          max_tokens: 4096,
+          description: 'Fast and efficient model for quick responses',
+        },
+        sonnet: {
+          id: 'claude-3-5-sonnet-20241022',
+          max_tokens: 8192,
+          description: 'Balanced model for most tasks',
+        },
+        opus: {
+          id: 'claude-3-opus-20240229',
+          max_tokens: 4096,
+          description: 'Most capable model for complex tasks',
+        },
+      },
+    },
+    openai: {
+      models: {
+        'gpt-4o-mini': {
+          id: 'gpt-4o-mini',
+          max_tokens: 16384,
+          description: 'Fast and affordable model',
+        },
+        'gpt-4o': {
+          id: 'gpt-4o',
+          max_tokens: 4096,
+          description: 'Advanced reasoning model',
+        },
+      },
+    },
+    azure: {
+      models: {},
+    },
+    deepseek: {
+      models: {},
+    },
+    google: {
+      models: {},
+    },
+    openrouter: {
+      models: {},
+    },
+    generic: {
+      models: {},
+    },
+    tensorzero: {
+      models: {},
+    },
+  },
+  agents: {
+    critic: {
+      enabled: true,
+      model: 'anthropic.haiku',
+      temperature: 0.3,
+      max_tokens: 2000,
+    },
+    summarizer: {
+      enabled: false,
+      model: 'anthropic.haiku',
+      temperature: 0.5,
+      max_tokens: 1000,
+    },
+    actor: {
+      enabled: true,
+      model: 'default',
+      temperature: 0.7,
+      max_tokens: 2000,
+    },
+  },
+  mcp: {
+    servers: {},
+  },
+  telemetry: {
+    enabled: true,
+    service_name: 'codeloops',
+    opentelemetry: {
+      enabled: true,
+      otlp_endpoint: 'http://localhost:4318',
+      sample_rate: 1.0,
+    },
+    metrics: {
+      enabled: true,
+    },
+  },
+  logging: {
+    level: 'info',
+    format: 'json',
+    destination: 'file',
+    pino: {
+      pretty_print: false,
+      redact: ['*.api_key', '*.password', '*.secret'],
+    },
+    file_logging: {
+      enabled: true,
+      path: path.join(APP_PATHS.log, 'codeloops.log'),
+    },
+  },
+  features: {
+    legacy_python_agents: true,
+    telemetry_enabled: true,
+  },
+  env_prefix: 'CODELOOPS',
+};
+
 // Singleton instance
 let configInstance: Conf<CodeLoopsConfig> | null = null;
 
@@ -115,89 +227,7 @@ export function getConfig(): Conf<CodeLoopsConfig> {
       fileExtension: 'json', // Config file extension
       clearInvalidConfig: false, // Don't auto-clear invalid configs to preserve user data
       accessPropertiesByDotNotation: true, // Enable path-based access like 'agents.critic.model'
-      defaults: {
-        version: '1.0.0',
-        default_model: 'openai.gpt-4o-mini',
-        providers: {
-          anthropic: {
-            models: {},
-          },
-          openai: {
-            models: {},
-          },
-          azure: {
-            models: {},
-          },
-          deepseek: {
-            models: {},
-          },
-          google: {
-            models: {},
-          },
-          openrouter: {
-            models: {},
-          },
-          generic: {
-            models: {},
-          },
-          tensorzero: {
-            models: {},
-          },
-        },
-        agents: {
-          critic: {
-            enabled: true,
-            model: 'anthropic.sonnet',
-            temperature: 0.3,
-            max_tokens: 2000,
-          },
-          summarizer: {
-            enabled: false,
-            model: 'anthropic.haiku',
-            temperature: 0.5,
-            max_tokens: 1000,
-          },
-          actor: {
-            enabled: true,
-            model: 'default',
-            temperature: 0.7,
-            max_tokens: 2000,
-          },
-        },
-        mcp: {
-          servers: {},
-        },
-        telemetry: {
-          enabled: true,
-          service_name: 'codeloops',
-          opentelemetry: {
-            enabled: true,
-            otlp_endpoint: 'http://localhost:4318',
-            sample_rate: 1.0,
-          },
-          metrics: {
-            enabled: true,
-          },
-        },
-        logging: {
-          level: 'info',
-          format: 'json',
-          destination: 'file', // Changed from stdout to prevent stdio server errors
-          pino: {
-            pretty_print: false,
-            redact: ['*.api_key', '*.password', '*.secret'],
-          },
-          file_logging: {
-            enabled: true, // Enable file logging by default
-            path: path.join(APP_PATHS.log, 'codeloops.log'),
-          },
-        },
-        features: {
-          legacy_python_agents: true,
-          telemetry_enabled: true,
-        },
-        env_prefix: 'CODELOOPS',
-      },
+      defaults: DEFAULT_CONFIG,
     });
 
     // Validate the configuration using Zod after initialization
@@ -270,4 +300,14 @@ export function updateFeatureFlag(
 ): void {
   const config = getConfig();
   config.set(`features.${String(flag)}`, value);
+}
+
+/**
+ * Create a fresh, fully initialized CodeLoops configuration
+ * This is used for migrations and first-time setup to ensure
+ * all required models and defaults are properly populated
+ */
+export function createFreshConfig(): CodeLoopsConfig {
+  // Return a deep copy of the default configuration
+  return JSON.parse(JSON.stringify(DEFAULT_CONFIG));
 }

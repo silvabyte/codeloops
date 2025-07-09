@@ -17,8 +17,7 @@ import * as path from 'node:path';
 import { parse as yamlParse } from 'yaml';
 import { getInstance as getLogger } from '../../src/logger.ts';
 import { createCodeLoopsAscii } from '../../src/utils/fun.ts';
-import { APP_PATHS } from '../../src/config/index.ts';
-import { CodeLoopsConfig } from '../../src/config/index.ts';
+import { createFreshConfig, CodeLoopsConfig } from '../../src/config/index.ts';
 import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,7 +29,7 @@ const logger = getLogger({ withDevStdout: true, sync: true });
 const AGENT_DIRS = ['agents/critic', 'agents/summarize'];
 const PROJECT_ROOT = process.cwd();
 // Use the global config location to match the updated config system
-const CONFIG_FILE_PATH = path.join(APP_PATHS.config, 'codeloops.config.json');
+const CONFIG_FILE_PATH = '/Users/akamat/Library/Preferences/codeloops-nodejs/codeloops.config.json';
 const BACKUP_DIR = path.resolve(oldDataDir, 'backup');
 
 // Ensure backup directory exists
@@ -149,83 +148,6 @@ function parseModelString(modelString: string): { provider: string; model: strin
   };
 }
 
-/**
- * Get model definitions for a provider
- */
-function getProviderModels(provider: string): Record<string, ModelConfig> {
-  const modelDefinitions: Record<string, Record<string, ModelConfig>> = {
-    anthropic: {
-      haiku: {
-        id: 'claude-3-haiku-20240307',
-        max_tokens: 4096,
-        description: 'Fast, lightweight model for simple tasks',
-      },
-      sonnet: {
-        id: 'claude-3-5-sonnet-20241022',
-        max_tokens: 8192,
-        description: 'Balanced model for most tasks',
-      },
-      opus: {
-        id: 'claude-3-opus-20240229',
-        max_tokens: 4096,
-        description: 'Most capable model for complex tasks',
-      },
-    },
-    openai: {
-      'gpt-4o': {
-        id: 'gpt-4o',
-        max_tokens: 4096,
-        description: 'Latest GPT-4 Omni model',
-      },
-      'gpt-4o-mini': {
-        id: 'gpt-4o-mini',
-        max_tokens: 16384,
-        description: 'Smaller, faster GPT-4 model',
-      },
-      'o1-preview': {
-        id: 'o1-preview',
-        max_tokens: 32768,
-        reasoning_effort: 'medium',
-        description: 'Reasoning model for complex problems',
-      },
-      'o1-mini': {
-        id: 'o1-mini',
-        max_tokens: 65536,
-        reasoning_effort: 'low',
-        description: 'Smaller reasoning model',
-      },
-      'o3-mini': {
-        id: 'o3-mini',
-        max_tokens: 65536,
-        reasoning_effort: 'low',
-        description: 'Latest reasoning model',
-      },
-    },
-    deepseek: {
-      'deepseek-chat': {
-        id: 'deepseek-chat',
-        max_tokens: 4096,
-        description: 'DeepSeek chat model',
-      },
-    },
-    google: {
-      'gemini-pro': {
-        id: 'gemini-pro',
-        max_tokens: 2048,
-        description: 'Google Gemini Pro model',
-      },
-    },
-    generic: {
-      llama3: {
-        id: 'llama3',
-        max_tokens: 4096,
-        description: 'Llama 3 model via Ollama',
-      },
-    },
-  };
-
-  return modelDefinitions[provider] || {};
-}
 
 /**
  * Convert FastAgent model string to CodeLoops format
@@ -257,17 +179,7 @@ function mapFastAgentModel(modelString: string): string {
     return modelString;
   }
 
-  // Try to map to provider.model format
-  const providerModels = getProviderModels(provider);
-  const modelKey = Object.keys(providerModels).find(
-    (key) => providerModels[key].id === model || key === model,
-  );
-
-  if (modelKey) {
-    return `${provider}.${modelKey}`;
-  }
-
-  // Fallback to provider.model
+  // Fallback to provider.model format
   return `${provider}.${model}`;
 }
 
@@ -311,33 +223,6 @@ async function processAgentDir(
   // Process model configuration
   if (config?.default_model) {
     logger.info(`Found model configuration: ${config.default_model}`);
-
-    // Update CodeLoops config with agent-specific model
-    if (!codeloopsConfig.agents) {
-      codeloopsConfig.agents = {
-        critic: {
-          enabled: true,
-          model: 'anthropic.sonnet',
-          temperature: 0.3,
-          max_tokens: 2000,
-          _comment: 'Default critic agent configuration',
-        },
-        summarizer: {
-          enabled: true,
-          model: 'anthropic.haiku',
-          temperature: 0.5,
-          max_tokens: 1000,
-          _comment: 'Default summarizer agent configuration',
-        },
-        actor: {
-          enabled: true,
-          model: 'default',
-          temperature: 0.7,
-          max_tokens: 2000,
-          _comment: 'Use default model for general actor tasks',
-        },
-      };
-    }
 
     const mappedModel = mapFastAgentModel(config.default_model);
 
@@ -389,16 +274,7 @@ async function processAgentDir(
     if (providerConfig) {
       logger.info(`Found ${provider} provider configuration`);
 
-      // Add full provider config to CodeLoops config (preserve existing models)
-      if (!codeloopsConfig.providers) {
-        codeloopsConfig.providers = {};
-      }
-
-      if (!codeloopsConfig.providers[provider as keyof typeof codeloopsConfig.providers]) {
-        codeloopsConfig.providers[provider] = { models: {} } as ProviderConfig;
-      }
-
-      // Merge provider config while preserving model definitions
+      // Merge provider config while preserving existing model definitions
       const currentProvider = codeloopsConfig.providers[provider] as ProviderConfig;
       const existingModels = currentProvider?.models || {};
       codeloopsConfig.providers[provider] = {
@@ -484,105 +360,8 @@ async function migrateAgentConfigs(): Promise<void> {
     // Create backups
     const backups = await createBackups();
 
-    // Initialize CodeLoops config aligned with migration plan
-    const codeloopsConfig: CodeLoopsConfig = {
-      version: '1.0.0',
-      default_model: 'openai.gpt-4o-mini',
-      // Initialize providers with model definitions
-      providers: {
-        anthropic: {
-          _comment: 'api_key can be set via ANTHROPIC_API_KEY env var',
-          models: getProviderModels('anthropic'),
-        },
-        openai: {
-          _comment: 'api_key can be set via OPENAI_API_KEY env var',
-          models: getProviderModels('openai'),
-        },
-        azure: {
-          _comment: 'See documentation for Azure OpenAI configuration options',
-          models: {},
-        },
-        deepseek: {
-          _comment: 'api_key can be set via DEEPSEEK_API_KEY env var',
-          models: getProviderModels('deepseek'),
-        },
-        google: {
-          _comment: 'api_key can be set via GOOGLE_API_KEY env var',
-          models: getProviderModels('google'),
-        },
-        openrouter: {
-          _comment: 'api_key can be set via OPENROUTER_API_KEY env var',
-          models: {},
-        },
-        generic: {
-          _comment: 'For Ollama or other OpenAI-compatible APIs',
-          api_key: 'ollama',
-          base_url: 'http://localhost:11434/v1',
-          models: getProviderModels('generic'),
-        },
-        tensorzero: {
-          models: {},
-        },
-      },
-      agents: {
-        critic: {
-          enabled: true,
-          model: 'anthropic.sonnet',
-          temperature: 0.3,
-          max_tokens: 2000,
-          _comment: 'Use Sonnet for balanced performance in code review',
-        },
-        summarizer: {
-          enabled: true,
-          model: 'anthropic.haiku',
-          temperature: 0.5,
-          max_tokens: 1000,
-          _comment: 'Use Haiku for fast summarization tasks',
-        },
-        actor: {
-          enabled: true,
-          model: 'default',
-          temperature: 0.7,
-          max_tokens: 2000,
-          _comment: 'Use default model for general actor tasks',
-        },
-      },
-      mcp: {
-        servers: {},
-      },
-      telemetry: {
-        enabled: true,
-        service_name: 'codeloops',
-        service_version: '1.0.0',
-        environment: 'development',
-        opentelemetry: {
-          enabled: true,
-          otlp_endpoint: 'http://localhost:4318',
-          sample_rate: 1.0,
-        },
-        metrics: {
-          enabled: true,
-        },
-      },
-      logging: {
-        level: 'info',
-        format: 'json',
-        destination: 'stdout',
-        pino: {
-          pretty_print: false,
-          redact: ['*.api_key', '*.password', '*.secret'],
-        },
-        file_logging: {
-          enabled: false,
-          path: './logs/codeloops.log',
-        },
-      },
-      features: {
-        legacy_python_agents: true,
-        telemetry_enabled: true,
-      },
-      env_prefix: 'CODELOOPS',
-    };
+    // Start with a fresh, fully initialized config
+    const codeloopsConfig = createFreshConfig();
 
     // Process each agent directory
     const results: Partial<MigrationResult>[] = [];
@@ -591,25 +370,6 @@ async function migrateAgentConfigs(): Promise<void> {
       results.push(result);
     }
 
-    // Ensure agents are properly initialized if not set by processAgentDir
-    if (!codeloopsConfig.agents.critic) {
-      codeloopsConfig.agents.critic = {
-        enabled: true,
-        model: 'anthropic.sonnet',
-        temperature: 0.3,
-        max_tokens: 2000,
-        _comment: 'Default critic agent configuration',
-      };
-    }
-    if (!codeloopsConfig.agents.summarizer) {
-      codeloopsConfig.agents.summarizer = {
-        enabled: true,
-        model: 'anthropic.haiku',
-        temperature: 0.5,
-        max_tokens: 1000,
-        _comment: 'Default summarizer agent configuration',
-      };
-    }
 
     // Write the CodeLoops config file
     await writeConfigFile(codeloopsConfig);
@@ -644,6 +404,7 @@ async function migrateAgentConfigs(): Promise<void> {
     logger.info('5. Run your application with the new configuration');
   } catch (error) {
     logger.error('Migration failed:', error);
+    console.error('Full error:', error);
     process.exit(1);
   }
 }
