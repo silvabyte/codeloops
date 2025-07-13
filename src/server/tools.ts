@@ -108,7 +108,7 @@ export const registerTools = ({ server }: { server: McpServer }) => {
   - Step 2:  Make any necessary changes and call 'actor_think' again with the updated thought.
   - Repeat until the all work is completed.
   
-  **Note**: Do not call 'critic_review' directly unless debugging; 'actor_think' manages reviews automatically.
+  **Note**: Critic reviews are automatically triggered by 'actor_think' - no manual intervention needed.
   `;
 
   /**
@@ -140,41 +140,6 @@ export const registerTools = ({ server }: { server: McpServer }) => {
     }
   });
 
-  /**
-   * critic_review – manually evaluates an actor node.
-   */
-  server.tool(
-    'critic_review',
-    'Call this tool when you want explicit feedback on your thought, idea or final implementation of a task.',
-    {
-      actorNodeId: z.string().describe('ID of the actor node to critique.'),
-      projectContext: z.string().describe('Full path to the project directory.'),
-    },
-    async (a) => {
-      try {
-        const { logger, engine, runOnce } = await getDeps();
-        const projectName = await loadProjectOrThrow({ logger, args: a, onProjectLoad: runOnce });
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(
-                await engine.criticReview({
-                  actorNodeId: a.actorNodeId,
-                  projectContext: a.projectContext,
-                  project: projectName,
-                }),
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      } catch (err) {
-        return handleToolError(err as Error);
-      }
-    },
-  );
 
   server.tool(
     'get_node',
