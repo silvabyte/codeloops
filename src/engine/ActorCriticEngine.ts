@@ -1,9 +1,7 @@
 import { Actor } from '../agents/Actor.ts';
 import { Critic } from '../agents/critic/Critic.ts';
-import { SummarizationAgent } from '../agents/summarize/Summarize.ts';
 import { KnowledgeGraphManager, type DagNode, FILE_REF } from './KnowledgeGraph.ts';
 import { z } from 'zod';
-import { getModelConfigFromPath } from '../config/models.ts';
 // -----------------------------------------------------------------------------
 // Actor–Critic engine ----------------------------------------------------------
 // -----------------------------------------------------------------------------
@@ -52,7 +50,6 @@ export class ActorCriticEngine {
     private readonly kg: KnowledgeGraphManager,
     private readonly critic: Critic,
     private readonly actor: Actor,
-    private readonly summarizationAgent: SummarizationAgent,
   ) {}
 
   // Use the centralized extractProjectName function from utils
@@ -102,18 +99,6 @@ export class ActorCriticEngine {
     project: string;
   }): Promise<DagNode> {
     const criticNode = await this.critic.review({ actorNodeId, projectContext, project });
-
-    // Trigger summarization check after adding a critic node
-    const summarizerConfig = getModelConfigFromPath('agents.summarizer');
-    if (summarizerConfig.enabled) {
-      await this.summarizationAgent.checkAndTriggerSummarization({
-        project,
-        projectContext,
-      });
-    } else {
-      // Optionally log or handle the disabled state
-      // console.info('Summarizer agent is disabled; skipping summarization check.');
-    }
 
     return criticNode;
   }

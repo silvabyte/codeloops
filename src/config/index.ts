@@ -87,7 +87,6 @@ const ConfigSchema = z.object({
   }),
   agents: z.object({
     critic: AgentConfigSchema,
-    summarizer: AgentConfigSchema,
     actor: AgentConfigSchema,
   }),
   mcp: MCPConfigSchema,
@@ -164,12 +163,6 @@ const DEFAULT_CONFIG: CodeLoopsConfig = {
       model: 'anthropic.haiku',
       temperature: 0.3,
       max_tokens: 2000,
-    },
-    summarizer: {
-      enabled: false,
-      model: 'anthropic.haiku',
-      temperature: 0.5,
-      max_tokens: 1000,
     },
     actor: {
       enabled: true,

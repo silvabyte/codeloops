@@ -4,7 +4,6 @@ import { ActorCriticEngine, ActorThinkSchema } from '../engine/ActorCriticEngine
 import { KnowledgeGraphManager } from '../engine/KnowledgeGraph.ts';
 import { Critic } from '../agents/critic/Critic.ts';
 import { Actor } from '../agents/Actor.ts';
-import { SummarizationAgent } from '../agents/summarize/Summarize.ts';
 import { CodeLoopsLogger, getInstance as getLogger, setGlobalLogger } from '../logger.ts';
 import { extractProjectName } from '../utils/project.ts';
 import { getGitDiff } from '../utils/git.ts';
@@ -62,15 +61,12 @@ export const createDependencies = async (): Promise<ToolDependencies> => {
   const kg = new KnowledgeGraphManager(logger);
   await kg.init();
 
-  // Create SummarizationAgent with KnowledgeGraphManager
-  const summarizationAgent = new SummarizationAgent(kg);
-
-  // Create other dependencies
+  // Create dependencies
   const critic = new Critic(kg);
   const actor = new Actor(kg);
 
-  // Create ActorCriticEngine with all dependencies
-  const engine = new ActorCriticEngine(kg, critic, actor, summarizationAgent);
+  // Create ActorCriticEngine
+  const engine = new ActorCriticEngine(kg, critic, actor);
 
   const runOnce = (project: string) => {
     const child = logger.child({ project });

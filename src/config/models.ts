@@ -173,7 +173,7 @@ export function getModelReference(configPath: string): string | null {
 
 /**
  * Get model configuration from a config path
- * @param configPath Configuration path (e.g., "agents.critic" or "agents.summarizer")
+ * @param configPath Configuration path (e.g., "agents.critic" or "agents.actor")
  * @returns Model configuration including temperature, max_tokens, etc.
  */
 export function getModelConfigFromPath(configPath: string) {
