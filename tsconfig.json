@@ -1,24 +1,43 @@
 {
-  "extends": "@tsconfig/node22/tsconfig.json",
   "compilerOptions": {
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "target": "ESNext",
-    "allowImportingTsExtensions": true,
-    "allowSyntheticDefaultImports": true,
-    "noEmit": true,
-    "outDir": "./dist",
-    "rootDir": "./src",
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "sourceMap": true,
-    "declaration": false,
-    "lib": ["ES2020"],
+    "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "noEmitOnError": true,
-    "forceConsistentCasingInFileNames": true
+    "allowImportingTsExtensions": true,
+    "composite": false,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "allowSyntheticDefaultImports": true,
+    "baseUrl": ".",
+    "paths": {
+      "@codeloops/core": ["packages/core/src/index.ts"],
+      "@codeloops/core/*": ["packages/core/src/*"],
+      "@codeloops/config": ["packages/config/src/index.ts"],
+      "@codeloops/config/*": ["packages/config/src/*"],
+      "@codeloops/agents": ["packages/agents/src/index.ts"],
+      "@codeloops/agents/*": ["packages/agents/src/*"],
+      "@codeloops/server": ["packages/server/src/index.ts"],
+      "@codeloops/server/*": ["packages/server/src/*"]
+    }
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "references": [
+    { "path": "./packages/config" },
+    { "path": "./packages/core" },
+    { "path": "./packages/agents" },
+    { "path": "./packages/server" }
+  ],
+  "include": [],
+  "exclude": ["node_modules", "dist", "*.config.js", "*.config.ts"]
 }

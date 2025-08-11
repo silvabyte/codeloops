@@ -33,7 +33,6 @@ try {
   // Test basic config functionality
   console.log('Default model:', config.get('default_model'));
   console.log('Critic agent enabled:', config.get('agents.critic.enabled'));
-
 } catch (error) {
   console.error('Error testing config:', error);
   process.exit(1);

@@ -91,7 +91,7 @@ function fixConfigModelReferences(configPath: string) {
   try {
     const configContent = fs.readFileSync(configPath, 'utf8');
     const config = JSON.parse(configContent);
-    
+
     let configModified = false;
 
     // Ensure providers exist
@@ -104,7 +104,7 @@ function fixConfigModelReferences(configPath: string) {
       if (!config.providers[providerName]) {
         config.providers[providerName] = {};
       }
-      
+
       if (!config.providers[providerName].models) {
         config.providers[providerName].models = {};
       }
@@ -143,11 +143,11 @@ try {
 
   console.log('Migrating config file...');
   copyFileIfNotExists(oldConfigPath, newConfigPath);
-  
+
   // Fix model references in the migrated config
   console.log('Fixing model references in config...');
   fixConfigModelReferences(newConfigPath);
-  
+
   // Also fix the old config file if it exists
   console.log('Fixing model references in old config...');
   fixConfigModelReferences(oldConfigPath);

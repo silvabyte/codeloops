@@ -62,12 +62,12 @@ graph TD
   D <--> E[Critic]
   D --> C
   E --> C
-  
+
   subgraph "Server Transports"
     F[Stdio Transport]
     G[HTTP Transport]
   end
-  
+
   A --> F
   A --> G
   F --> B

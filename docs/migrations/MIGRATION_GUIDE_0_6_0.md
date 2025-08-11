@@ -25,12 +25,10 @@ CodeLoops has undergone a major architectural transformation, migrating from a h
 ### ⚠️ Critical Changes
 
 1. **Python Dependencies Removed**
-
    - No longer requires Python 3.8+, uv package manager, or Python virtual environments
    - Python agent directories (`agents/critic/`, `agents/summarize/`) have been removed
 
 2. **Simplified Installation**
-
    - Setup process streamlined from multi-step Python environment configuration to simple `npm install`
    - API key configuration simplified
 

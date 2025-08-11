@@ -1,0 +1,25 @@
+{
+  "name": "@codeloops/core",
+  "version": "0.5.1",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./engine": "./src/engine/index.ts",
+    "./utils": "./src/utils/index.ts"
+  },
+  "dependencies": {
+    "@codeloops/config": "workspace:*",
+    "proper-lockfile": "^4.1.2",
+    "zod": "^3.25.64",
+    "nanoid": "^5.1.5",
+    "execa": "^9.5.2",
+    "chalk": "^5.4.1",
+    "pino": "^9.6.0",
+    "pino-roll": "^3.1.0"
+  },
+  "devDependencies": {
+    "@types/proper-lockfile": "^4.1.4",
+    "@types/node": "^22.15.31"
+  }
+}

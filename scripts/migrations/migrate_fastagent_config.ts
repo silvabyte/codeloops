@@ -148,7 +148,6 @@ function parseModelString(modelString: string): { provider: string; model: strin
   };
 }
 
-
 /**
  * Convert FastAgent model string to CodeLoops format
  */
@@ -369,7 +368,6 @@ async function migrateAgentConfigs(): Promise<void> {
       const result = await processAgentDir(agentDir, codeloopsConfig);
       results.push(result);
     }
-
 
     // Write the CodeLoops config file
     await writeConfigFile(codeloopsConfig);

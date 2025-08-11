@@ -1,3 +1,38 @@
-npx -y tsc --noEmit
-npx -y eslint 
-prettier --write --ignore-unknown
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "🔍 Running pre-commit checks..."
+
+# Run TypeScript type checking
+echo "📝 Checking TypeScript types..."
+bun run typecheck
+if [ $? -ne 0 ]; then
+  echo "❌ TypeScript type check failed. Please fix the errors above."
+  exit 1
+fi
+
+# Run ESLint
+echo "🔧 Running ESLint..."
+bun run lint
+if [ $? -ne 0 ]; then
+  echo "❌ ESLint check failed. You can run 'bun run lint:fix' to auto-fix some issues."
+  exit 1
+fi
+
+# Check Prettier formatting
+echo "💅 Checking code formatting..."
+bun run format:check
+if [ $? -ne 0 ]; then
+  echo "❌ Code formatting check failed. Run 'bun run format' to fix formatting."
+  exit 1
+fi
+
+# Run tests
+echo "🧪 Running tests..."
+bun test
+if [ $? -ne 0 ]; then
+  echo "❌ Tests failed. Please fix the failing tests."
+  exit 1
+fi
+
+echo "✅ All pre-commit checks passed!"

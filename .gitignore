@@ -9,3 +9,13 @@ agents/**/fastagent.jsonl
 logs/*.log
 logs/*.log*
 codeloops.config.json
+
+# Build outputs
+dist/
+**/dist/
+build/
+**/build/
+
+# TypeScript build info
+*.tsbuildinfo
+**/*.tsbuildinfo

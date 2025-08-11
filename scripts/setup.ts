@@ -1,11 +1,11 @@
-#!/usr/bin/env tsx
-// Run this script with: npx tsx scripts/setup.ts
+#!/usr/bin/env bun
+// Run this script with: bun run scripts/setup.ts
 // Interactive setup for CodeLoops configuration
 
 import fs from 'fs';
 import path from 'path';
 import inquirer from 'inquirer';
-import { createFreshConfig, getConfig, CodeLoopsConfig, ModelConfig } from '../src/config/index.ts';
+import { createFreshConfig, getConfig, CodeLoopsConfig, ModelConfig } from '@codeloops/config';
 
 // Get the proper config file path
 const configInstance = getConfig();
@@ -22,7 +22,7 @@ interface ModelChoice {
  */
 function getAvailableModels(config: CodeLoopsConfig): ModelChoice[] {
   const models: ModelChoice[] = [];
-  
+
   for (const [providerName, providerConfig] of Object.entries(config.providers)) {
     if (providerConfig?.models) {
       for (const [modelKey, modelConfig] of Object.entries(providerConfig.models)) {
@@ -35,7 +35,7 @@ function getAvailableModels(config: CodeLoopsConfig): ModelChoice[] {
       }
     }
   }
-  
+
   return models;
 }
 
@@ -52,7 +52,7 @@ function loadConfig(): CodeLoopsConfig {
       console.log('Creating fresh configuration...');
     }
   }
-  
+
   return createFreshConfig();
 }
 
@@ -78,40 +78,42 @@ async function configureApiKeys(config: CodeLoopsConfig): Promise<void> {
   try {
     console.log('\n🔑 API Key Configuration');
     console.log('Enter API keys for each provider (leave blank to skip)\n');
-    
+
     const allProviders = getAllProviders(config);
-    
+
     for (const provider of allProviders) {
       try {
         const currentKey = config.providers[provider]?.api_key;
         const maskedKey = maskApiKey(currentKey || '');
-        
+
         console.log(`\n${provider.charAt(0).toUpperCase() + provider.slice(1)} API Key:`);
         if (currentKey) {
           console.log(`  Current: ${maskedKey}`);
         }
-        
+
         // Special handling for generic provider
         const isGeneric = provider === 'generic';
-        const promptMessage = isGeneric 
+        const promptMessage = isGeneric
           ? `Enter ${provider} API key or custom value (often 'ollama', or press Enter to ${currentKey ? 'keep current' : 'skip'}):`
           : `Enter ${provider} API key (or press Enter to ${currentKey ? 'keep current' : 'skip'}):`;
 
-        const { apiKey } = await inquirer.prompt([{
-          type: isGeneric ? 'input' : 'password',
-          name: 'apiKey',
-          message: promptMessage,
-          mask: isGeneric ? undefined : '*',
-          validate: (input: string) => {
-            // Allow empty input to skip/keep current
-            if (!input.trim()) return true;
-            // Less strict validation for generic provider
-            if (isGeneric) return true;
-            if (input.length < 10) return 'API key seems too short (minimum 10 characters)';
-            return true;
+        const { apiKey } = await inquirer.prompt([
+          {
+            type: isGeneric ? 'input' : 'password',
+            name: 'apiKey',
+            message: promptMessage,
+            mask: isGeneric ? undefined : '*',
+            validate: (input: string) => {
+              // Allow empty input to skip/keep current
+              if (!input.trim()) return true;
+              // Less strict validation for generic provider
+              if (isGeneric) return true;
+              if (input.length < 10) return 'API key seems too short (minimum 10 characters)';
+              return true;
+            },
           },
-        }]);
-        
+        ]);
+
         // Only update if user provided a value
         if (apiKey && apiKey.trim()) {
           if (!config.providers[provider]) {
@@ -147,7 +149,7 @@ async function main() {
   // Load existing config or create fresh one
   const config = loadConfig();
   const availableModels = getAvailableModels(config);
-  
+
   const configExists = fs.existsSync(CONFIG_FILE_PATH);
   if (configExists) {
     console.log(`📄 Found existing configuration at: ${CONFIG_FILE_PATH}`);
@@ -156,30 +158,42 @@ async function main() {
   }
 
   // Main configuration menu
-  const { configSections } = await inquirer.prompt([{
-    type: 'checkbox',
-    name: 'configSections',
-    message: 'What would you like to configure?',
-    choices: [
-      { name: '🎯 Default model', value: 'default_model', checked: !configExists },
-      { name: '🤖 Agent models (critic, summarizer, actor)', value: 'agents', checked: !configExists },
-      { name: '🔑 API keys', value: 'api_keys', checked: !configExists },
-      { name: '🔧 Advanced settings (telemetry, logging, features)', value: 'advanced', checked: false },
-    ],
-  }]);
+  const { configSections } = await inquirer.prompt([
+    {
+      type: 'checkbox',
+      name: 'configSections',
+      message: 'What would you like to configure?',
+      choices: [
+        { name: '🎯 Default model', value: 'default_model', checked: !configExists },
+        {
+          name: '🤖 Agent models (critic, summarizer, actor)',
+          value: 'agents',
+          checked: !configExists,
+        },
+        { name: '🔑 API keys', value: 'api_keys', checked: !configExists },
+        {
+          name: '🔧 Advanced settings (telemetry, logging, features)',
+          value: 'advanced',
+          checked: false,
+        },
+      ],
+    },
+  ]);
 
   // Configure default model
   if (configSections.includes('default_model')) {
     console.log(`\n🎯 Current default model: ${config.default_model}`);
-    
-    const { defaultModel } = await inquirer.prompt([{
-      type: 'list',
-      name: 'defaultModel',
-      message: 'Select the default model for CodeLoops:',
-      choices: availableModels,
-      default: config.default_model,
-    }]);
-    
+
+    const { defaultModel } = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'defaultModel',
+        message: 'Select the default model for CodeLoops:',
+        choices: availableModels,
+        default: config.default_model,
+      },
+    ]);
+
     config.default_model = defaultModel;
   }
 
@@ -191,30 +205,36 @@ async function main() {
   • Summarizer: ${config.agents.summarizer.model} (enabled: ${config.agents.summarizer.enabled})
   • Actor: ${config.agents.actor.model} (enabled: ${config.agents.actor.enabled})`);
 
-    const { criticModel } = await inquirer.prompt([{
-      type: 'list',
-      name: 'criticModel',
-      message: 'Select model for Critic agent (code review):',
-      choices: availableModels,
-      default: config.agents.critic.model,
-    }]);
+    const { criticModel } = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'criticModel',
+        message: 'Select model for Critic agent (code review):',
+        choices: availableModels,
+        default: config.agents.critic.model,
+      },
+    ]);
 
-    const { summarizerEnabled } = await inquirer.prompt([{
-      type: 'confirm',
-      name: 'summarizerEnabled',
-      message: 'Enable Summarizer agent (project summaries)?',
-      default: config.agents.summarizer.enabled,
-    }]);
+    const { summarizerEnabled } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'summarizerEnabled',
+        message: 'Enable Summarizer agent (project summaries)?',
+        default: config.agents.summarizer.enabled,
+      },
+    ]);
 
     let summarizerModel = config.agents.summarizer.model;
     if (summarizerEnabled) {
-      const result = await inquirer.prompt([{
-        type: 'list',
-        name: 'summarizerModel',
-        message: 'Select model for Summarizer agent:',
-        choices: availableModels,
-        default: config.agents.summarizer.model,
-      }]);
+      const result = await inquirer.prompt([
+        {
+          type: 'list',
+          name: 'summarizerModel',
+          message: 'Select model for Summarizer agent:',
+          choices: availableModels,
+          default: config.agents.summarizer.model,
+        },
+      ]);
       summarizerModel = result.summarizerModel;
     }
 
@@ -238,32 +258,38 @@ async function main() {
   if (configSections.includes('advanced')) {
     console.log('\n🔧 Advanced Configuration');
 
-    const { telemetryEnabled } = await inquirer.prompt([{
-      type: 'confirm',
-      name: 'telemetryEnabled',
-      message: 'Enable telemetry (helps improve CodeLoops)?',
-      default: config.telemetry.enabled,
-    }]);
+    const { telemetryEnabled } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'telemetryEnabled',
+        message: 'Enable telemetry (helps improve CodeLoops)?',
+        default: config.telemetry.enabled,
+      },
+    ]);
 
-    const { logLevel } = await inquirer.prompt([{
-      type: 'list',
-      name: 'logLevel',
-      message: 'Select log level:',
-      choices: [
-        { name: 'Error only', value: 'error' },
-        { name: 'Warnings and errors', value: 'warn' },
-        { name: 'Info, warnings, and errors', value: 'info' },
-        { name: 'Debug (verbose)', value: 'debug' },
-      ],
-      default: config.logging.level,
-    }]);
+    const { logLevel } = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'logLevel',
+        message: 'Select log level:',
+        choices: [
+          { name: 'Error only', value: 'error' },
+          { name: 'Warnings and errors', value: 'warn' },
+          { name: 'Info, warnings, and errors', value: 'info' },
+          { name: 'Debug (verbose)', value: 'debug' },
+        ],
+        default: config.logging.level,
+      },
+    ]);
 
-    const { fileLogging } = await inquirer.prompt([{
-      type: 'confirm',
-      name: 'fileLogging',
-      message: 'Enable file logging?',
-      default: config.logging.file_logging.enabled,
-    }]);
+    const { fileLogging } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'fileLogging',
+        message: 'Enable file logging?',
+        default: config.logging.file_logging.enabled,
+      },
+    ]);
 
     // Update advanced settings
     config.telemetry.enabled = telemetryEnabled;

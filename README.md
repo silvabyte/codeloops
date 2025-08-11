@@ -32,11 +32,11 @@ Get CodeLoops up and running in minutes:
 git clone https://github.com/matsilva/codeloops.git
 cd codeloops
 
-# Install dependencies
-npm install
+# Install dependencies with Bun
+bun install
 
 # Configure your API keys (optional setup script)
-npm run setup
+bun run setup
 ```
 
 The setup script helps with:
@@ -61,8 +61,8 @@ Connect your agent to the CodeLoops server by adding the MCP server configuratio
   "servers": {
     "codeloops": {
       "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "tsx", "/path/to/codeloops/src"]
+      "command": "bun",
+      "args": ["run", "/path/to/codeloops/packages/server/src/index.ts"]
     }
   }
 }
@@ -84,9 +84,9 @@ Connect your agent to the CodeLoops server by adding the MCP server configuratio
 For HTTP transport, start the server first:
 
 ```bash
-npm run start:http
+bun run start:http
 # or with custom port/host
-npx -y tsx src --http --port 8080 --host 127.0.0.1
+bun run packages/server/src/index.ts --http --port 8080 --host 127.0.0.1
 ```
 
 Refer to your platform's documentation for specific MCP configuration instructions.
@@ -105,16 +105,16 @@ CodeLoops supports the following command-line options:
 
 ```bash
 # Start with stdio (default)
-npm start
+bun start
 
 # Start HTTP server on default port 3000
-npm run start:http
+bun run start:http
 
 # Start HTTP server on custom port
-npx -y tsx src --http --port 8080
+bun run packages/server/src/index.ts --http --port 8080
 
 # Start HTTP server on specific host and port
-npx -y tsx src --http --host 127.0.0.1 --port 9000
+bun run packages/server/src/index.ts --http --host 127.0.0.1 --port 9000
 ```
 
 ## Using CodeLoops

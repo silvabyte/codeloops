@@ -68,13 +68,17 @@ codeloops/
 CodeLoops requires API keys for LLM providers. You can configure these using the setup script or manually:
 
 #### Option 1: Using Setup Script (Recommended)
+
 ```bash
 npm run setup
 ```
+
 This script will guide you through API key configuration.
 
 #### Option 2: Manual Configuration
+
 Create or edit `codeloops.config.json` in the project root:
+
 ```json
 {
   "providers": {
@@ -90,7 +94,9 @@ Create or edit `codeloops.config.json` in the project root:
 ```
 
 #### Option 3: Environment Variables
+
 Set environment variables:
+
 ```bash
 export ANTHROPIC_API_KEY="your-anthropic-api-key"
 export OPENAI_API_KEY="your-openai-api-key"
@@ -101,6 +107,7 @@ export OPENAI_API_KEY="your-openai-api-key"
 CodeLoops supports both stdio and HTTP transports. Test both to ensure proper functionality:
 
 #### Option 1: Test Stdio Transport (Default)
+
 1. Start the MCP server:
    ```bash
    npx -y tsx src
@@ -108,6 +115,7 @@ CodeLoops supports both stdio and HTTP transports. Test both to ensure proper fu
 2. The server should start without any errors and wait for input via stdio
 
 #### Option 2: Test HTTP Transport
+
 1. Start the HTTP server:
    ```bash
    npm run start:http
