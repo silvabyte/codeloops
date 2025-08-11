@@ -15,17 +15,23 @@ Before starting, ensure you have the following dependencies
 ### Step 1: Clone the Repository
 
 1. Open a terminal and clone the CodeLoops repository:
+
    ```bash
    git clone https://github.com/SilvaByte/codeloops.git
    ```
+
 2. Navigate to the project directory:
+
    ```bash
    cd codeloops
    ```
+
 3. Verify the repository structure:
+
    ```bash
    ls
    ```
+
    You should see directories like `src`, `agents`, and files like `package.json`.
 
 ### Step 2: Understand the Project Structure
@@ -54,13 +60,17 @@ codeloops/
 ### Step 3: Install Node.js Dependencies
 
 1. From the project root (`codeloops/`), install Node.js dependencies:
+
    ```bash
    npm install
    ```
+
 2. Verify installation:
+
    ```bash
    npm list
    ```
+
    Ensure no errors appear, and dependencies like `typescript` and `tsx` are listed.
 
 ### Step 4: Configure API Keys
@@ -109,27 +119,35 @@ CodeLoops supports both stdio and HTTP transports. Test both to ensure proper fu
 #### Option 1: Test Stdio Transport (Default)
 
 1. Start the MCP server:
+
    ```bash
    npx -y tsx src
    ```
+
 2. The server should start without any errors and wait for input via stdio
 
 #### Option 2: Test HTTP Transport
 
 1. Start the HTTP server:
+
    ```bash
    npm run start:http
    # or with custom options
    npx -y tsx src --http --port 3000
    ```
+
 2. The server should start and display:
+
    ```
    CodeLoops HTTP server running on http://0.0.0.0:3000
    ```
+
 3. Test the server health endpoint:
+
    ```bash
    curl http://localhost:3000/health
    ```
+
    You should receive a JSON response indicating the server is running.
 
 To stop the HTTP server, use `Ctrl+C`.
