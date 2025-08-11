@@ -49,7 +49,7 @@ function loadConfig(): CodeLoopsConfig {
     try {
       const configContent = fs.readFileSync(CONFIG_FILE_PATH, 'utf8');
       const parsed = JSON.parse(configContent);
-      
+
       // Ensure agents structure exists with only critic and actor
       if (!parsed.agents) {
         parsed.agents = {};
@@ -70,7 +70,7 @@ function loadConfig(): CodeLoopsConfig {
           maxTokens: 4000,
         };
       }
-      
+
       return parsed;
     } catch (error) {
       console.log(`⚠️  Could not read existing config: ${error}`);
@@ -146,7 +146,7 @@ async function configureApiKeys(config: CodeLoopsConfig): Promise<void> {
         // Ensure the provider object exists and set the API key
         config.providers[provider] = {
           ...config.providers[provider],
-          api_key: apiKey.trim()
+          api_key: apiKey.trim(),
         };
         console.log(`  ✅ Updated ${provider} API key`);
       } else if (currentKey) {
@@ -193,7 +193,7 @@ function nonInteractiveSetup(config: CodeLoopsConfig, args: any): void {
 
   // Configure agents
   const model = args.model || config.default_model || 'anthropic.haiku';
-  
+
   if (!config.agents) {
     config.agents = {};
   }
@@ -217,10 +217,10 @@ function nonInteractiveSetup(config: CodeLoopsConfig, args: any): void {
   // Configure telemetry and logging
   if (!config.telemetry) config.telemetry = {};
   config.telemetry.enabled = args.telemetry === 'true';
-  
+
   if (!config.features) config.features = {};
   config.features.telemetry_enabled = args.telemetry === 'true';
-  
+
   if (!config.logging) config.logging = { file_logging: {} };
   config.logging.level = args['log-level'] || 'info';
   config.logging.file_logging.enabled = args['file-logging'] === 'true';
@@ -247,7 +247,7 @@ async function main() {
       'generic-key': {
         type: 'string',
       },
-      'model': {
+      model: {
         type: 'string',
         default: 'anthropic.haiku',
       },
@@ -272,7 +272,7 @@ async function main() {
       'actor-max-tokens': {
         type: 'string',
       },
-      'telemetry': {
+      telemetry: {
         type: 'string',
         default: 'false',
       },
@@ -284,7 +284,7 @@ async function main() {
         type: 'string',
         default: 'false',
       },
-      'help': {
+      help: {
         type: 'boolean',
         default: false,
       },
@@ -336,7 +336,7 @@ Examples:
   if (args['non-interactive']) {
     console.log('\n📋 Running in non-interactive mode...');
     nonInteractiveSetup(config, args);
-    
+
     // Ensure config directory exists
     const configDir = path.dirname(CONFIG_FILE_PATH);
     if (!fs.existsSync(configDir)) {
@@ -459,7 +459,7 @@ Happy coding! 🚀
     if (!config.agents) {
       config.agents = {};
     }
-    
+
     config.agents.critic = {
       model: criticModel,
       enabled: criticEnabled,
@@ -520,10 +520,10 @@ Happy coding! 🚀
     // Update advanced settings
     if (!config.telemetry) config.telemetry = {};
     config.telemetry.enabled = telemetryEnabled;
-    
+
     if (!config.features) config.features = {};
     config.features.telemetry_enabled = telemetryEnabled;
-    
+
     if (!config.logging) config.logging = { file_logging: {} };
     config.logging.level = logLevel;
     config.logging.file_logging.enabled = fileLogging;
