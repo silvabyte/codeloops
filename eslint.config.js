@@ -68,6 +68,14 @@ export default tseslint.config(
     ...tseslint.configs.disableTypeChecked,
   },
   {
+    files: ['packages/config-ui/public/**/*.js'],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+      },
+    },
+  },
+  {
     ignores: [
       '**/node_modules/**',
       '**/dist/**',

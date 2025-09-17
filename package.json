@@ -18,6 +18,7 @@
     "check": "bun run typecheck && bun run lint && bun run format:check",
     "check:fix": "bun run typecheck && bun run lint:fix && bun run format",
     "setup": "bun run scripts/setup.ts",
+    "config-ui": "bun run --filter=@codeloops/config-ui start",
     "start": "bun run --filter=@codeloops/server start",
     "start:http": "bun run --filter=@codeloops/server start:http",
     "test-quickstart": "bash scripts/test-quickstart.sh",
@@ -31,7 +32,7 @@
     "@tsconfig/node22": "^22.0.2",
     "@types/inquirer": "^9.0.9",
     "@types/node": "^22.15.31",
-    "@voltagent/cli": "^0.1.7",
+    "@voltagent/cli": "^0.1.10",
     "eslint": "^9.27.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-import": "^2.32.0",
@@ -42,5 +43,18 @@
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.32.1",
     "vitest": "^3.1.2"
+  },
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "^1.0.5",
+    "ai": "^5.0.10",
+    "undici": "^7.13.0",
+    "zod-to-json-schema": "^3.24.6"
+  },
+  "resolutions": {
+    "ai": "^5.0.10",
+    "@ai-sdk/openai": "^2.0.10",
+    "@ai-sdk/anthropic": "^2.0.1",
+    "**/@ai-sdk/openai": "^2.0.10",
+    "**/ai": "^5.0.10"
   }
 }

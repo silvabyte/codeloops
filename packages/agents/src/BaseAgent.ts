@@ -1,6 +1,6 @@
 import { Agent as VoltAgent, createHooks } from '@voltagent/core';
 import { VercelAIProvider } from '@voltagent/vercel-ai';
-import type { LanguageModelV1 } from 'ai';
+import type { LanguageModel } from 'ai';
 import { getProviderApiKey, getConfig } from '@codeloops/config';
 import type { ZodType } from 'zod';
 import type { Logger } from 'pino';
@@ -11,7 +11,7 @@ export interface AgentConfig<> {
   name: string;
   instructions: string;
   outputSchema: ZodType;
-  model: LanguageModelV1;
+  model: LanguageModel;
   maxRetries?: number;
   temperature?: number;
   maxTokens?: number;
@@ -43,7 +43,7 @@ interface AgentDeps {
 }
 
 export class Agent {
-  private readonly _agent: VoltAgent<{ llm: VercelAIProvider }>; // Using any for now to avoid complex type issues
+  private readonly _agent: VoltAgent<{ llm: VercelAIProvider }>;
   private readonly logger: Logger;
   private readonly name: string;
   private readonly instructions: string;
@@ -162,8 +162,8 @@ export class Agent {
       this._agent = new VoltAgent({
         name: config.name,
         instructions: config.instructions,
-        llm: new VercelAIProvider(),
         model: config.model,
+        llm: new VercelAIProvider(),
         hooks,
         markdown: config.markdown ?? false,
         // Keep it simple for now - advanced features can be added later
@@ -506,7 +506,7 @@ export const createAgent = (config: AgentConfig, deps: AgentDeps) => {
 };
 
 export const createOpenAIAgent = (
-  config: Omit<AgentConfig, 'model'> & { model?: LanguageModelV1 },
+  config: Omit<AgentConfig, 'model'> & { model?: LanguageModel },
   deps: AgentDeps,
 ): Agent => {
   const apiKey = getProviderApiKey('openai');
@@ -532,7 +532,7 @@ export const createOpenAIAgent = (
 };
 
 export const createAzureAgent = (
-  config: Omit<AgentConfig, 'model'> & { model: LanguageModelV1 },
+  config: Omit<AgentConfig, 'model'> & { model: LanguageModel },
   deps: AgentDeps,
 ): Agent => {
   const conf = getConfig();

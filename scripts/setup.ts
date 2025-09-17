@@ -19,10 +19,34 @@ interface ModelChoice {
   provider: string;
 }
 
+interface LMStudioModel {
+  id: string;
+  object: string;
+  created?: number;
+  owned_by?: string;
+}
+
+/**
+ * Fetch available models from LM Studio
+ */
+async function fetchLMStudioModels(baseUrl: string): Promise<LMStudioModel[]> {
+  try {
+    const response = await fetch(`${baseUrl}/v1/models`);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    const data = await response.json();
+    return data.data || [];
+  } catch (error) {
+    console.warn(`⚠️  Could not fetch models from LM Studio (${baseUrl}):`, error.message);
+    return [];
+  }
+}
+
 /**
  * Extract available models from the config system
  */
-function getAvailableModels(config: CodeLoopsConfig): ModelChoice[] {
+async function getAvailableModels(config: CodeLoopsConfig): Promise<ModelChoice[]> {
   const models: ModelChoice[] = [];
 
   for (const [providerName, providerConfig] of Object.entries(config.providers)) {
@@ -34,6 +58,35 @@ function getAvailableModels(config: CodeLoopsConfig): ModelChoice[] {
           value: `${providerName}.${modelKey}`,
           provider: providerName,
         });
+      }
+    }
+  }
+
+  // Add dynamically discovered LM Studio models if configured
+  const lmstudioConfig = config.providers.lmstudio;
+  if (lmstudioConfig?.base_url) {
+    console.log(`\n🔍 Discovering models from LM Studio at ${lmstudioConfig.base_url}...`);
+    const lmstudioModels = await fetchLMStudioModels(lmstudioConfig.base_url);
+    if (lmstudioModels.length > 0) {
+      console.log(`✅ Found ${lmstudioModels.length} LM Studio model(s)`);
+    }
+    for (const model of lmstudioModels) {
+      const modelKey = model.id.replace(/[^a-zA-Z0-9_-]/g, '_');
+      models.push({
+        name: `LM Studio - ${model.id}`,
+        value: `lmstudio.${modelKey}`,
+        provider: 'lmstudio',
+      });
+
+      // Add model to config if not already present
+      if (!lmstudioConfig.models) {
+        lmstudioConfig.models = {};
+      }
+      if (!lmstudioConfig.models[modelKey]) {
+        lmstudioConfig.models[modelKey] = {
+          id: model.id,
+          description: `LM Studio model: ${model.id}`,
+        };
       }
     }
   }
@@ -107,31 +160,42 @@ async function configureApiKeys(config: CodeLoopsConfig): Promise<void> {
 
   for (const provider of allProviders) {
     try {
-      const currentKey = config.providers[provider]?.api_key;
-      const maskedKey = maskApiKey(currentKey || '');
+      const isLMStudio = provider === 'lmstudio';
+      const currentKey = isLMStudio
+        ? config.providers[provider]?.base_url
+        : config.providers[provider]?.api_key;
+      const maskedKey = isLMStudio ? currentKey || '[not set]' : maskApiKey(currentKey || '');
 
-      console.log(`\n${provider.charAt(0).toUpperCase() + provider.slice(1)} API Key:`);
+      console.log(
+        `\n${provider.charAt(0).toUpperCase() + provider.slice(1)} ${isLMStudio ? 'Base URL' : 'API Key'}:`,
+      );
       if (currentKey) {
         console.log(`  Current: ${maskedKey}`);
       }
 
-      // Special handling for generic provider
+      // Special handling for generic and lmstudio providers
       const isGeneric = provider === 'generic';
-      const promptMessage = isGeneric
-        ? `Enter ${provider} API key or custom value (often 'ollama', or press Enter to ${currentKey ? 'keep current' : 'skip'}):`
-        : `Enter ${provider} API key (or press Enter to ${currentKey ? 'keep current' : 'skip'}):`;
+
+      let promptMessage: string;
+      if (isGeneric) {
+        promptMessage = `Enter ${provider} API key or custom value (often 'ollama', or press Enter to ${currentKey ? 'keep current' : 'skip'}):`;
+      } else if (isLMStudio) {
+        promptMessage = `Enter ${provider} base URL (e.g., http://localhost:1234, or press Enter to ${currentKey ? 'keep current' : 'skip'}):`;
+      } else {
+        promptMessage = `Enter ${provider} API key (or press Enter to ${currentKey ? 'keep current' : 'skip'}):`;
+      }
 
       const { apiKey } = await inquirer.prompt([
         {
-          type: isGeneric ? 'input' : 'password',
+          type: isGeneric || isLMStudio ? 'input' : 'password',
           name: 'apiKey',
           message: promptMessage,
-          mask: isGeneric ? undefined : '*',
+          mask: isGeneric || isLMStudio ? undefined : '*',
           validate: (input: string) => {
             // Allow empty input to skip/keep current
             if (!input.trim()) return true;
-            // Less strict validation for generic provider
-            if (isGeneric) return true;
+            // Less strict validation for generic and lmstudio providers
+            if (isGeneric || isLMStudio) return true;
             if (input.length < 10) return 'API key seems too short (minimum 10 characters)';
             return true;
           },
@@ -143,16 +207,25 @@ async function configureApiKeys(config: CodeLoopsConfig): Promise<void> {
         if (!config.providers[provider]) {
           config.providers[provider] = { models: {} };
         }
-        // Ensure the provider object exists and set the API key
-        config.providers[provider] = {
-          ...config.providers[provider],
-          api_key: apiKey.trim(),
-        };
-        console.log(`  ✅ Updated ${provider} API key`);
-      } else if (currentKey) {
-        console.log(`  ℹ️  Keeping current ${provider} API key`);
+
+        // For LM Studio, store as base_url instead of api_key
+        if (isLMStudio) {
+          config.providers[provider] = {
+            ...config.providers[provider],
+            base_url: apiKey.trim(),
+          };
+          console.log(`  ✅ Updated ${provider} base URL`);
+        } else {
+          config.providers[provider] = {
+            ...config.providers[provider],
+            api_key: apiKey.trim(),
+          };
+          console.log(`  ✅ Updated ${provider} API key`);
+        }
+      } else if (currentKey || (isLMStudio && config.providers[provider]?.base_url)) {
+        console.log(`  ℹ️  Keeping current ${provider} ${isLMStudio ? 'base URL' : 'API key'}`);
       } else {
-        console.log(`  ⏭️  Skipped ${provider} API key`);
+        console.log(`  ⏭️  Skipped ${provider} ${isLMStudio ? 'base URL' : 'API key'}`);
       }
     } catch (providerError) {
       console.error(`Error configuring ${provider} API key:`, providerError);
@@ -364,8 +437,6 @@ Happy coding! 🚀
 ╚═══════════════════════════════════════════════════════════════╝
 `);
 
-  const availableModels = getAvailableModels(config);
-
   const configExists = fs.existsSync(CONFIG_FILE_PATH);
   if (configExists) {
     console.log(`📄 Found existing configuration at: ${CONFIG_FILE_PATH}`);
@@ -380,13 +451,13 @@ Happy coding! 🚀
       name: 'configSections',
       message: 'What would you like to configure?',
       choices: [
+        { name: '🔑 API keys and providers', value: 'api_keys', checked: !configExists },
         { name: '🎯 Default model', value: 'default_model', checked: !configExists },
         {
           name: '🤖 Agent models (critic and actor)',
           value: 'agents',
           checked: !configExists,
         },
-        { name: '🔑 API keys', value: 'api_keys', checked: !configExists },
         {
           name: '🔧 Advanced settings (telemetry, logging)',
           value: 'advanced',
@@ -395,6 +466,14 @@ Happy coding! 🚀
       ],
     },
   ]);
+
+  // Configure API keys first so we can discover models
+  if (configSections.includes('api_keys')) {
+    await configureApiKeys(config);
+  }
+
+  // Now get available models after potentially configuring LM Studio
+  const availableModels = await getAvailableModels(config);
 
   // Configure default model
   if (configSections.includes('default_model')) {
@@ -475,10 +554,7 @@ Happy coding! 🚀
     };
   }
 
-  // Configure API keys
-  if (configSections.includes('api_keys')) {
-    await configureApiKeys(config);
-  }
+  // API keys were already configured earlier
 
   // Configure advanced settings
   if (configSections.includes('advanced')) {

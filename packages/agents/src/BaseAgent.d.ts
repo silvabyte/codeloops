@@ -1,6 +1,6 @@
 import { Agent as VoltAgent } from '@voltagent/core';
 import { VercelAIProvider } from '@voltagent/vercel-ai';
-import { LanguageModelV1 } from 'ai';
+import { LanguageModel } from 'ai';
 import { ZodType } from 'zod';
 import { Logger } from 'pino';
 export type OutputSchema = unknown;
@@ -8,7 +8,7 @@ export interface AgentConfig {
   name: string;
   instructions: string;
   outputSchema: ZodType;
-  model: LanguageModelV1;
+  model: LanguageModel;
   maxRetries?: number;
   temperature?: number;
   maxTokens?: number;
@@ -57,13 +57,13 @@ export declare class Agent {
 export declare const createAgent: (config: AgentConfig, deps: AgentDeps) => Agent;
 export declare const createOpenAIAgent: (
   config: Omit<AgentConfig, 'model'> & {
-    model?: LanguageModelV1;
+    model?: LanguageModel;
   },
   deps: AgentDeps,
 ) => Agent;
 export declare const createAzureAgent: (
   config: Omit<AgentConfig, 'model'> & {
-    model: LanguageModelV1;
+    model: LanguageModel;
   },
   deps: AgentDeps,
 ) => Agent;

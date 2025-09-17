@@ -1,0 +1,19 @@
+{
+  "name": "@codeloops/config-ui",
+  "module": "server.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun --hot ./server.ts",
+    "dev": "bun --hot ./server.ts"
+  },
+  "dependencies": {
+    "@codeloops/config": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}

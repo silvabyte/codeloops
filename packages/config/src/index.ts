@@ -83,6 +83,7 @@ const ConfigSchema = z.object({
     google: ProviderConfigSchema.optional(),
     openrouter: ProviderConfigSchema.optional(),
     generic: ProviderConfigSchema.optional(),
+    lmstudio: ProviderConfigSchema.optional(),
     tensorzero: ProviderConfigSchema.optional(),
   }),
   agents: z.object({
@@ -151,6 +152,9 @@ const DEFAULT_CONFIG: CodeLoopsConfig = {
       models: {},
     },
     generic: {
+      models: {},
+    },
+    lmstudio: {
       models: {},
     },
     tensorzero: {

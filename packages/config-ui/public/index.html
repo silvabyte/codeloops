@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CodeLoops Configuration</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="header">
+        <div class="header-content">
+          <h1 class="header-title">
+            <span class="logo">🔄</span>
+            CodeLoops Configuration
+          </h1>
+          <div class="header-subtitle">Set up your AI models and providers</div>
+        </div>
+      </header>
+
+      <main class="main">
+        <div class="container">
+          <!-- Loading State -->
+          <div id="loading" class="loading-state">
+            <div class="spinner"></div>
+            <p>Loading configuration...</p>
+          </div>
+
+          <!-- Configuration Wizard -->
+          <div id="config-wizard" class="wizard" style="display: none">
+            <!-- Progress Steps -->
+            <div class="steps">
+              <div class="step active" data-step="providers">
+                <div class="step-number">1</div>
+                <div class="step-label">Providers</div>
+              </div>
+              <div class="step" data-step="models">
+                <div class="step-number">2</div>
+                <div class="step-label">Models</div>
+              </div>
+              <div class="step" data-step="agents">
+                <div class="step-number">3</div>
+                <div class="step-label">Agents</div>
+              </div>
+              <div class="step" data-step="review">
+                <div class="step-number">4</div>
+                <div class="step-label">Review</div>
+              </div>
+            </div>
+
+            <!-- Step Content -->
+            <div class="step-content">
+              <!-- Step 1: Providers -->
+              <div id="step-providers" class="step-panel active">
+                <div class="step-header">
+                  <h2>Configure AI Providers</h2>
+                  <p>
+                    Connect to your AI model providers. We'll test the connections and discover
+                    available models.
+                  </p>
+                </div>
+
+                <div class="provider-cards">
+                  <!-- LM Studio Card -->
+                  <div class="provider-card" data-provider="lmstudio">
+                    <div class="provider-header">
+                      <div class="provider-icon">🖥️</div>
+                      <div class="provider-info">
+                        <h3>LM Studio</h3>
+                        <p>Local AI models running on your machine</p>
+                      </div>
+                      <div class="provider-status" id="lmstudio-status">
+                        <span class="status-dot status-unknown"></span>
+                        <span class="status-text">Not configured</span>
+                      </div>
+                    </div>
+                    <div class="provider-config">
+                      <div class="input-group">
+                        <label for="lmstudio-url">Base URL</label>
+                        <input
+                          type="url"
+                          id="lmstudio-url"
+                          placeholder="http://localhost:1234"
+                          class="config-input"
+                        />
+                        <div class="input-hint">The URL where your LM Studio server is running</div>
+                      </div>
+                      <button class="btn btn-secondary test-connection" data-provider="lmstudio">
+                        <span class="btn-text">Test Connection</span>
+                        <span class="btn-spinner" style="display: none"></span>
+                      </button>
+                    </div>
+                    <div class="provider-models" id="lmstudio-models" style="display: none">
+                      <h4>Available Models</h4>
+                      <div class="models-list"></div>
+                    </div>
+                  </div>
+
+                  <!-- Anthropic Card -->
+                  <div class="provider-card" data-provider="anthropic">
+                    <div class="provider-header">
+                      <div class="provider-icon">🤖</div>
+                      <div class="provider-info">
+                        <h3>Anthropic</h3>
+                        <p>Claude models for advanced reasoning</p>
+                      </div>
+                      <div class="provider-status" id="anthropic-status">
+                        <span class="status-dot status-unknown"></span>
+                        <span class="status-text">Not configured</span>
+                      </div>
+                    </div>
+                    <div class="provider-config">
+                      <div class="input-group">
+                        <label for="anthropic-key">API Key</label>
+                        <input
+                          type="password"
+                          id="anthropic-key"
+                          placeholder="sk-ant-..."
+                          class="config-input"
+                        />
+                        <div class="input-hint">
+                          Your Anthropic API key from console.anthropic.com
+                        </div>
+                      </div>
+                      <button class="btn btn-secondary test-connection" data-provider="anthropic">
+                        <span class="btn-text">Test Connection</span>
+                        <span class="btn-spinner" style="display: none"></span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- OpenAI Card -->
+                  <div class="provider-card" data-provider="openai">
+                    <div class="provider-header">
+                      <div class="provider-icon">⚡</div>
+                      <div class="provider-info">
+                        <h3>OpenAI</h3>
+                        <p>GPT models for general tasks</p>
+                      </div>
+                      <div class="provider-status" id="openai-status">
+                        <span class="status-dot status-unknown"></span>
+                        <span class="status-text">Not configured</span>
+                      </div>
+                    </div>
+                    <div class="provider-config">
+                      <div class="input-group">
+                        <label for="openai-key">API Key</label>
+                        <input
+                          type="password"
+                          id="openai-key"
+                          placeholder="sk-..."
+                          class="config-input"
+                        />
+                        <div class="input-hint">Your OpenAI API key from platform.openai.com</div>
+                      </div>
+                      <button class="btn btn-secondary test-connection" data-provider="openai">
+                        <span class="btn-text">Test Connection</span>
+                        <span class="btn-spinner" style="display: none"></span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Step 2: Models -->
+              <div id="step-models" class="step-panel">
+                <div class="step-header">
+                  <h2>Select Default Model</h2>
+                  <p>Choose your preferred model for new conversations</p>
+                </div>
+
+                <div class="model-selection">
+                  <div class="models-grid" id="models-grid">
+                    <!-- Models will be populated here -->
+                  </div>
+                </div>
+              </div>
+
+              <!-- Step 3: Agents -->
+              <div id="step-agents" class="step-panel">
+                <div class="step-header">
+                  <h2>Configure Agents</h2>
+                  <p>Set up your critic and actor agents with specific models and settings</p>
+                </div>
+
+                <div class="agents-config">
+                  <div class="agent-card">
+                    <div class="agent-header">
+                      <div class="agent-icon">🔍</div>
+                      <div class="agent-info">
+                        <h3>Critic Agent</h3>
+                        <p>Reviews and improves code quality</p>
+                      </div>
+                      <label class="toggle">
+                        <input type="checkbox" id="critic-enabled" checked />
+                        <span class="toggle-slider"></span>
+                      </label>
+                    </div>
+                    <div class="agent-config">
+                      <div class="input-group">
+                        <label for="critic-model">Model</label>
+                        <select id="critic-model" class="config-select">
+                          <option value="">Select a model...</option>
+                        </select>
+                      </div>
+                      <div class="input-row">
+                        <div class="input-group">
+                          <label for="critic-temperature">Temperature</label>
+                          <input
+                            type="range"
+                            id="critic-temperature"
+                            min="0"
+                            max="1"
+                            step="0.1"
+                            value="0.3"
+                          />
+                          <span class="range-value">0.3</span>
+                        </div>
+                        <div class="input-group">
+                          <label for="critic-max-tokens">Max Tokens</label>
+                          <input
+                            type="number"
+                            id="critic-max-tokens"
+                            value="2000"
+                            min="100"
+                            max="8000"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="agent-card">
+                    <div class="agent-header">
+                      <div class="agent-icon">✨</div>
+                      <div class="agent-info">
+                        <h3>Actor Agent</h3>
+                        <p>Generates and implements code</p>
+                      </div>
+                      <label class="toggle">
+                        <input type="checkbox" id="actor-enabled" checked />
+                        <span class="toggle-slider"></span>
+                      </label>
+                    </div>
+                    <div class="agent-config">
+                      <div class="input-group">
+                        <label for="actor-model">Model</label>
+                        <select id="actor-model" class="config-select">
+                          <option value="">Select a model...</option>
+                        </select>
+                      </div>
+                      <div class="input-row">
+                        <div class="input-group">
+                          <label for="actor-temperature">Temperature</label>
+                          <input
+                            type="range"
+                            id="actor-temperature"
+                            min="0"
+                            max="1"
+                            step="0.1"
+                            value="0.7"
+                          />
+                          <span class="range-value">0.7</span>
+                        </div>
+                        <div class="input-group">
+                          <label for="actor-max-tokens">Max Tokens</label>
+                          <input
+                            type="number"
+                            id="actor-max-tokens"
+                            value="4000"
+                            min="100"
+                            max="8000"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Step 4: Review -->
+              <div id="step-review" class="step-panel">
+                <div class="step-header">
+                  <h2>Review Configuration</h2>
+                  <p>Double-check your settings before saving</p>
+                </div>
+
+                <div class="config-preview">
+                  <pre id="config-json"></pre>
+                </div>
+              </div>
+            </div>
+
+            <!-- Navigation -->
+            <div class="step-navigation">
+              <button class="btn btn-secondary" id="prev-btn" style="display: none">
+                Previous
+              </button>
+              <div class="nav-spacer"></div>
+              <button class="btn btn-primary" id="next-btn">Next</button>
+              <button class="btn btn-primary" id="save-btn" style="display: none">
+                Save Configuration
+              </button>
+            </div>
+          </div>
+
+          <!-- Success State -->
+          <div id="success-state" class="success-state" style="display: none">
+            <div class="success-icon">✅</div>
+            <h2>Configuration Saved!</h2>
+            <p>Your CodeLoops configuration has been updated successfully.</p>
+            <div class="success-actions">
+              <button class="btn btn-primary" onclick="location.reload()">Edit Again</button>
+              <a href="/" class="btn btn-secondary">Close</a>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

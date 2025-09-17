@@ -1,4 +1,4 @@
-import type { LanguageModelV1 } from 'ai';
+import type { LanguageModel } from 'ai';
 import { anthropic } from '@ai-sdk/anthropic';
 import { openai } from '@ai-sdk/openai';
 import { azure } from '@ai-sdk/azure';
@@ -8,9 +8,9 @@ import { env } from './env.js';
 /**
  * Creates a model instance from a model reference string
  * @param modelRef Model reference in format "provider.model" (e.g., "openai.gpt-4o")
- * @returns Configured LanguageModelV1 instance
+ * @returns Configured LanguageModel instance
  */
-export function createModel(modelRef: string): LanguageModelV1 {
+export function createModel(modelRef: string): LanguageModel {
   if (!modelRef || typeof modelRef !== 'string') {
     throw new Error(`Invalid model reference: ${modelRef}`);
   }
@@ -55,7 +55,7 @@ export function createModel(modelRef: string): LanguageModelV1 {
 /**
  * Create Anthropic model instance
  */
-function createAnthropicModel(modelId: string): LanguageModelV1 {
+function createAnthropicModel(modelId: string): LanguageModel {
   const apiKey = getProviderApiKey('anthropic');
   if (!apiKey) {
     throw new Error(
@@ -72,7 +72,7 @@ function createAnthropicModel(modelId: string): LanguageModelV1 {
 /**
  * Create OpenAI model instance
  */
-function createOpenAIModel(modelId: string): LanguageModelV1 {
+function createOpenAIModel(modelId: string): LanguageModel {
   const apiKey = getProviderApiKey('openai');
   if (!apiKey) {
     throw new Error('OpenAI API key not configured. Add api_key to providers.openai in config.');
@@ -87,7 +87,7 @@ function createOpenAIModel(modelId: string): LanguageModelV1 {
 /**
  * Create Azure OpenAI model instance
  */
-function createAzureModel(modelId: string): LanguageModelV1 {
+function createAzureModel(modelId: string): LanguageModel {
   const azureConfig = getProviderConfig('azure');
   const apiKey = azureConfig?.api_key;
   const resourceName = azureConfig?.resource_name;
@@ -108,7 +108,7 @@ function createAzureModel(modelId: string): LanguageModelV1 {
 /**
  * Create DeepSeek model instance (OpenAI-compatible)
  */
-function createDeepSeekModel(modelId: string): LanguageModelV1 {
+function createDeepSeekModel(modelId: string): LanguageModel {
   const apiKey = getProviderApiKey('deepseek');
   if (!apiKey) {
     throw new Error(
@@ -126,7 +126,7 @@ function createDeepSeekModel(modelId: string): LanguageModelV1 {
 /**
  * Create Google model instance (via OpenAI-compatible API)
  */
-function createGoogleModel(modelId: string): LanguageModelV1 {
+function createGoogleModel(modelId: string): LanguageModel {
   const apiKey = getProviderApiKey('google');
   if (!apiKey) {
     throw new Error('Google API key not configured. Add api_key to providers.google in config.');
@@ -142,7 +142,7 @@ function createGoogleModel(modelId: string): LanguageModelV1 {
 /**
  * Create generic/Ollama model instance
  */
-function createGenericModel(modelId: string): LanguageModelV1 {
+function createGenericModel(modelId: string): LanguageModel {
   const genericConfig = getProviderConfig('generic');
 
   const baseURL = genericConfig?.base_url || 'http://localhost:11434/v1';
