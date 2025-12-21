@@ -1,9 +1,0 @@
-[project]
-name = "summarize"
-version = "0.1.0"
-description = "CodeLoops branch summary agent"
-readme = "README.md"
-requires-python = ">=3.11"
-dependencies = [
-"fast-agent-mcp>=0.2.20"
-]

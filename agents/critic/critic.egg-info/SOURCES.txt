@@ -1,8 +1,0 @@
-README.md
-agent.py
-pyproject.toml
-critic.egg-info/PKG-INFO
-critic.egg-info/SOURCES.txt
-critic.egg-info/dependency_links.txt
-critic.egg-info/requires.txt
-critic.egg-info/top_level.txt

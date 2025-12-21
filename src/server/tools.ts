@@ -1,19 +1,13 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { ActorCriticEngine, ActorThinkSchema } from '../engine/ActorCriticEngine.js';
-import { KnowledgeGraphManager } from '../engine/KnowledgeGraph.js';
-import { Critic } from '../agents/Critic.js';
-import { Actor } from '../agents/Actor.js';
-import { SummarizationAgent } from '../agents/Summarize.js';
+import { MemoryStore } from '../MemoryStore.js';
 import { CodeLoopsLogger, getInstance as getLogger, setGlobalLogger } from '../logger.js';
 import { extractProjectName } from '../utils/project.js';
-import { getGitDiff } from '../utils/git.js';
 
 // Shared dependencies interface
 interface ToolDependencies {
   logger: CodeLoopsLogger;
-  kg: KnowledgeGraphManager;
-  engine: ActorCriticEngine;
+  store: MemoryStore;
   runOnce: (project: string) => void;
 }
 
@@ -39,30 +33,19 @@ const loadProjectOrThrow = async ({
 export const createDependencies = async (): Promise<ToolDependencies> => {
   const logger = getLogger();
 
-  // Create KnowledgeGraphManager
-  const kg = new KnowledgeGraphManager(logger);
-  await kg.init();
-
-  // Create SummarizationAgent with KnowledgeGraphManager
-  const summarizationAgent = new SummarizationAgent(kg);
-
-  // Create other dependencies
-  const critic = new Critic(kg);
-  const actor = new Actor(kg);
-
-  // Create ActorCriticEngine with all dependencies
-  const engine = new ActorCriticEngine(kg, critic, actor, summarizationAgent);
+  // Create MemoryStore
+  const store = new MemoryStore(logger);
+  await store.init();
 
   const runOnce = (project: string) => {
     const child = logger.child({ project });
     setGlobalLogger(child);
   };
 
-  return { logger, kg, engine, runOnce };
+  return { logger, store, runOnce };
 };
 
 export const registerTools = ({ server }: { server: McpServer }) => {
-  // This will be called from each transport, so we need to initialize dependencies here
   let deps: ToolDependencies | null = null;
 
   const getDeps = async (): Promise<ToolDependencies> => {
@@ -72,78 +55,144 @@ export const registerTools = ({ server }: { server: McpServer }) => {
     return deps;
   };
 
-  const ACTOR_THINK_DESCRIPTION = `
-  Add a new thought node to the CodeLoops knowledge graph to plan, execute, or document coding tasks.
-  
-  **Purpose**: This is the **primary tool** for interacting with the actor-critic system. It records your work, triggers critic reviews when needed, and guides you through iterative development. **You must call 'actor_think' iteratively** after every significant action to ensure your work is reviewed and refined.
-  
-  **Instructions**:
-  1. **Call 'actor_think' for all actions**:
-     - Planning, requirement capture, task breakdown, or coding steps.
-     - Use the 'projectContext' property to specify the full path to the currently open directory.
-  2. **Always include at least one semantic tag** (e.g., 'requirement', 'task', 'file-modification', 'task-complete') to enable searchability and trigger appropriate reviews.
-  3. **Iterative Workflow**:
-     - File modifications or task completions automatically trigger critic reviews.
-     - Use the critic's feedback (in 'criticNode') to refine your next thought.
-  4. **Tags and artifacts are critical for tracking decisions and avoiding duplicate work**.
-  
-  **Example Workflow**:
-  - Step 1: Call 'actor_think' with thought: "Create main.ts with initial setup", projectContext: "/path/to/project", artifacts: ['src/main.ts'], tags: ['file-modification'].
-      - Response: Includes feedback from the critic
-  - Step 2:  Make any necessary changes and call 'actor_think' again with the updated thought.
-  - Repeat until the all work is completed.
-  
-  **Note**: Do not call 'critic_review' directly unless debugging; 'actor_think' manages reviews automatically.
-  `;
-
   /**
-   * actor_think - Add a new thought node to the knowledge graph.
-   */
-  server.tool('actor_think', ACTOR_THINK_DESCRIPTION, ActorThinkSchema, async (args) => {
-    const { logger, engine, runOnce } = await getDeps();
-    const projectName = await loadProjectOrThrow({ logger, args, onProjectLoad: runOnce });
-
-    // Auto-generate comprehensive git diff
-    const diff = await getGitDiff(logger);
-
-    const node = await engine.actorThink({
-      ...args,
-      project: projectName,
-      diff,
-    });
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(node, null, 2),
-        },
-      ],
-    };
-  });
-
-  /**
-   * critic_review – manually evaluates an actor node.
+   * memory_store - Store a new memory entry
    */
   server.tool(
-    'critic_review',
-    'Call this tool when you want explicit feedback on your thought, idea or final implementation of a task.',
+    'memory_store',
+    `Store a memory entry for later recall. Use this to persist important context, decisions, errors, or learnings across sessions.
+
+**When to use:**
+- Record decisions and their rationale
+- Save error patterns and solutions
+- Capture user preferences
+- Note important context for future sessions
+
+**Tips:**
+- Use descriptive tags for easier recall
+- Include enough context to understand the memory later
+- Set source to indicate where the memory came from`,
     {
-      actorNodeId: z.string().describe('ID of the actor node to critique.'),
-      projectContext: z.string().describe('Full path to the project directory.'),
+      content: z.string().describe('The memory content to store'),
+      projectContext: z.string().describe('Full path to the project directory'),
+      tags: z.array(z.string()).optional().describe('Tags for categorization and filtering'),
+      source: z
+        .string()
+        .optional()
+        .describe('Source of the memory (e.g., "user-input", "file-edit", "error")'),
+      sessionId: z.string().optional().describe('Session ID for correlation'),
     },
-    async (a) => {
-      const { logger, engine, runOnce } = await getDeps();
-      const projectName = await loadProjectOrThrow({ logger, args: a, onProjectLoad: runOnce });
+    async (args) => {
+      const { logger, store, runOnce } = await getDeps();
+      const projectName = await loadProjectOrThrow({ logger, args, onProjectLoad: runOnce });
+
+      const entry = await store.append({
+        content: args.content,
+        project: projectName,
+        tags: args.tags,
+        source: args.source,
+        sessionId: args.sessionId,
+      });
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(entry, null, 2),
+          },
+        ],
+      };
+    },
+  );
+
+  /**
+   * memory_recall - Query stored memories
+   */
+  server.tool(
+    'memory_recall',
+    `Recall stored memories by searching content and filtering by tags.
+
+**When to use:**
+- Start of session to load relevant context
+- Before making decisions to check past patterns
+- When troubleshooting to find previous error solutions
+- To retrieve user preferences
+
+**Tips:**
+- Use query for text search in content
+- Use tags for precise filtering
+- Combine both for best results`,
+    {
+      projectContext: z.string().describe('Full path to the project directory'),
+      query: z.string().optional().describe('Text to search for in memory content'),
+      tags: z
+        .array(z.string())
+        .optional()
+        .describe('Filter by tags (all specified tags must be present)'),
+      limit: z.number().optional().default(10).describe('Maximum number of entries to return'),
+    },
+    async (args) => {
+      const { logger, store, runOnce } = await getDeps();
+      const projectName = await loadProjectOrThrow({ logger, args, onProjectLoad: runOnce });
+
+      const entries = await store.query({
+        project: projectName,
+        query: args.query,
+        tags: args.tags,
+        limit: args.limit,
+      });
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(entries, null, 2),
+          },
+        ],
+      };
+    },
+  );
+
+  /**
+   * memory_forget - Soft delete a memory entry
+   */
+  server.tool(
+    'memory_forget',
+    `Soft-delete a memory entry. The entry is moved to a deleted log and can be recovered if needed.
+
+**When to use:**
+- Remove outdated or incorrect information
+- Clean up experimental or temporary memories
+- Remove memories that are no longer relevant`,
+    {
+      id: z.string().describe('ID of the memory entry to delete'),
+      reason: z.string().optional().describe('Reason for deletion'),
+    },
+    async (args) => {
+      const { store } = await getDeps();
+
+      const deleted = await store.forget(args.id, args.reason);
+
+      if (!deleted) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({ error: `Memory entry ${args.id} not found` }, null, 2),
+            },
+          ],
+        };
+      }
+
       return {
         content: [
           {
             type: 'text',
             text: JSON.stringify(
-              await engine.criticReview({
-                actorNodeId: a.actorNodeId,
-                projectContext: a.projectContext,
-                project: projectName,
-              }),
+              {
+                message: `Memory entry ${args.id} deleted`,
+                deleted,
+              },
               null,
               2,
             ),
@@ -153,100 +202,77 @@ export const registerTools = ({ server }: { server: McpServer }) => {
     },
   );
 
+  /**
+   * memory_context - Quick project context retrieval
+   */
   server.tool(
-    'get_node',
-    'Get a specific node by ID',
-    {
-      id: z.string().describe('ID of the node to retrieve.'),
-    },
-    async (a) => {
-      const { kg } = await getDeps();
-      const node = await kg.getNode(a.id);
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify(node, null, 2),
-          },
-        ],
-      };
-    },
-  );
+    'memory_context',
+    `Get recent memories for a project. Use this at session start to quickly load context.
 
-  server.tool(
-    'resume',
-    'Pick up where you left off by fetching the most recent nodes from the knowledge graph for this project. Use limit to control the number of nodes returned. Increase it if you need more context.',
+**When to use:**
+- At the beginning of a session
+- When switching between projects
+- To get a quick overview of recent activity`,
     {
-      projectContext: z.string().describe('Full path to the project directory.'),
+      projectContext: z.string().describe('Full path to the project directory'),
       limit: z
         .number()
         .optional()
-        .describe('Limit the number of nodes returned. Increase it if you need more context.'),
-      includeDiffs: z
-        .enum(['all', 'latest', 'none'])
-        .optional()
-        .default('latest')
-        .describe('Control diff inclusion: "all" includes all diffs, "latest" includes only the most recent diff, "none" excludes all diffs. Defaults to "latest" to avoid context overflow.'),
+        .default(5)
+        .describe('Number of recent entries to return (default: 5)'),
     },
-    async (a) => {
-      const { logger, kg, runOnce } = await getDeps();
-      const projectName = await loadProjectOrThrow({ logger, args: a, onProjectLoad: runOnce });
-      const text = await kg.resume({
-        project: projectName,
-        limit: a.limit,
-        includeDiffs: a.includeDiffs || 'latest',
-      });
-      return {
-        content: [{ type: 'text', text: JSON.stringify(text, null, 2) }],
-      };
-    },
-  );
+    async (args) => {
+      const { logger, store, runOnce } = await getDeps();
+      const projectName = await loadProjectOrThrow({ logger, args, onProjectLoad: runOnce });
 
-  /** export – dump the current graph */
-  server.tool(
-    'export',
-    'dump the current knowledge graph, with optional limit',
-    {
-      limit: z.number().optional().describe('Limit the number of nodes returned.'),
-      projectContext: z.string().describe('Full path to the project directory.'),
-    },
-    async (a) => {
-      const { logger, kg, runOnce } = await getDeps();
-      const projectName = await loadProjectOrThrow({ logger, args: a, onProjectLoad: runOnce });
-      const nodes = await kg.export({ project: projectName, limit: a.limit });
+      const entries = await store.query({
+        project: projectName,
+        limit: args.limit,
+      });
+
       return {
         content: [
           {
             type: 'text',
-            text: JSON.stringify(nodes, null, 2),
+            text: JSON.stringify(
+              {
+                project: projectName,
+                recentMemories: entries,
+                count: entries.length,
+              },
+              null,
+              2,
+            ),
           },
         ],
       };
     },
   );
 
-  /** list_projects – list all available knowledge graph projects */
+  /**
+   * list_projects - List all available projects
+   */
   server.tool(
     'list_projects',
+    'List all projects that have stored memories',
     {
       projectContext: z
         .string()
         .optional()
-        .describe(
-          'Optional full path to the project directory. If provided, the project name will be extracted and highlighted as current.',
-        ),
+        .describe('Optional current project path to highlight as active'),
     },
-    async (a) => {
-      const { logger, kg } = await getDeps();
+    async (args) => {
+      const { logger, store } = await getDeps();
       let activeProject: string | null = null;
-      if (a.projectContext) {
-        const projectName = extractProjectName(a.projectContext);
-        if (!projectName) {
-          throw new Error('Invalid projectContext');
+
+      if (args.projectContext) {
+        const projectName = extractProjectName(args.projectContext);
+        if (projectName) {
+          activeProject = projectName;
         }
-        activeProject = projectName;
       }
-      const projects = await kg.listProjects();
+
+      const projects = await store.listProjects();
 
       logger.info(
         `[list_projects] Current project: ${activeProject}, Available projects: ${projects.join(', ')}`,
@@ -270,128 +296,30 @@ export const registerTools = ({ server }: { server: McpServer }) => {
     },
   );
 
-  /** delete_thoughts – safely soft-delete one or more knowledge graph nodes */
+  /**
+   * resume - Pick up where you left off (convenience wrapper around memory_context)
+   */
   server.tool(
-    'delete_thoughts',
-    'Safely soft-delete one or more knowledge graph nodes within a project. Creates backup, checks dependencies, and rebuilds clean graph.',
+    'resume',
+    'Pick up where you left off by fetching recent memories for this project',
     {
-      nodeIds: z
-        .array(z.string())
-        .min(1)
-        .describe('Array of node IDs to delete. Must contain at least one ID.'),
-      projectContext: z.string().describe('Full path to the project directory.'),
-      reason: z
-        .string()
-        .optional()
-        .describe('Optional reason for deletion (e.g., "accidental entry", "experimental spike").'),
-      checkDependents: z
-        .boolean()
-        .default(true)
-        .describe('Check for dependent nodes before deletion. Defaults to true.'),
-      confirm: z
-        .boolean()
-        .default(false)
-        .describe('Set to true to proceed with deletion after reviewing dependencies.'),
+      projectContext: z.string().describe('Full path to the project directory'),
+      limit: z.number().optional().default(10).describe('Number of recent entries to return'),
     },
-    async (a) => {
-      const { logger, kg, runOnce } = await getDeps();
-      const projectName = await loadProjectOrThrow({ logger, args: a, onProjectLoad: runOnce });
+    async (args) => {
+      const { logger, store, runOnce } = await getDeps();
+      const projectName = await loadProjectOrThrow({ logger, args, onProjectLoad: runOnce });
 
-      // Check if nodes exist
-      const nodeChecks = await Promise.all(
-        a.nodeIds.map(async (id) => {
-          const node = await kg.getNode(id);
-          return { id, exists: !!node, node };
-        }),
-      );
-
-      const nonExistentNodes = nodeChecks.filter((check) => !check.exists).map((check) => check.id);
-      if (nonExistentNodes.length > 0) {
-        throw new Error(`Nodes not found: ${nonExistentNodes.join(', ')}`);
-      }
-
-      // Filter nodes by project
-      const projectNodes = nodeChecks.filter((check) => check.node?.project === projectName);
-      const wrongProjectNodes = nodeChecks
-        .filter((check) => check.node?.project !== projectName)
-        .map((check) => check.id);
-
-      if (wrongProjectNodes.length > 0) {
-        throw new Error(`Nodes not in project ${projectName}: ${wrongProjectNodes.join(', ')}`);
-      }
-
-      if (a.checkDependents && !a.confirm) {
-        // Check for dependent nodes
-        const dependentsMap = await kg.findDependentNodes(a.nodeIds, projectName);
-        const affectedSummaries = await kg.findAffectedSummaryNodes(a.nodeIds, projectName);
-
-        const hasDependents = Array.from(dependentsMap.values()).some((deps) => deps.length > 0);
-        const hasSummaries = affectedSummaries.length > 0;
-
-        if (hasDependents || hasSummaries) {
-          return {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify(
-                  {
-                    action: 'confirmation_required',
-                    nodesToDelete: projectNodes.map((check) => ({
-                      id: check.id,
-                      thought: check.node?.thought,
-                      role: check.node?.role,
-                      tags: check.node?.tags,
-                    })),
-                    dependentNodes: Object.fromEntries(dependentsMap),
-                    affectedSummaries: affectedSummaries.map((node) => ({
-                      id: node.id,
-                      thought: node.thought,
-                      summarizedSegment: node.summarizedSegment,
-                    })),
-                    message:
-                      'These nodes have dependencies or are referenced in summaries. Set confirm=true to proceed with deletion.',
-                  },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
-        }
-      }
-
-      // Proceed with deletion
-      const result = await kg.softDeleteNodes(a.nodeIds, projectName, a.reason, 'mcp-tool');
-
-      logger.info(
-        `[delete_thoughts] Successfully deleted ${result.deletedNodes.length} nodes from project ${projectName}`,
-      );
+      const entries = await store.query({
+        project: projectName,
+        limit: args.limit,
+      });
 
       return {
         content: [
           {
             type: 'text',
-            text: JSON.stringify(
-              {
-                action: 'deletion_completed',
-                deletedNodes: result.deletedNodes.map((node) => ({
-                  id: node.id,
-                  thought: node.thought,
-                  role: node.role,
-                  deletedAt: node.deletedAt,
-                  deletedReason: node.deletedReason,
-                })),
-                backupPath: result.backupPath,
-                affectedSummaries: result.affectedSummaries.map((node) => ({
-                  id: node.id,
-                  thought: node.thought,
-                  summarizedSegment: node.summarizedSegment,
-                })),
-                message: `Successfully deleted ${result.deletedNodes.length} nodes. Backup created at ${result.backupPath}`,
-              },
-              null,
-              2,
-            ),
+            text: JSON.stringify(entries, null, 2),
           },
         ],
       };

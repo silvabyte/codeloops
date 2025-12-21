@@ -1,7 +1,0 @@
-Metadata-Version: 2.4
-Name: critic
-Version: 0.1.0
-Summary: Add your description here
-Requires-Python: >=3.11
-Description-Content-Type: text/markdown
-Requires-Dist: fast-agent-mcp>=0.2.20
