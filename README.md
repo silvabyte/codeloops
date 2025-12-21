@@ -1,62 +1,54 @@
 ![CodeLoops](media/svg/codeloops_banner.svg)
 
-# CodeLoops: Enabling Coding Agent Autonomy
+# CodeLoops: Memory Layer for AI Coding Agents
 
-CodeLoops is currently an experimental system, taking a different approach to help bring us closer to the holy grail of software development: fully autonomous coding agents.
+CodeLoops provides **persistent memory** for AI coding agents, enabling them to remember context, decisions, and learnings across sessions. It works as both an **MCP server** (for Claude Desktop, Cursor, etc.) and an **OpenCode plugin**.
 
-Inspired by the actor-critic model from Max Bennett’s _A Brief History of Intelligence_, CodeLoops aims to tackle the challenge of AI Agent “code slop”: messy, error-prone output that forgets APIs and drifts from project goals. By integrating with your existing agent as an MCP server, it delivers iterative feedback and persistent context, empowering your agent to work independently in auto mode while staying aligned with your vision.
-
-> **Note**: CodeLoops is in early development. Expect active updates. Back up your data and monitor API costs for premium models.
-
-Learn more by:
-
-- [reading the announcement](https://bytes.silvabyte.com/improving-coding-agents-an-early-look-at-codeloops-for-building-more-reliable-software/).
-- [checking out the overview](./docs/OVERVIEW.md).
+> **Note**: CodeLoops is in active development. Back up your data before upgrading.
 
 ## Why CodeLoops?
 
-AI coding agents promise to revolutionize development but suck at autonomy in complex projects. They suffer from memory gaps, context lapses, and a lack of guidance, producing unreliable code that requires constant manual fixes. CodeLoops unlocks their potential by providing:
+AI coding agents are powerful but forgetful. They lose context between sessions, repeat mistakes, and forget your preferences. CodeLoops solves this with:
 
-- **Iterative Feedback**: An actor-critic system refines your agent’s decisions in real time, guiding it toward precise, high-quality output.
-- **Knowledge Graph**: Stores context and feedback, ensuring your agent remembers APIs and project goals across sessions.
-- **Seamless Integration**: Enhances the tools you already use like Cursor or Windsurf, letting your agent work smarter without disrupting your workflow.
+- **Persistent Memory**: Store decisions, context, preferences, and learnings
+- **Cross-Session Recall**: Query past memories to inform current work
+- **Auto-Capture**: Automatically log file edits and todo updates
+- **Dual Integration**: Works with MCP clients (Claude, Cursor) and OpenCode
 
-For developers building larger scale software or non-developers bringing ideas to life, CodeLoops could transform your agent into a reliable autonomous partner.
+## Quick Start
 
-## Quick Setup
-
-Get CodeLoops up and running in minutes:
+### Option 1: OpenCode Plugin
 
 ```bash
-# Clone the repository
-git clone https://github.com/matsilva/codeloops.git
+# Clone and install
+git clone https://github.com/silvabyte/codeloops.git
 cd codeloops
+npm install
 
-# Run the setup script
-npm run setup
+# Install the plugin
+npm run plugin:install
 ```
 
-The script automates:
+The plugin provides these tools in OpenCode:
 
-- Verifying prerequisites (Node.js, Python, uv).
-- Installing dependencies.
-- Configuring Python environments.
-- Prompting for API key setup for models like Anthropic or OpenAI.
+- `memory_store` - Save a memory
+- `memory_recall` - Query memories
+- `memory_forget` - Delete a memory
+- `memory_context` - Load recent context
+- `memory_projects` - List all projects
 
-> **Tip**: I’ve had great results with Anthropic’s Haiku 3.5, costing about $0.60 weekly. It’s a solid starting point.
+Plus auto-capture of file edits and todo updates.
 
-If this script fails, see [install guide](./docs/INSTALL_GUIDE.md) for installing the project dependencies
+### Option 2: MCP Server
 
-### Configure Your Agent
+Add to your MCP client configuration:
 
-Connect your agent to the CodeLoops server by adding the MCP server configuration. CodeLoops supports both stdio and HTTP transports:
+**Stdio Transport (Claude Desktop, Cursor)**
 
-#### Option 1: Stdio Transport (Default)
 ```json
-"mcp": {
-  "servers": {
+{
+  "mcpServers": {
     "codeloops": {
-      "type": "stdio",
       "command": "npx",
       "args": ["-y", "tsx", "/path/to/codeloops/src"]
     }
@@ -64,120 +56,118 @@ Connect your agent to the CodeLoops server by adding the MCP server configuratio
 }
 ```
 
-#### Option 2: HTTP Transport
-```json
-"mcp": {
-  "servers": {
-    "codeloops": {
-      "type": "http",
-      "url": "http://localhost:3000"
-    }
-  }
-}
-```
+**HTTP Transport**
 
-
-For HTTP transport, start the server first:
 ```bash
-npm run start:http
-# or with custom port/host
-npx -y tsx src --http --port 8080 --host 127.0.0.1
-```
-
-Refer to your platform's documentation for specific MCP configuration instructions.
-
-## CLI Options
-
-CodeLoops supports the following command-line options:
-
-- `--stdio`: Use stdio transport (default)
-- `--http`: Use HTTP transport
-- `--port <number>`: HTTP server port (default: 3000)
-- `--host <string>`: HTTP server host (default: 0.0.0.0)
-- `--help`: Show help message
-
-**Examples:**
-```bash
-# Start with stdio (default)
-npm start
-
-# Start HTTP server on default port 3000
+# Start the server
 npm run start:http
 
-# Start HTTP server on custom port
-npx -y tsx src --http --port 8080
-
-# Start HTTP server on specific host and port
-npx -y tsx src --http --host 127.0.0.1 --port 9000
-```
-
-## Using CodeLoops
-
-With the server connected, instruct your agent to use CodeLoops for autonomous planning and coding.
-
-### Example Prompt
-
-```
-Use codeloops to plan and implement the following:
-... (insert your product requirements here)
+# Then configure your client to connect to http://localhost:3000
 ```
 
 ## Available Tools
 
-CodeLoops provides tools to enable autonomous agent operation:
+| Tool             | Description                                            |
+| ---------------- | ------------------------------------------------------ |
+| `memory_store`   | Store a memory with content, tags, and optional source |
+| `memory_recall`  | Query memories by text search, tags, or project        |
+| `memory_forget`  | Soft-delete a memory (moves to deleted log)            |
+| `memory_context` | Quick retrieval of recent project memories             |
+| `list_projects`  | List all projects with stored memories                 |
+| `resume`         | Load recent memories to continue where you left off    |
 
-- `actor_think`: Drives interaction with the actor-critic system, automatically triggering critic reviews when needed.
-- `resume`: Retrieves recent branch context for continuity.
-- `export`: Exports the current graph for agent review.
-- `summarize`: Generates a summary of branch progress.
-- `list_projects`: Displays all projects for navigation.
+## Usage Examples
 
-## Basic Workflow
-
-1. **Plan**: Add planning nodes with `actor_think`, guided by the critic.
-2. **Implement**: Use `actor_think` for coding steps, refined in real time.
-3. **Review**: The critic autonomously evaluates and corrects.
-4. **Summarize**: Use `summarize` to generate clear summaries.
-5. **Provide Feedback**: Offer human-in-the-loop input as needed to refine outcomes. YMMV depenting on how smart the coding agent is.
-
-CodeLoops leverages an actor-critic model with a knowledge graph, where the Critic can delegate to a chain of specialized agents for enhanced precision:
+### Storing Memories
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│  AI Agent   │────▶│    Actor    │────▶│ Knowledge   │
-│             │◀────│             │◀────│ Graph       │
-└─────────────┘     └─────────────┘     └─────────────┘
-                           │                   ▲
-                           ▼                   │
-                    ┌─────────────┐            │
-                    │   Critic    │────────────┼───┐
-                    │             │            │   │
-                    └─────────────┘            │   │
-                           │                   │   │
-                           ▼                   │   ▼
-                    ┌─────────────┐     ┌─────────────┐
-                    │ Specialized │     │ Summarizer  │
-                    │ Agents      │     │             │
-                    │ (Duplicate  │     │             │
-                    │ Code,       │     │             │
-                    │ Interface,  │     │             │
-                    │ Best        │     │             │
-                    │ Practices,  │     │             │
-                    │ etc.)       │     │             │
-                    └─────────────┘     └─────────────┘
+Use memory_store to save this decision: "We chose PostgreSQL over MongoDB for ACID compliance"
+Tags: database, architecture, decision
 ```
 
-This architecture enables your agent to maintain context, refine decisions through specialized checks, and operate autonomously with greater reliability.
+### Recalling Context
 
-### Need Help?
+```
+Use memory_recall to find any memories about database decisions
+```
 
-- Check [GitHub issues](https://github.com/silvabyte/codeloops/issues).
-- File a new issue with details.
-- **Email Me**: [mat@silvabyte.com](mailto:mat@silvabyte.com).
-- **X**: [Reach out on X](https://x.com/MatSilva).
+### Starting a Session
 
-### License & contributing
+```
+Use memory_context to load recent context for this project
+```
 
-This project is entirely experimental. Use at your own risk. & do what you want with it.
+## Data Storage
 
-MIT see [license](../LICENSE)
+Memories are stored as NDJSON (newline-delimited JSON) in:
+
+- **Linux**: `~/.local/share/codeloops/memory.ndjson`
+- **macOS**: `~/Library/Application Support/codeloops/memory.ndjson`
+- **Windows**: `%APPDATA%/codeloops/memory.ndjson`
+
+Each memory entry contains:
+
+```json
+{
+  "id": "abc123",
+  "project": "my-project",
+  "content": "The memory content",
+  "tags": ["decision", "architecture"],
+  "createdAt": "2024-01-15T10:30:00.000Z",
+  "sessionId": "session-xyz",
+  "source": "manual"
+}
+```
+
+## CLI Options
+
+```bash
+# Start MCP server (stdio, default)
+npm start
+
+# Start HTTP server
+npm run start:http
+
+# Custom port/host
+npx -y tsx src --http --port 8080 --host 127.0.0.1
+
+# Install OpenCode plugin
+npm run plugin:install
+```
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│                    AI Coding Agent                   │
+│              (Claude, Cursor, OpenCode)              │
+└──────────────────────┬──────────────────────────────┘
+                       │
+         ┌─────────────┴─────────────┐
+         │                           │
+         ▼                           ▼
+┌─────────────────┐       ┌─────────────────┐
+│   MCP Server    │       │ OpenCode Plugin │
+│  (stdio/HTTP)   │       │   (memory.ts)   │
+└────────┬────────┘       └────────┬────────┘
+         │                         │
+         └───────────┬─────────────┘
+                     │
+                     ▼
+          ┌─────────────────┐
+          │   MemoryStore   │
+          │  (NDJSON file)  │
+          └─────────────────┘
+```
+
+## Contributing
+
+This project is experimental. Contributions welcome!
+
+- [GitHub Issues](https://github.com/silvabyte/codeloops/issues)
+- Email: [mat@silvabyte.com](mailto:mat@silvabyte.com)
+- X: [@MatSilva](https://x.com/MatSilva)
+
+## License
+
+MIT - see [LICENSE](./LICENSE)

@@ -1,184 +1,201 @@
 # CodeLoops: Installation Guide
 
-## Prerequisites
+CodeLoops can be installed as an **OpenCode plugin** or as an **MCP server** for other clients.
 
-Before starting, ensure you have the following dependencies
+## Prerequisites
 
 - **Node.js**: Version 18 or higher
   - Download from [nodejs.org](https://nodejs.org) or use a version manager like `nvm`
   - Verify with: `node --version`
-- **Python**: Version 3.11 or higher
-  - Download from [python.org](https://www.python.org)
-  - Verify with: `python3 --version`
-- **uv**: A modern Python package manager
-  - Install per [uv documentation](https://docs.astral.sh/uv/getting-started/installation)
-  - Verify with: `uv --version`
-- **API Keys**: Required for your chosen LLM provider (e.g., Anthropic, OpenAI)
-  - Obtain keys from your provider’s dashboard
 
 ## Installation Steps
 
 ### Step 1: Clone the Repository
 
-1. Open a terminal and clone the CodeLoops repository:
-   ```bash
-   git clone https://github.com/SilvaByte/codeloops.git
-   ```
-2. Navigate to the project directory:
-   ```bash
-   cd codeloops
-   ```
-3. Verify the repository structure:
-   ```bash
-   ls
-   ```
-   You should see directories like `src`, `agents`, and files like `package.json`.
-
-### Step 2: Understand the Project Structure
-
-The CodeLoops project has two main components:
-
-- **MCP Server** (Node.js): Manages the CodeLoops system and Knowledge Graph.
-- **Agent Components** (Python): Includes Critic and Summarization agents for evaluating and condensing information.
-
-Key directories:
-
-```
-codeloops/
-├── src/                # MCP server and core components
-│   ├── engine/         # Actor, Critic, and RevisionCounter
-│   ├── agents/         # Agent integration code
-│   └── ...             # Other core components
-├── agents/             # Python agent implementations
-│   ├── critic/         # Quality evaluation agent
-│   └── summarize/      # Branch summarization agent
-├── package.json        # Node.js dependencies
-└── README.md           # Project documentation
+```bash
+git clone https://github.com/silvabyte/codeloops.git
+cd codeloops
+npm install
 ```
 
-### Step 3: Install Node.js Dependencies
+---
 
-1. From the project root (`codeloops/`), install Node.js dependencies:
-   ```bash
-   npm install
-   ```
-2. Verify installation:
-   ```bash
-   npm list
-   ```
-   Ensure no errors appear, and dependencies like `typescript` and `tsx` are listed.
+## Option A: OpenCode Plugin Installation
 
-### Step 4: Set Up Python Agents
+The OpenCode plugin provides memory tools directly in your OpenCode sessions.
 
-The Critic and Summarization agents require separate Python environments managed by `uv`.
+### Install the Plugin
 
-#### 4.1 Critic Agent Setup
+```bash
+npm run plugin:install
+```
 
-1. Navigate to the Critic agent directory:
-   ```bash
-   cd agents/critic
-   ```
-2. Install Python dependencies using `uv`:
-   ```bash
-   uv sync
-   ```
-   This creates a virtual environment and installs dependencies listed in `pyproject.toml`.
-3. Copy configuration templates:
-   ```bash
-   cp fastagent.config.template.yaml fastagent.config.yaml
-   cp fastagent.secrets.template.yaml fastagent.secrets.yaml
-   ```
-4. Edit `fastagent.secrets.yaml` to include your LLM API key:
-   ```yaml
-   anthropic:
-     api_key: your-anthropic-api-key
-   # Example for OpenAI
-   openai:
-     api_key: your-openai-api-key
-   ```
-   Replace `your-anthropic-api-key` or `your-openai-api-key` with your actual keys.
-5. Verify configuration:
-   ```bash
-   uv run fast-agent check
-   ```
-   This checks if the configuration and API keys are valid.
+This creates a symlink from `~/.config/opencode/plugin/memory.ts` to your local plugin.
 
-For more info on LLM providers and models, see the [fast-agent docs](https://fast-agent.ai/models/llm_providers/)
+### Verify Installation
 
-#### 4.2 Summarization Agent Setup
+Start OpenCode in any project. You should see the memory tools available:
 
-1. Navigate to the Summarization agent directory:
-   ```bash
-   cd ../summarize
-   ```
-2. Install Python dependencies:
-   ```bash
-   uv sync
-   ```
-3. Copy configuration templates:
-   ```bash
-   cp fastagent.config.template.yaml fastagent.config.yaml
-   cp fastagent.secrets.template.yaml fastagent.secrets.yaml
-   ```
-4. Edit `fastagent.secrets.yaml` with the same API keys used for the Critic agent.
-5. Verify configuration:
-   ```bash
-   uv run fast-agent check
-   ```
+- `memory_store`
+- `memory_recall`
+- `memory_forget`
+- `memory_context`
+- `memory_projects`
 
-For more info on LLM providers and models, see the [fast-agent docs](https://fast-agent.ai/models/llm_providers/)
+### Auto-Capture Events
 
-#### 4.3 Understanding `uv sync`
+The plugin automatically captures:
 
-The `uv sync` command:
+- **File edits** - Every file.edited event is logged
+- **Todo updates** - Todo list changes are tracked
+- **Session start** - Loads recent memories when a session begins
 
-- Reads `pyproject.toml` for dependency specifications
-- Creates or updates a virtual environment in `.venv`
-- Installs required packages
-- Generates a `uv.lock` file for reproducible builds
+---
 
-If `uv sync` fails, ensure `uv` is installed and Python 3.11+ is available.
+## Option B: MCP Server Installation
 
-### Step 5: Test the MCP Server
+The MCP server works with Claude Desktop, Cursor, and other MCP-compatible clients.
 
-CodeLoops supports both stdio and HTTP transports. Test both to ensure proper functionality:
+### Stdio Transport (Recommended)
 
-#### Option 1: Test Stdio Transport (Default)
-1. Start the MCP server:
-   ```bash
-   npx -y tsx src
-   ```
-2. The server should start without any errors and wait for input via stdio
+Add to your MCP client configuration:
 
-#### Option 2: Test HTTP Transport
-1. Start the HTTP server:
+**Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
+```json
+{
+  "mcpServers": {
+    "codeloops": {
+      "command": "npx",
+      "args": ["-y", "tsx", "/absolute/path/to/codeloops/src"]
+    }
+  }
+}
+```
+
+**Cursor** (`.cursor/mcp.json` in your project):
+
+```json
+{
+  "mcpServers": {
+    "codeloops": {
+      "command": "npx",
+      "args": ["-y", "tsx", "/absolute/path/to/codeloops/src"]
+    }
+  }
+}
+```
+
+### HTTP Transport
+
+For clients that support HTTP transport:
+
+1. Start the server:
+
    ```bash
    npm run start:http
-   # or with custom options
-   npx -y tsx src --http --port 3000
+   # or with custom port
+   npx -y tsx src --http --port 8080
    ```
-2. The server should start and display:
-   ```
-   CodeLoops HTTP server running on http://0.0.0.0:3000
-   ```
-3. Test the server health endpoint:
+
+2. Configure your client to connect to `http://localhost:3000` (or your custom port)
+
+### Available MCP Tools
+
+| Tool             | Description                                |
+| ---------------- | ------------------------------------------ |
+| `memory_store`   | Store a memory with content, project, tags |
+| `memory_recall`  | Query memories by text, tags, project      |
+| `memory_forget`  | Soft-delete a memory by ID                 |
+| `memory_context` | Get recent memories for current project    |
+| `list_projects`  | List all projects with memories            |
+| `resume`         | Load recent memories to continue work      |
+
+---
+
+## Data Storage
+
+All memories are stored locally as NDJSON files:
+
+| Platform | Location                                                |
+| -------- | ------------------------------------------------------- |
+| Linux    | `~/.local/share/codeloops/memory.ndjson`                |
+| macOS    | `~/Library/Application Support/codeloops/memory.ndjson` |
+| Windows  | `%APPDATA%/codeloops/memory.ndjson`                     |
+
+Deleted memories are moved to `memory.deleted.ndjson` in the same directory.
+
+---
+
+## Troubleshooting
+
+### Plugin not loading in OpenCode
+
+1. Verify the symlink exists:
+
    ```bash
-   curl http://localhost:3000/health
+   ls -la ~/.config/opencode/plugin/
    ```
-   You should receive a JSON response indicating the server is running.
 
-To stop the HTTP server, use `Ctrl+C`.
+2. Check that the source file exists:
 
-### Step 6: Test the Agent Config
+   ```bash
+   ls -la /path/to/codeloops/plugin/memory.ts
+   ```
 
-- From the `agents/critic` directory, verify the Critic agent’s configuration and connectivity:
-  ```bash
-  fast-agent check
-  ```
-  This ensures the agent’s configuration, API keys, etc are valid
-- Navigate to the Summarization agent directory and repeat:
-  ```bash
-  cd ../summarize
-  fast-agent check
-  ```
-  Expect confirmation that both agents are correctly set up and can communicate with the MCP server.
+3. Reinstall:
+   ```bash
+   npm run plugin:install
+   ```
+
+### MCP server connection issues
+
+1. Check the server is running:
+
+   ```bash
+   npm start
+   # or for HTTP
+   npm run start:http
+   ```
+
+2. Verify the path in your MCP config is absolute (starts with `/`)
+
+3. Check logs in the `logs/` directory
+
+### Data not persisting
+
+1. Verify the data directory exists:
+
+   ```bash
+   # Linux
+   ls ~/.local/share/codeloops/
+
+   # macOS
+   ls ~/Library/Application\ Support/codeloops/
+   ```
+
+2. Check file permissions
+
+---
+
+## Uninstalling
+
+### Remove OpenCode Plugin
+
+```bash
+rm ~/.config/opencode/plugin/memory.ts
+```
+
+### Remove MCP Server Config
+
+Remove the `codeloops` entry from your MCP client configuration.
+
+### Remove Data (Optional)
+
+```bash
+# Linux
+rm -rf ~/.local/share/codeloops/
+
+# macOS
+rm -rf ~/Library/Application\ Support/codeloops/
+```
