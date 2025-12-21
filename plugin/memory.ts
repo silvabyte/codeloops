@@ -270,6 +270,7 @@ export const CodeLoopsMemory: Plugin = async ({ project, directory }) => {
           content: tool.schema.string().describe('The memory content to store'),
           tags: tool.schema.array(tool.schema.string()).optional().describe('Tags for filtering'),
           source: tool.schema.string().optional().describe('Source of memory'),
+          //todo: store git diff from project dir as well for context...
         },
         async execute(args) {
           const entry = await append({
