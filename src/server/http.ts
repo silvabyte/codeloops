@@ -5,7 +5,6 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { nanoid } from 'nanoid';
 import { CodeLoopsLogger } from '../logger.js';
 import { createMcpServerInstance } from './index.js';
-import { to } from 'await-to-js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { registerTools } from './tools.js';
 
@@ -19,7 +18,7 @@ declare module 'fastify' {
 export const buildServer = async ({ logger, port }: { logger: CodeLoopsLogger; port: number }) => {
   logger.info('Building CodeLoops MCP HTTP server');
 
-  const fastify = Fastify({ 
+  const fastify = Fastify({
     logger: {
       level: 'info',
     },
@@ -122,14 +121,13 @@ export const buildServer = async ({ logger, port }: { logger: CodeLoopsLogger; p
     await addLegacyRoutes({ transports, fastify });
   });
 
-  const [err, address] = await to(fastify.listen({ port, host: '0.0.0.0' }));
-
-  if (err) {
+  try {
+    const address = await fastify.listen({ port, host: '0.0.0.0' });
+    fastify.log.info(`Server listening at ${address}`);
+  } catch (err) {
     fastify.log.error(err);
     process.exit(1);
   }
-
-  fastify.log.info(`Server listening at ${address}`);
 };
 
 export const addLegacyRoutes = async ({

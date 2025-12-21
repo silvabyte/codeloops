@@ -1,10 +1,25 @@
-import { execa } from 'execa';
-import { to } from 'await-to-js';
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
 import { CodeLoopsLogger } from '../logger.ts';
+
+const execAsync = promisify(exec);
 
 /**
  * Git operations utility for CodeLoops
  */
+
+/**
+ * Helper to safely execute a git command
+ */
+async function execGit(command: string, logger: CodeLoopsLogger): Promise<string> {
+  try {
+    const { stdout } = await execAsync(command);
+    return stdout.trim();
+  } catch (error) {
+    logger.debug({ error, command }, 'Git command failed');
+    return '';
+  }
+}
 
 /**
  * Generate a complete git diff for all changes in the repository.
@@ -15,45 +30,22 @@ export async function getGitDiff(logger: CodeLoopsLogger): Promise<string> {
   const diffs: string[] = [];
 
   // Get staged changes
-  const [stagedError, stagedResult] = await to(
-    execa('git', ['diff', '--cached'], {
-      reject: false,
-    }),
-  );
-
-  if (stagedError || stagedResult.exitCode !== 0) {
-    logger.debug({ error: stagedError }, 'Failed to get staged git diff');
-  } else if (stagedResult.stdout.trim()) {
-    diffs.push(`--- Staged Changes ---\n${stagedResult.stdout}`);
+  const staged = await execGit('git diff --cached', logger);
+  if (staged) {
+    diffs.push(`--- Staged Changes ---\n${staged}`);
   }
 
   // Get unstaged changes
-  const [unstagedError, unstagedResult] = await to(
-    execa('git', ['diff'], {
-      reject: false,
-    }),
-  );
-
-  if (unstagedError || unstagedResult.exitCode !== 0) {
-    logger.debug({ error: unstagedError }, 'Failed to get unstaged git diff');
-  } else if (unstagedResult.stdout.trim()) {
-    diffs.push(`--- Unstaged Changes ---\n${unstagedResult.stdout}`);
+  const unstaged = await execGit('git diff', logger);
+  if (unstaged) {
+    diffs.push(`--- Unstaged Changes ---\n${unstaged}`);
   }
 
   // Get untracked files
-  const [untrackedError, untrackedResult] = await to(
-    execa('git', ['ls-files', '--others', '--exclude-standard'], {
-      reject: false,
-    }),
-  );
-
-  if (untrackedError || untrackedResult.exitCode !== 0) {
-    logger.debug({ error: untrackedError }, 'Failed to get untracked files');
-  } else if (untrackedResult.stdout.trim()) {
-    const untrackedFiles = untrackedResult.stdout.trim().split('\n');
-    diffs.push(`--- Untracked Files ---\n${untrackedFiles.join('\n')}`);
+  const untracked = await execGit('git ls-files --others --exclude-standard', logger);
+  if (untracked) {
+    diffs.push(`--- Untracked Files ---\n${untracked}`);
   }
 
   return diffs.join('\n\n');
 }
-
