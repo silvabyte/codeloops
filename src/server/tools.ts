@@ -1,30 +1,35 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { z } from 'zod';
-import { MemoryStore } from '../MemoryStore.js';
-import { CodeLoopsLogger, getInstance as getLogger, setGlobalLogger } from '../logger.js';
-import { extractProjectName } from '../utils/project.js';
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
+import {
+  type CodeLoopsLogger,
+  getInstance as getLogger,
+  setGlobalLogger,
+} from "../logger.js";
+import { MemoryStore } from "../memory-store.js";
+import { extractProjectName } from "../utils/project.js";
 
 // Shared dependencies interface
-interface ToolDependencies {
+type ToolDependencies = {
   logger: CodeLoopsLogger;
   store: MemoryStore;
   runOnce: (project: string) => void;
-}
+};
 
 // Utility function to load project
-const loadProjectOrThrow = async ({
+const loadProjectOrThrow = ({
   logger,
   args,
   onProjectLoad,
 }: {
   logger: CodeLoopsLogger;
-  args: { projectContext: string };
+  args: Record<string, unknown>;
   onProjectLoad: (project: string) => void;
-}) => {
-  const projectName = extractProjectName(args.projectContext);
+}): string => {
+  const projectContext = args.projectContext as string;
+  const projectName = extractProjectName(projectContext);
   if (!projectName) {
-    logger.error({ projectContext: args.projectContext }, 'Invalid projectContext');
-    throw new Error(`Invalid projectContext: ${args.projectContext}`);
+    logger.error({ projectContext }, "Invalid projectContext");
+    throw new Error(`Invalid projectContext: ${projectContext}`);
   }
   onProjectLoad(projectName);
   return projectName;
@@ -59,7 +64,7 @@ export const registerTools = ({ server }: { server: McpServer }) => {
    * memory_store - Store a new memory entry
    */
   server.tool(
-    'memory_store',
+    "memory_store",
     `Store a memory entry for later recall. Use this to persist important context, decisions, errors, or learnings across sessions.
 
 **When to use:**
@@ -73,18 +78,27 @@ export const registerTools = ({ server }: { server: McpServer }) => {
 - Include enough context to understand the memory later
 - Set source to indicate where the memory came from`,
     {
-      content: z.string().describe('The memory content to store'),
-      projectContext: z.string().describe('Full path to the project directory'),
-      tags: z.array(z.string()).optional().describe('Tags for categorization and filtering'),
+      content: z.string().describe("The memory content to store"),
+      projectContext: z.string().describe("Full path to the project directory"),
+      tags: z
+        .array(z.string())
+        .optional()
+        .describe("Tags for categorization and filtering"),
       source: z
         .string()
         .optional()
-        .describe('Source of the memory (e.g., "user-input", "file-edit", "error")'),
-      sessionId: z.string().optional().describe('Session ID for correlation'),
+        .describe(
+          'Source of the memory (e.g., "user-input", "file-edit", "error")'
+        ),
+      sessionId: z.string().optional().describe("Session ID for correlation"),
     },
     async (args) => {
       const { logger, store, runOnce } = await getDeps();
-      const projectName = await loadProjectOrThrow({ logger, args, onProjectLoad: runOnce });
+      const projectName = await loadProjectOrThrow({
+        logger,
+        args,
+        onProjectLoad: runOnce,
+      });
 
       const entry = await store.append({
         content: args.content,
@@ -97,19 +111,19 @@ export const registerTools = ({ server }: { server: McpServer }) => {
       return {
         content: [
           {
-            type: 'text',
+            type: "text",
             text: JSON.stringify(entry, null, 2),
           },
         ],
       };
-    },
+    }
   );
 
   /**
    * memory_recall - Query stored memories
    */
   server.tool(
-    'memory_recall',
+    "memory_recall",
     `Recall stored memories by searching content and filtering by tags.
 
 **When to use:**
@@ -123,17 +137,28 @@ export const registerTools = ({ server }: { server: McpServer }) => {
 - Use tags for precise filtering
 - Combine both for best results`,
     {
-      projectContext: z.string().describe('Full path to the project directory'),
-      query: z.string().optional().describe('Text to search for in memory content'),
+      projectContext: z.string().describe("Full path to the project directory"),
+      query: z
+        .string()
+        .optional()
+        .describe("Text to search for in memory content"),
       tags: z
         .array(z.string())
         .optional()
-        .describe('Filter by tags (all specified tags must be present)'),
-      limit: z.number().optional().default(10).describe('Maximum number of entries to return'),
+        .describe("Filter by tags (all specified tags must be present)"),
+      limit: z
+        .number()
+        .optional()
+        .default(10)
+        .describe("Maximum number of entries to return"),
     },
     async (args) => {
       const { logger, store, runOnce } = await getDeps();
-      const projectName = await loadProjectOrThrow({ logger, args, onProjectLoad: runOnce });
+      const projectName = await loadProjectOrThrow({
+        logger,
+        args,
+        onProjectLoad: runOnce,
+      });
 
       const entries = await store.query({
         project: projectName,
@@ -145,19 +170,19 @@ export const registerTools = ({ server }: { server: McpServer }) => {
       return {
         content: [
           {
-            type: 'text',
+            type: "text",
             text: JSON.stringify(entries, null, 2),
           },
         ],
       };
-    },
+    }
   );
 
   /**
    * memory_forget - Soft delete a memory entry
    */
   server.tool(
-    'memory_forget',
+    "memory_forget",
     `Soft-delete a memory entry. The entry is moved to a deleted log and can be recovered if needed.
 
 **When to use:**
@@ -165,8 +190,8 @@ export const registerTools = ({ server }: { server: McpServer }) => {
 - Clean up experimental or temporary memories
 - Remove memories that are no longer relevant`,
     {
-      id: z.string().describe('ID of the memory entry to delete'),
-      reason: z.string().optional().describe('Reason for deletion'),
+      id: z.string().describe("ID of the memory entry to delete"),
+      reason: z.string().optional().describe("Reason for deletion"),
     },
     async (args) => {
       const { store } = await getDeps();
@@ -177,8 +202,12 @@ export const registerTools = ({ server }: { server: McpServer }) => {
         return {
           content: [
             {
-              type: 'text',
-              text: JSON.stringify({ error: `Memory entry ${args.id} not found` }, null, 2),
+              type: "text",
+              text: JSON.stringify(
+                { error: `Memory entry ${args.id} not found` },
+                null,
+                2
+              ),
             },
           ],
         };
@@ -187,26 +216,26 @@ export const registerTools = ({ server }: { server: McpServer }) => {
       return {
         content: [
           {
-            type: 'text',
+            type: "text",
             text: JSON.stringify(
               {
                 message: `Memory entry ${args.id} deleted`,
                 deleted,
               },
               null,
-              2,
+              2
             ),
           },
         ],
       };
-    },
+    }
   );
 
   /**
    * memory_context - Quick project context retrieval
    */
   server.tool(
-    'memory_context',
+    "memory_context",
     `Get recent memories for a project. Use this at session start to quickly load context.
 
 **When to use:**
@@ -214,16 +243,20 @@ export const registerTools = ({ server }: { server: McpServer }) => {
 - When switching between projects
 - To get a quick overview of recent activity`,
     {
-      projectContext: z.string().describe('Full path to the project directory'),
+      projectContext: z.string().describe("Full path to the project directory"),
       limit: z
         .number()
         .optional()
         .default(5)
-        .describe('Number of recent entries to return (default: 5)'),
+        .describe("Number of recent entries to return (default: 5)"),
     },
     async (args) => {
       const { logger, store, runOnce } = await getDeps();
-      const projectName = await loadProjectOrThrow({ logger, args, onProjectLoad: runOnce });
+      const projectName = await loadProjectOrThrow({
+        logger,
+        args,
+        onProjectLoad: runOnce,
+      });
 
       const entries = await store.query({
         project: projectName,
@@ -233,7 +266,7 @@ export const registerTools = ({ server }: { server: McpServer }) => {
       return {
         content: [
           {
-            type: 'text',
+            type: "text",
             text: JSON.stringify(
               {
                 project: projectName,
@@ -241,25 +274,25 @@ export const registerTools = ({ server }: { server: McpServer }) => {
                 count: entries.length,
               },
               null,
-              2,
+              2
             ),
           },
         ],
       };
-    },
+    }
   );
 
   /**
    * list_projects - List all available projects
    */
   server.tool(
-    'list_projects',
-    'List all projects that have stored memories',
+    "list_projects",
+    "List all projects that have stored memories",
     {
       projectContext: z
         .string()
         .optional()
-        .describe('Optional current project path to highlight as active'),
+        .describe("Optional current project path to highlight as active"),
     },
     async (args) => {
       const { logger, store } = await getDeps();
@@ -275,40 +308,48 @@ export const registerTools = ({ server }: { server: McpServer }) => {
       const projects = await store.listProjects();
 
       logger.info(
-        `[list_projects] Current project: ${activeProject}, Available projects: ${projects.join(', ')}`,
+        `[list_projects] Current project: ${activeProject}, Available projects: ${projects.join(", ")}`
       );
 
       return {
         content: [
           {
-            type: 'text',
+            type: "text",
             text: JSON.stringify(
               {
                 activeProject,
                 projects,
               },
               null,
-              2,
+              2
             ),
           },
         ],
       };
-    },
+    }
   );
 
   /**
    * resume - Pick up where you left off (convenience wrapper around memory_context)
    */
   server.tool(
-    'resume',
-    'Pick up where you left off by fetching recent memories for this project',
+    "resume",
+    "Pick up where you left off by fetching recent memories for this project",
     {
-      projectContext: z.string().describe('Full path to the project directory'),
-      limit: z.number().optional().default(10).describe('Number of recent entries to return'),
+      projectContext: z.string().describe("Full path to the project directory"),
+      limit: z
+        .number()
+        .optional()
+        .default(10)
+        .describe("Number of recent entries to return"),
     },
     async (args) => {
       const { logger, store, runOnce } = await getDeps();
-      const projectName = await loadProjectOrThrow({ logger, args, onProjectLoad: runOnce });
+      const projectName = await loadProjectOrThrow({
+        logger,
+        args,
+        onProjectLoad: runOnce,
+      });
 
       const entries = await store.query({
         project: projectName,
@@ -318,11 +359,11 @@ export const registerTools = ({ server }: { server: McpServer }) => {
       return {
         content: [
           {
-            type: 'text',
+            type: "text",
             text: JSON.stringify(entries, null, 2),
           },
         ],
       };
-    },
+    }
   );
 };

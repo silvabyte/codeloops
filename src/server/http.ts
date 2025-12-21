@@ -1,32 +1,43 @@
-import Fastify, { FastifyInstance } from 'fastify';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
-import { FastifyRequest, FastifyReply } from 'fastify';
-import { nanoid } from 'nanoid';
-import { CodeLoopsLogger } from '../logger.js';
-import { createMcpServerInstance } from './index.js';
-import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
-import { registerTools } from './tools.js';
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
+import Fastify, {
+  type FastifyInstance,
+  type FastifyReply,
+  type FastifyRequest,
+} from "fastify";
+import { nanoid } from "nanoid";
+import type { CodeLoopsLogger } from "../logger.js";
+import { createMcpServerInstance } from "./index.js";
+import { registerTools } from "./tools.js";
 
-declare module 'fastify' {
+declare module "fastify" {
+  // biome-ignore lint/nursery/noShadow: Fastify module augmentation requires extending existing interface
+  // biome-ignore lint/style/useConsistentTypeDefinitions: Declaration merging requires interface, not type
   interface FastifyRequest {
     currentTransport?: StreamableHTTPServerTransport;
     sessionId?: string;
   }
 }
 
-export const buildServer = async ({ logger, port }: { logger: CodeLoopsLogger; port: number }) => {
-  logger.info('Building CodeLoops MCP HTTP server');
+export const buildServer = async ({
+  logger,
+  port,
+}: {
+  logger: CodeLoopsLogger;
+  port: number;
+}) => {
+  logger.info("Building CodeLoops MCP HTTP server");
 
   const fastify = Fastify({
     logger: {
-      level: 'info',
+      level: "info",
     },
   });
 
   // Scopes the onRequest hook to the mcp routes in this register handler
-  await fastify.register(async (fastify) => {
-    const routePrefix = '/api';
+  await fastify.register(async (app) => {
+    const routePrefix = "/api";
     // Store transports for each session type
     const transports = {
       streamable: {} as Record<string, StreamableHTTPServerTransport>,
@@ -34,60 +45,64 @@ export const buildServer = async ({ logger, port }: { logger: CodeLoopsLogger; p
     };
 
     // Handle POST requests for client-to-server communication
-    fastify.post(`${routePrefix}/mcp`, async (request, reply) => {
-      const sessionId = request.headers['mcp-session-id'];
+    app.post(`${routePrefix}/mcp`, async (request, reply) => {
+      const sessionId = request.headers["mcp-session-id"];
       let transport: StreamableHTTPServerTransport;
 
-      request.log.info('Processing onRequest transport configuration');
+      request.log.info("Processing onRequest transport configuration");
 
       if (sessionId && transports.streamable[sessionId as string]) {
-        request.log.info(`Using existing transport for session ID: ${sessionId}`);
+        request.log.info(
+          `Using existing transport for session ID: ${sessionId}`
+        );
         transport = transports.streamable[sessionId as string];
       } else if (!sessionId && isInitializeRequest(request.body)) {
-        request.log.info('Initializing new transport');
+        request.log.info("Initializing new transport");
         transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => nanoid(),
-          onsessioninitialized: (sessionId) => {
-            transports.streamable[sessionId] = transport;
+          onsessioninitialized: (newSessionId) => {
+            transports.streamable[newSessionId] = transport;
           },
         });
 
         transport.onclose = () => {
-          request.log.info('MCP HTTP server closed');
+          request.log.info("MCP HTTP server closed");
           if (transport.sessionId) {
-            request.log.info('Removing transport for session ID: ' + transport.sessionId);
+            request.log.info(
+              `Removing transport for session ID: ${transport.sessionId}`
+            );
             delete transports.streamable[transport.sessionId];
           }
         };
 
-        request.log.info('Creating MCP server instance');
+        request.log.info("Creating MCP server instance");
         const server = createMcpServerInstance();
 
         registerTools({ server });
 
         request.currentTransport = transport;
 
-        request.log.info('Connecting MCP server to transport');
+        request.log.info("Connecting MCP server to transport");
         await server.connect(transport);
-        request.log.info('MCP server connected and ready to receive requests');
+        request.log.info("MCP server connected and ready to receive requests");
       } else {
-        request.log.error('No valid session ID provided');
+        request.log.error("No valid session ID provided");
         return reply.status(400).send({
-          jsonrpc: '2.0',
+          jsonrpc: "2.0",
           error: {
-            code: -32000,
-            message: 'Bad Request: No valid session ID provided',
+            code: -32_000,
+            message: "Bad Request: No valid session ID provided",
           },
           id: null,
         });
       }
       //if for some reason this does not exist, error
       if (!transport) {
-        request.log.error('No transport found for session ID');
-        return reply.status(400).send('Invalid or missing session ID');
+        request.log.error("No transport found for session ID");
+        return reply.status(400).send("Invalid or missing session ID");
       }
 
-      request.log.info({ body: request.body }, 'Processing MCP request');
+      request.log.info({ body: request.body }, "Processing MCP request");
       await transport.handleRequest(request.raw, reply.raw, request.body);
     });
 
@@ -100,11 +115,14 @@ export const buildServer = async ({ logger, port }: { logger: CodeLoopsLogger; p
      * @param {FastifyRequest} request - The incoming Fastify request object.
      * @param {FastifyReply} reply - The Fastify reply object to send responses.
      */
-    const handleSessionRequest = async (request: FastifyRequest, reply: FastifyReply) => {
-      const sessionId = request.headers['mcp-session-id'];
-      if (!sessionId || !transports.streamable[sessionId as string]) {
-        request.log.error('No transport found for session ID');
-        return reply.status(400).send('Invalid or missing session ID');
+    const handleSessionRequest = async (
+      request: FastifyRequest,
+      reply: FastifyReply
+    ) => {
+      const sessionId = request.headers["mcp-session-id"];
+      if (!(sessionId && transports.streamable[sessionId as string])) {
+        request.log.error("No transport found for session ID");
+        return reply.status(400).send("Invalid or missing session ID");
       }
 
       const transport = transports.streamable[sessionId as string];
@@ -112,17 +130,17 @@ export const buildServer = async ({ logger, port }: { logger: CodeLoopsLogger; p
     };
 
     // Handle GET for SSE
-    fastify.get(`${routePrefix}/mcp`, handleSessionRequest);
+    app.get(`${routePrefix}/mcp`, handleSessionRequest);
 
     // Handle DELETE for session termination
-    fastify.delete(`${routePrefix}/mcp`, handleSessionRequest);
+    app.delete(`${routePrefix}/mcp`, handleSessionRequest);
 
     //add legacy routes
-    await addLegacyRoutes({ transports, fastify });
+    await addLegacyRoutes({ transports, fastify: app });
   });
 
   try {
-    const address = await fastify.listen({ port, host: '0.0.0.0' });
+    const address = await fastify.listen({ port, host: "0.0.0.0" });
     fastify.log.info(`Server listening at ${address}`);
   } catch (err) {
     fastify.log.error(err);
@@ -130,7 +148,7 @@ export const buildServer = async ({ logger, port }: { logger: CodeLoopsLogger; p
   }
 };
 
-export const addLegacyRoutes = async ({
+export const addLegacyRoutes = ({
   transports,
   fastify,
 }: {
@@ -139,26 +157,27 @@ export const addLegacyRoutes = async ({
     sse: Record<string, SSEServerTransport>;
   };
   fastify: FastifyInstance;
-}) => {
+}): void => {
   //creating dedicated server instance for legacy routes
   const server = createMcpServerInstance();
 
   registerTools({ server });
 
-  fastify.get('/sse', async (request, reply) => {
-    const transport = new SSEServerTransport('/messages', reply.raw);
+  fastify.get("/sse", async (_request, reply) => {
+    const transport = new SSEServerTransport("/messages", reply.raw);
     transports.sse[transport.sessionId as string] = transport;
-    reply.raw.on('close', () => {
+    reply.raw.on("close", () => {
       delete transports.sse[transport.sessionId as string];
     });
     await server.connect(transport);
   });
-  fastify.post('/messages', async (request, reply) => {
+  fastify.post("/messages", async (request, reply) => {
     //
-    const sessionId = (request?.query as { sessionId?: string })?.sessionId as string;
+    const sessionId = (request?.query as { sessionId?: string })
+      ?.sessionId as string;
     const transport = transports.sse[sessionId];
     if (!transport) {
-      reply.status(400).send('Invalid or missing session ID');
+      reply.status(400).send("Invalid or missing session ID");
       return;
     }
     await transport.handlePostMessage(request.raw, reply.raw, request.body);

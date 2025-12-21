@@ -1,7 +1,7 @@
-import { pino, type Logger } from 'pino';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { type Logger, pino } from "pino";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -9,15 +9,15 @@ const __dirname = path.dirname(__filename);
 export type CodeLoopsLogger = Logger;
 let globalLogger: CodeLoopsLogger | null = null;
 
-interface CreateLoggerOptions {
+type CreateLoggerOptions = {
   withDevStdout?: boolean;
   withFile?: boolean;
   sync?: boolean;
   setGlobal?: boolean;
-}
+};
 
-const logsDir = path.resolve(__dirname, '../logs');
-const logFile = path.join(logsDir, 'codeloops.log');
+const logsDir = path.resolve(__dirname, "../logs");
+const logFile = path.join(logsDir, "codeloops.log");
 if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir, { recursive: true });
 }
@@ -30,11 +30,11 @@ export function createLogger(options?: CreateLoggerOptions): CodeLoopsLogger {
   const targets: pino.TransportTargetOptions[] = [];
   if (options?.withFile) {
     targets.push({
-      target: 'pino-roll',
+      target: "pino-roll",
       options: {
         file: logFile,
         //TODO: make this all configurable by the user
-        frequency: 'daily',
+        frequency: "daily",
         limit: {
           count: 14, // 14 days of log retention
         },
@@ -43,7 +43,7 @@ export function createLogger(options?: CreateLoggerOptions): CodeLoopsLogger {
   }
   if (options?.withDevStdout) {
     targets.push({
-      target: 'pino-pretty',
+      target: "pino-pretty",
       options: {
         destination: 1,
       },
@@ -65,9 +65,13 @@ export function createLogger(options?: CreateLoggerOptions): CodeLoopsLogger {
  */
 export function getInstance(options?: CreateLoggerOptions): CodeLoopsLogger {
   if (!globalLogger) {
-    createLogger({ withFile: true, ...options, setGlobal: true });
+    globalLogger = createLogger({
+      withFile: true,
+      ...options,
+      setGlobal: true,
+    });
   }
-  return globalLogger!;
+  return globalLogger;
 }
 
 export function setGlobalLogger(logger: CodeLoopsLogger) {

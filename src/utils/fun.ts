@@ -1,6 +1,5 @@
 //TODO: add color variations and such
-export const createCodeLoopsAscii = () => {
-  return `
+export const createCodeLoopsAscii = () => `
 ===========================================================================
 
  ██████╗ ██████╗ ██████╗ ███████╗██╗      ██████╗  ██████╗ ██████╗ ███████╗
@@ -12,4 +11,3 @@ export const createCodeLoopsAscii = () => {
 
 ===========================================================================
 `;
-};

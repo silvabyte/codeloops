@@ -6,16 +6,22 @@
  * - Event hooks: file.edited, todo.updated, session.created
  */
 
-import type { Plugin } from '@opencode-ai/plugin';
-import { tool } from '@opencode-ai/plugin';
-import fs from 'node:fs/promises';
-import * as fsSync from 'node:fs';
-import path from 'node:path';
-import readline from 'node:readline';
-import { z } from 'zod';
-import { lock, unlock } from 'proper-lockfile';
-import { nanoid } from 'nanoid';
-import envPaths from 'env-paths';
+import { createReadStream, existsSync } from "node:fs";
+import fs from "node:fs/promises";
+import path from "node:path";
+import readline from "node:readline";
+import type { Plugin } from "@opencode-ai/plugin";
+import { tool } from "@opencode-ai/plugin";
+import envPaths from "env-paths";
+import { nanoid } from "nanoid";
+import { lock, unlock } from "proper-lockfile";
+import { z } from "zod";
+
+// -----------------------------------------------------------------------------
+// Regex Constants
+// -----------------------------------------------------------------------------
+
+const TRAILING_SLASHES_REGEX = /\/+$/;
 
 // -----------------------------------------------------------------------------
 // Schema & Types
@@ -38,19 +44,65 @@ interface DeletedMemoryEntry extends MemoryEntry {
   deletedReason?: string;
 }
 
+type QueryOptions = {
+  project?: string;
+  tags?: string[];
+  query?: string;
+  limit?: number;
+  sessionId?: string;
+};
+
+// -----------------------------------------------------------------------------
+// Filter Helper Functions
+// -----------------------------------------------------------------------------
+
+function matchesProject(entry: MemoryEntry, project?: string): boolean {
+  return !project || entry.project === project;
+}
+
+function matchesSessionId(entry: MemoryEntry, sessionId?: string): boolean {
+  return !sessionId || entry.sessionId === sessionId;
+}
+
+function matchesTags(entry: MemoryEntry, tags?: string[]): boolean {
+  if (!tags || tags.length === 0) {
+    return true;
+  }
+  return Boolean(entry.tags && tags.every((tag) => entry.tags?.includes(tag)));
+}
+
+function matchesQueryText(entry: MemoryEntry, searchQuery?: string): boolean {
+  if (!searchQuery) {
+    return true;
+  }
+  return entry.content.toLowerCase().includes(searchQuery.toLowerCase());
+}
+
+function entryMatchesFilters(
+  entry: MemoryEntry,
+  options: QueryOptions
+): boolean {
+  return (
+    matchesProject(entry, options.project) &&
+    matchesSessionId(entry, options.sessionId) &&
+    matchesTags(entry, options.tags) &&
+    matchesQueryText(entry, options.query)
+  );
+}
+
 // -----------------------------------------------------------------------------
 // MemoryStore (embedded for standalone plugin)
 // -----------------------------------------------------------------------------
 
-const paths = envPaths('codeloops', { suffix: '' });
+const paths = envPaths("codeloops", { suffix: "" });
 const dataDir = paths.data;
-const logFilePath = path.resolve(dataDir, 'memory.ndjson');
-const deletedLogFilePath = path.resolve(dataDir, 'memory.deleted.ndjson');
+const logFilePath = path.resolve(dataDir, "memory.ndjson");
+const deletedLogFilePath = path.resolve(dataDir, "memory.deleted.ndjson");
 
 async function ensureLogFile(): Promise<void> {
   if (!(await fs.stat(logFilePath).catch(() => null))) {
     await fs.mkdir(path.dirname(logFilePath), { recursive: true });
-    await fs.writeFile(logFilePath, '');
+    await fs.writeFile(logFilePath, "");
   }
 }
 
@@ -82,11 +134,11 @@ async function append(input: {
     source: input.source,
   };
 
-  const line = JSON.stringify(entry) + '\n';
+  const line = `${JSON.stringify(entry)}\n`;
 
   try {
     await lock(logFilePath, { retries: 3 });
-    await fs.appendFile(logFilePath, line, 'utf8');
+    await fs.appendFile(logFilePath, line, "utf8");
   } finally {
     try {
       await unlock(logFilePath);
@@ -98,44 +150,30 @@ async function append(input: {
   return entry;
 }
 
-async function query(options: {
-  project?: string;
-  tags?: string[];
-  query?: string;
-  limit?: number;
-  sessionId?: string;
-}): Promise<MemoryEntry[]> {
+async function query(options: QueryOptions): Promise<MemoryEntry[]> {
   await ensureLogFile();
 
-  const { project, tags, query: searchQuery, limit, sessionId } = options;
+  const { limit } = options;
   const entries: MemoryEntry[] = [];
 
-  if (!fsSync.existsSync(logFilePath)) {
+  if (!existsSync(logFilePath)) {
     return entries;
   }
 
-  const fileStream = fsSync.createReadStream(logFilePath);
-  const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
+  const fileStream = createReadStream(logFilePath);
+  const rl = readline.createInterface({
+    input: fileStream,
+    crlfDelay: Number.POSITIVE_INFINITY,
+  });
 
   try {
     for await (const line of rl) {
       const entry = parseMemoryEntry(line);
-      if (!entry) continue;
-
-      if (project && entry.project !== project) continue;
-      if (sessionId && entry.sessionId !== sessionId) continue;
-      if (tags && tags.length > 0) {
-        if (!entry.tags || !tags.every((tag) => entry.tags?.includes(tag))) {
-          continue;
+      if (entry && entryMatchesFilters(entry, options)) {
+        entries.push(entry);
+        if (limit && entries.length > limit) {
+          entries.shift();
         }
-      }
-      if (searchQuery && !entry.content.toLowerCase().includes(searchQuery.toLowerCase())) {
-        continue;
-      }
-
-      entries.push(entry);
-      if (limit && entries.length > limit) {
-        entries.shift();
       }
     }
 
@@ -149,12 +187,15 @@ async function query(options: {
 async function getById(id: string): Promise<MemoryEntry | undefined> {
   await ensureLogFile();
 
-  if (!fsSync.existsSync(logFilePath)) {
-    return undefined;
+  if (!existsSync(logFilePath)) {
+    return;
   }
 
-  const fileStream = fsSync.createReadStream(logFilePath);
-  const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
+  const fileStream = createReadStream(logFilePath);
+  const rl = readline.createInterface({
+    input: fileStream,
+    crlfDelay: Number.POSITIVE_INFINITY,
+  });
 
   try {
     for await (const line of rl) {
@@ -163,17 +204,20 @@ async function getById(id: string): Promise<MemoryEntry | undefined> {
         return entry;
       }
     }
-    return undefined;
+    return;
   } finally {
     rl.close();
     fileStream.close();
   }
 }
 
-async function forget(id: string, reason?: string): Promise<DeletedMemoryEntry | undefined> {
+async function forget(
+  id: string,
+  reason?: string
+): Promise<DeletedMemoryEntry | undefined> {
   const entry = await getById(id);
   if (!entry) {
-    return undefined;
+    return;
   }
 
   const deletedEntry: DeletedMemoryEntry = {
@@ -184,12 +228,19 @@ async function forget(id: string, reason?: string): Promise<DeletedMemoryEntry |
 
   // Append to deleted log
   await fs.mkdir(path.dirname(deletedLogFilePath), { recursive: true });
-  await fs.appendFile(deletedLogFilePath, JSON.stringify(deletedEntry) + '\n', 'utf8');
+  await fs.appendFile(
+    deletedLogFilePath,
+    `${JSON.stringify(deletedEntry)}\n`,
+    "utf8"
+  );
 
   // Rebuild main log without deleted entry
   const entries: MemoryEntry[] = [];
-  const fileStream = fsSync.createReadStream(logFilePath);
-  const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
+  const fileStream = createReadStream(logFilePath);
+  const rl = readline.createInterface({
+    input: fileStream,
+    crlfDelay: Number.POSITIVE_INFINITY,
+  });
 
   try {
     for await (const line of rl) {
@@ -204,8 +255,8 @@ async function forget(id: string, reason?: string): Promise<DeletedMemoryEntry |
   }
 
   const tempPath = `${logFilePath}.tmp`;
-  const lines = entries.map((e) => JSON.stringify(e) + '\n').join('');
-  await fs.writeFile(tempPath, lines, 'utf8');
+  const lines = entries.map((e) => `${JSON.stringify(e)}\n`).join("");
+  await fs.writeFile(tempPath, lines, "utf8");
   await fs.rename(tempPath, logFilePath);
 
   return deletedEntry;
@@ -216,12 +267,15 @@ async function listProjects(): Promise<string[]> {
 
   const projects = new Set<string>();
 
-  if (!fsSync.existsSync(logFilePath)) {
+  if (!existsSync(logFilePath)) {
     return [];
   }
 
-  const fileStream = fsSync.createReadStream(logFilePath);
-  const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
+  const fileStream = createReadStream(logFilePath);
+  const rl = readline.createInterface({
+    input: fileStream,
+    crlfDelay: Number.POSITIVE_INFINITY,
+  });
 
   try {
     for await (const line of rl) {
@@ -243,9 +297,11 @@ async function listProjects(): Promise<string[]> {
 
 function extractProjectName(projectPath: string): string {
   // Extract last directory name from path
-  const normalized = projectPath.replace(/\\/g, '/').replace(/\/+$/, '');
-  const parts = normalized.split('/');
-  return parts[parts.length - 1] || 'unknown';
+  const normalized = projectPath
+    .replace(/\\/g, "/")
+    .replace(TRAILING_SLASHES_REGEX, "");
+  const parts = normalized.split("/");
+  return parts.at(-1) || "unknown";
 }
 
 // -----------------------------------------------------------------------------
@@ -259,17 +315,24 @@ export const CodeLoopsMemory: Plugin = async ({ project, directory }) => {
     : extractProjectName(directory);
   let currentSessionId: string | undefined;
 
+  // Ensure log file exists on plugin initialization
+  await ensureLogFile();
+
   return {
     // -------------------------------------------------------------------------
     // Custom Tools
     // -------------------------------------------------------------------------
     tool: {
       memory_store: tool({
-        description: `Store a memory for later recall. Use for decisions, preferences, errors, context.`,
+        description:
+          "Store a memory for later recall. Use for decisions, preferences, errors, context.",
         args: {
-          content: tool.schema.string().describe('The memory content to store'),
-          tags: tool.schema.array(tool.schema.string()).optional().describe('Tags for filtering'),
-          source: tool.schema.string().optional().describe('Source of memory'),
+          content: tool.schema.string().describe("The memory content to store"),
+          tags: tool.schema
+            .array(tool.schema.string())
+            .optional()
+            .describe("Tags for filtering"),
+          source: tool.schema.string().optional().describe("Source of memory"),
           //todo: store git diff from project dir as well for context...
         },
         async execute(args) {
@@ -285,11 +348,21 @@ export const CodeLoopsMemory: Plugin = async ({ project, directory }) => {
       }),
 
       memory_recall: tool({
-        description: `Query stored memories. Filter by tags or search content.`,
+        description: "Query stored memories. Filter by tags or search content.",
         args: {
-          query: tool.schema.string().optional().describe('Text to search in content'),
-          tags: tool.schema.array(tool.schema.string()).optional().describe('Filter by tags'),
-          limit: tool.schema.number().optional().default(10).describe('Max entries to return'),
+          query: tool.schema
+            .string()
+            .optional()
+            .describe("Text to search in content"),
+          tags: tool.schema
+            .array(tool.schema.string())
+            .optional()
+            .describe("Filter by tags"),
+          limit: tool.schema
+            .number()
+            .optional()
+            .default(10)
+            .describe("Max entries to return"),
         },
         async execute(args) {
           const entries = await query({
@@ -303,10 +376,13 @@ export const CodeLoopsMemory: Plugin = async ({ project, directory }) => {
       }),
 
       memory_forget: tool({
-        description: `Soft-delete a memory entry.`,
+        description: "Soft-delete a memory entry.",
         args: {
-          id: tool.schema.string().describe('ID of memory to delete'),
-          reason: tool.schema.string().optional().describe('Reason for deletion'),
+          id: tool.schema.string().describe("ID of memory to delete"),
+          reason: tool.schema
+            .string()
+            .optional()
+            .describe("Reason for deletion"),
         },
         async execute(args) {
           const deleted = await forget(args.id, args.reason);
@@ -318,9 +394,13 @@ export const CodeLoopsMemory: Plugin = async ({ project, directory }) => {
       }),
 
       memory_context: tool({
-        description: `Get recent memories for quick context loading.`,
+        description: "Get recent memories for quick context loading.",
         args: {
-          limit: tool.schema.number().optional().default(5).describe('Number of recent entries'),
+          limit: tool.schema
+            .number()
+            .optional()
+            .default(5)
+            .describe("Number of recent entries"),
         },
         async execute(args) {
           const entries = await query({
@@ -334,13 +414,13 @@ export const CodeLoopsMemory: Plugin = async ({ project, directory }) => {
               memories: entries,
             },
             null,
-            2,
+            2
           );
         },
       }),
 
       memory_projects: tool({
-        description: `List all projects with stored memories.`,
+        description: "List all projects with stored memories.",
         args: {},
         async execute() {
           const projects = await listProjects();
@@ -350,7 +430,7 @@ export const CodeLoopsMemory: Plugin = async ({ project, directory }) => {
               projects,
             },
             null,
-            2,
+            2
           );
         },
       }),
@@ -362,32 +442,38 @@ export const CodeLoopsMemory: Plugin = async ({ project, directory }) => {
 
     event: async ({ event }) => {
       // Auto-capture file edits
-      if (event.type === 'file.edited') {
-        const fileEvent = event as { type: 'file.edited'; properties: { file: string } };
+      if (event.type === "file.edited") {
+        const fileEvent = event as {
+          type: "file.edited";
+          properties: { file: string };
+        };
         await append({
           content: `Edited file: ${fileEvent.properties.file}`,
           project: projectName,
-          tags: ['file-edit', 'auto-capture'],
-          source: 'file.edited',
+          tags: ["file-edit", "auto-capture"],
+          source: "file.edited",
           sessionId: currentSessionId,
         });
       }
 
       // Auto-capture todo updates
-      if (event.type === 'todo.updated') {
-        const todoEvent = event as { type: 'todo.updated'; properties: { todos: unknown[] } };
+      if (event.type === "todo.updated") {
+        const todoEvent = event as {
+          type: "todo.updated";
+          properties: { todos: unknown[] };
+        };
         const todoCount = todoEvent.properties.todos?.length || 0;
         await append({
           content: `Todo list updated (${todoCount} items)`,
           project: projectName,
-          tags: ['todo', 'auto-capture'],
-          source: 'todo.updated',
+          tags: ["todo", "auto-capture"],
+          source: "todo.updated",
           sessionId: currentSessionId,
         });
       }
 
       // Load context on session start
-      if (event.type === 'session.created') {
+      if (event.type === "session.created") {
         currentSessionId = nanoid();
         const recentMemories = await query({
           project: projectName,
@@ -396,7 +482,7 @@ export const CodeLoopsMemory: Plugin = async ({ project, directory }) => {
 
         if (recentMemories.length > 0) {
           console.log(
-            `[codeloops] Loaded ${recentMemories.length} recent memories for ${projectName}`,
+            `[codeloops] Loaded ${recentMemories.length} recent memories for ${projectName}`
           );
         }
       }

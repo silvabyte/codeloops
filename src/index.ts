@@ -1,47 +1,54 @@
-import { createLogger } from './logger.js';
-import { stdio } from './server/stdio.js';
-import { http } from './server/http.js';
+import { createLogger } from "./logger.js";
+import { http } from "./server/http.js";
+import { stdio } from "./server/stdio.js";
 
 // -----------------------------------------------------------------------------
 // CLI Configuration -----------------------------------------------------------
 // -----------------------------------------------------------------------------
 
-interface ServerConfig {
-  protocol: 'stdio' | 'http';
+type ServerConfig = {
+  protocol: "stdio" | "http";
   port?: number;
   host?: string;
-}
+};
 
 const parseArgs = (): ServerConfig => {
   const args = process.argv.slice(2);
   const config: ServerConfig = {
-    protocol: 'stdio', // Default to stdio for backward compatibility
+    protocol: "stdio", // Default to stdio for backward compatibility
     port: 3000,
-    host: '0.0.0.0',
+    host: "0.0.0.0",
   };
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
+  let skipNext = false;
+  for (const [index, arg] of args.entries()) {
+    if (skipNext) {
+      skipNext = false;
+      continue;
+    }
+
     switch (arg) {
-      case '--http':
-        config.protocol = 'http';
+      case "--http":
+        config.protocol = "http";
         break;
-      case '--stdio':
-        config.protocol = 'stdio';
+      case "--stdio":
+        config.protocol = "stdio";
         break;
-      case '--port': {
-        const port = parseInt(args[++i]);
-        if (isNaN(port)) {
-          throw new Error('Invalid port number');
+      case "--port": {
+        const port = Number.parseInt(args[index + 1], 10);
+        if (Number.isNaN(port)) {
+          throw new Error("Invalid port number");
         }
         config.port = port;
+        skipNext = true;
         break;
       }
-      case '--host':
-        config.host = args[++i];
+      case "--host":
+        config.host = args[index + 1];
+        skipNext = true;
         break;
-      case '--help':
-      case '-h':
+      case "--help":
+      case "-h":
         console.log(`
 CodeLoops MCP Server
 
@@ -62,7 +69,7 @@ Examples:
         process.exit(0);
         break;
       default:
-        if (arg.startsWith('--')) {
+        if (arg.startsWith("--")) {
           throw new Error(`Unknown option: ${arg}`);
         }
         break;
@@ -86,35 +93,39 @@ async function main() {
   try {
     config = parseArgs();
   } catch (error) {
-    console.error('Error parsing arguments:', error);
+    console.error("Error parsing arguments:", error);
     process.exit(1);
   }
 
-  logger.info(`Starting CodeLoops MCP server with ${config.protocol} transport...`);
+  logger.info(
+    `Starting CodeLoops MCP server with ${config.protocol} transport...`
+  );
 
   try {
     switch (config.protocol) {
-      case 'stdio':
+      case "stdio":
         await stdio.buildServer({ logger });
-        logger.info('CodeLoops MCP server running on stdio');
+        logger.info("CodeLoops MCP server running on stdio");
         break;
-      case 'http':
+      case "http":
         if (!config.port) {
-          throw new Error('Port is required for HTTP transport');
+          throw new Error("Port is required for HTTP transport");
         }
         await http.buildServer({ logger, port: config.port });
-        logger.info(`CodeLoops MCP HTTP server running on ${config.host}:${config.port}`);
+        logger.info(
+          `CodeLoops MCP HTTP server running on ${config.host}:${config.port}`
+        );
         break;
       default:
         throw new Error(`Unsupported protocol: ${config.protocol}`);
     }
   } catch (error) {
-    logger.error({ error }, 'Failed to start server');
+    logger.error({ error }, "Failed to start server");
     process.exit(1);
   }
 }
 
 main().catch((err) => {
-  logger.error({ err }, 'Fatal error in main');
+  logger.error({ err }, "Fatal error in main");
   process.exit(1);
 });
