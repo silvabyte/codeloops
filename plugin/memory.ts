@@ -388,26 +388,16 @@ async function handleTodoUpdated(
   });
 }
 
-async function handleSessionCreated(
+function handleSessionCreated(
   projectName: string,
   isDuplicate: DedupFn,
   setSession: SetSessionFn
-): Promise<void> {
+) {
   const eventKey = `session.created:${projectName}`;
   if (isDuplicate(eventKey)) {
     return;
   }
   setSession(nanoid());
-  const recentMemories = await query({
-    project: projectName,
-    limit: 5,
-  });
-
-  if (recentMemories.length > 0) {
-    console.log(
-      `[codeloops] Loaded ${recentMemories.length} recent memories for ${projectName}`
-    );
-  }
 }
 
 type EventContext = {
