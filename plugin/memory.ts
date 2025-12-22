@@ -24,6 +24,34 @@ import { z } from "zod";
 const TRAILING_SLASHES_REGEX = /\/+$/;
 
 // -----------------------------------------------------------------------------
+// Git Diff Helper
+// -----------------------------------------------------------------------------
+
+async function getFileDiff(
+  filePath: string,
+  workdir: string
+): Promise<string | null> {
+  const { exec } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const execAsync = promisify(exec);
+
+  if (!filePath?.trim()) {
+    return null;
+  }
+
+  try {
+    // Get diff for the specific file (staged + unstaged)
+    const { stdout } = await execAsync(`git diff HEAD -- "${filePath}"`, {
+      cwd: workdir,
+    });
+    return stdout.trim() || null;
+  } catch {
+    // Git not available or file not tracked
+    return null;
+  }
+}
+
+// -----------------------------------------------------------------------------
 // Schema & Types
 // -----------------------------------------------------------------------------
 
@@ -305,15 +333,161 @@ function extractProjectName(projectPath: string): string {
 }
 
 // -----------------------------------------------------------------------------
+// Event Handlers
+// -----------------------------------------------------------------------------
+
+type DedupFn = (key: string) => boolean;
+type SetSessionFn = (id: string) => void;
+
+type FileEditContext = {
+  file: string;
+  projectName: string;
+  sessionId: string | undefined;
+  isDuplicate: DedupFn;
+  workdir: string;
+};
+
+async function handleFileEdited(ctx: FileEditContext): Promise<void> {
+  const eventKey = `file.edited:${ctx.file}`;
+  if (ctx.isDuplicate(eventKey)) {
+    return;
+  }
+
+  // Get git diff for the file
+  const diff = await getFileDiff(ctx.file, ctx.workdir);
+  const content = diff
+    ? `Edited file: ${ctx.file}\n\n\`\`\`diff\n${diff}\n\`\`\``
+    : `Edited file: ${ctx.file}`;
+
+  await append({
+    content,
+    project: ctx.projectName,
+    tags: ["file-edit", "auto-capture"],
+    source: "file.edited",
+    sessionId: ctx.sessionId,
+  });
+}
+
+async function handleTodoUpdated(
+  todos: unknown[],
+  projectName: string,
+  sessionId: string | undefined,
+  isDuplicate: DedupFn
+): Promise<void> {
+  const eventKey = `todo.updated:${JSON.stringify(todos)}`;
+  if (isDuplicate(eventKey)) {
+    return;
+  }
+  const todoCount = todos?.length || 0;
+  await append({
+    content: `Todo list updated (${todoCount} items)`,
+    project: projectName,
+    tags: ["todo", "auto-capture"],
+    source: "todo.updated",
+    sessionId,
+  });
+}
+
+async function handleSessionCreated(
+  projectName: string,
+  isDuplicate: DedupFn,
+  setSession: SetSessionFn
+): Promise<void> {
+  const eventKey = `session.created:${projectName}`;
+  if (isDuplicate(eventKey)) {
+    return;
+  }
+  setSession(nanoid());
+  const recentMemories = await query({
+    project: projectName,
+    limit: 5,
+  });
+
+  if (recentMemories.length > 0) {
+    console.log(
+      `[codeloops] Loaded ${recentMemories.length} recent memories for ${projectName}`
+    );
+  }
+}
+
+type EventContext = {
+  projectName: string;
+  sessionId: string | undefined;
+  isDuplicate: DedupFn;
+  setSession: SetSessionFn;
+  workdir: string;
+};
+
+async function handleEvent(
+  event: { type: string; properties?: Record<string, unknown> },
+  ctx: EventContext
+): Promise<void> {
+  if (event.type === "file.edited") {
+    const file = (event.properties?.file as string) || "";
+    await handleFileEdited({
+      file,
+      projectName: ctx.projectName,
+      sessionId: ctx.sessionId,
+      isDuplicate: ctx.isDuplicate,
+      workdir: ctx.workdir,
+    });
+    return;
+  }
+
+  if (event.type === "todo.updated") {
+    const todos = (event.properties?.todos as unknown[]) || [];
+    await handleTodoUpdated(
+      todos,
+      ctx.projectName,
+      ctx.sessionId,
+      ctx.isDuplicate
+    );
+    return;
+  }
+
+  if (event.type === "session.created") {
+    await handleSessionCreated(
+      ctx.projectName,
+      ctx.isDuplicate,
+      ctx.setSession
+    );
+  }
+}
+
+// -----------------------------------------------------------------------------
 // Plugin Export
 // -----------------------------------------------------------------------------
 
 export const CodeLoopsMemory: Plugin = async ({ project, directory }) => {
   // Use project id or extract from directory path
+  const workdir = project?.worktree || directory;
   const projectName = project?.id
     ? extractProjectName(project.worktree)
     : extractProjectName(directory);
   let currentSessionId: string | undefined;
+
+  // Deduplication: track recent events to prevent duplicates
+  const recentEvents = new Map<string, number>();
+  const DEDUP_WINDOW_MS = 1000; // Ignore duplicate events within 1 second
+
+  function isDuplicateEvent(eventKey: string): boolean {
+    const now = Date.now();
+    const lastSeen = recentEvents.get(eventKey);
+
+    // Clean up old entries
+    for (const [key, timestamp] of recentEvents) {
+      if (now - timestamp > DEDUP_WINDOW_MS) {
+        recentEvents.delete(key);
+      }
+    }
+
+    if (lastSeen && now - lastSeen < DEDUP_WINDOW_MS) {
+      return true;
+    }
+
+    recentEvents.set(eventKey, now);
+    return false;
+  }
 
   // Ensure log file exists on plugin initialization
   await ensureLogFile();
@@ -441,51 +615,15 @@ export const CodeLoopsMemory: Plugin = async ({ project, directory }) => {
     // -------------------------------------------------------------------------
 
     event: async ({ event }) => {
-      // Auto-capture file edits
-      if (event.type === "file.edited") {
-        const fileEvent = event as {
-          type: "file.edited";
-          properties: { file: string };
-        };
-        await append({
-          content: `Edited file: ${fileEvent.properties.file}`,
-          project: projectName,
-          tags: ["file-edit", "auto-capture"],
-          source: "file.edited",
-          sessionId: currentSessionId,
-        });
-      }
-
-      // Auto-capture todo updates
-      if (event.type === "todo.updated") {
-        const todoEvent = event as {
-          type: "todo.updated";
-          properties: { todos: unknown[] };
-        };
-        const todoCount = todoEvent.properties.todos?.length || 0;
-        await append({
-          content: `Todo list updated (${todoCount} items)`,
-          project: projectName,
-          tags: ["todo", "auto-capture"],
-          source: "todo.updated",
-          sessionId: currentSessionId,
-        });
-      }
-
-      // Load context on session start
-      if (event.type === "session.created") {
-        currentSessionId = nanoid();
-        const recentMemories = await query({
-          project: projectName,
-          limit: 5,
-        });
-
-        if (recentMemories.length > 0) {
-          console.log(
-            `[codeloops] Loaded ${recentMemories.length} recent memories for ${projectName}`
-          );
-        }
-      }
+      await handleEvent(event, {
+        projectName,
+        sessionId: currentSessionId,
+        isDuplicate: isDuplicateEvent,
+        setSession: (id) => {
+          currentSessionId = id;
+        },
+        workdir,
+      });
     },
   };
 };
