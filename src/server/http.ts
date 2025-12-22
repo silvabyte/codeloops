@@ -36,7 +36,7 @@ export const buildServer = async ({
   });
 
   // Scopes the onRequest hook to the mcp routes in this register handler
-  await fastify.register(async (app) => {
+  await fastify.register((app) => {
     const routePrefix = "/api";
     // Store transports for each session type
     const transports = {
@@ -136,7 +136,7 @@ export const buildServer = async ({
     app.delete(`${routePrefix}/mcp`, handleSessionRequest);
 
     //add legacy routes
-    await addLegacyRoutes({ transports, fastify: app });
+    addLegacyRoutes({ transports, fastify: app });
   });
 
   try {
