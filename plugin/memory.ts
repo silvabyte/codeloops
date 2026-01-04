@@ -4,9 +4,16 @@
  * Provides persistent memory across coding sessions with:
  * - Custom tools: memory_store, memory_recall, memory_forget, memory_context
  * - Event hooks: file.edited, todo.updated, session.created
+ *
+ * bd (beads) Integration:
+ * - Detects TODO comments in code changes (any syntax: //, #, /*, etc.)
+ * - When bd is initialized (.beads/ exists), spawns an agent to:
+ *   1. Gather context about the TODO
+ *   2. Create a bd issue with that context
+ *   3. Update the TODO with [bd-xxx] suffix to prevent duplicates
  */
 
-import { createReadStream, existsSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline";
@@ -14,14 +21,43 @@ import type { Plugin } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin";
 import envPaths from "env-paths";
 import { nanoid } from "nanoid";
+import { pino } from "pino";
 import { lock, unlock } from "proper-lockfile";
 import { z } from "zod";
+import { type ExtractedTodo, extractTodosFromDiff } from "./todo-extractor.ts";
 
 // -----------------------------------------------------------------------------
 // Regex Constants
 // -----------------------------------------------------------------------------
 
 const TRAILING_SLASHES_REGEX = /\/+$/;
+
+// -----------------------------------------------------------------------------
+// Plugin Logger (XDG-compliant paths)
+// -----------------------------------------------------------------------------
+
+const xdgPaths = envPaths("codeloops", { suffix: "" });
+const pluginLogsDir = path.join(xdgPaths.data, "logs");
+const pluginLogFile = path.join(pluginLogsDir, "plugin.log");
+
+// Ensure logs directory exists synchronously at module load
+if (!existsSync(pluginLogsDir)) {
+  mkdirSync(pluginLogsDir, { recursive: true });
+}
+
+const pluginLogger = pino(
+  pino.transport({
+    target: "pino-roll",
+    options: {
+      file: pluginLogFile,
+      frequency: "daily",
+      limit: { count: 7 },
+    },
+  })
+);
+
+// Maximum number of TODO analysis agents to spawn concurrently
+const TODO_AGENT_CONCURRENCY = 3;
 
 // -----------------------------------------------------------------------------
 // Git Diff Helper
@@ -48,6 +84,189 @@ async function getFileDiff(
   } catch {
     // Git not available or file not tracked
     return null;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// TODO Comment Detection & bd Integration
+// -----------------------------------------------------------------------------
+
+/**
+ * Check if bd (beads) is initialized in the given directory.
+ */
+function isBdInitialized(workdir: string): boolean {
+  const beadsDir = path.join(workdir, ".beads");
+  return existsSync(beadsDir);
+}
+
+/**
+ * Build the prompt for the spawned opencode agent to analyze the TODO
+ * and create a bd issue.
+ */
+function buildTodoAnalysisPrompt(ctx: {
+  file: string;
+  lineNumber: number;
+  todoText: string;
+  fullLine: string;
+}): string {
+  return `A TODO comment was added to the codebase:
+
+File: ${ctx.file}
+Line: ${ctx.lineNumber}
+Full line: ${ctx.fullLine}
+TODO text: ${ctx.todoText}
+
+Your task:
+1. First, verify bd (beads issue tracker) is initialized by checking for a .beads/ directory
+2. If not initialized, respond with "bd not initialized, skipping" and exit immediately
+3. If initialized, thoroughly gather context about this TODO:
+   - Read the file and understand what the TODO is referring to
+   - Look at surrounding code to understand the context
+   - If the TODO references other files/functions, explore them
+   - Understand WHY this TODO exists based on the code context
+4. Create a bd issue that captures this TODO with the context you gathered:
+   - Use: bd create "<title>" -d "<description with context>"
+   - Choose appropriate type (-t bug/feature/task/chore) based on the TODO content
+   - The title should be concise but descriptive
+   - The description should include the file path, line number, and gathered context
+5. After creating the issue, note the bd issue ID from the output (e.g., bd-abc123)
+6. Update the TODO comment in the source file to include the bd identifier:
+   - Find the exact line and add the bd ID in brackets at the end
+   - Example: // TODO: fix this -> // TODO: fix this [bd-abc123]
+   - This prevents duplicate issue creation for this TODO
+
+IMPORTANT:
+- Do NOT invent or assume information you cannot verify from the code
+- If unsure about something, note it as "unclear" or "needs investigation" in the issue description
+- Be thorough in gathering context but stick to verifiable facts from the codebase
+- If the TODO already has a [bd-xxx] suffix, skip it entirely - it's already tracked`;
+}
+
+/**
+ * Spawn an opencode run process in the background to analyze a TODO
+ * and create a bd issue.
+ */
+async function spawnTodoAnalysisAgent(
+  prompt: string,
+  workdir: string,
+  todoContext: { todoText: string; lineNumber: number; file: string }
+): Promise<void> {
+  const { spawn } = await import("node:child_process");
+
+  return new Promise((resolve, reject) => {
+    try {
+      const child = spawn("opencode", ["run", prompt], {
+        cwd: workdir,
+        detached: true,
+        stdio: "ignore",
+      });
+
+      child.on("error", (err) => {
+        pluginLogger.error({
+          msg: "opencode agent process error",
+          file: todoContext.file,
+          line: todoContext.lineNumber,
+          todo: todoContext.todoText,
+          error: err.message,
+        });
+        reject(err);
+      });
+
+      // Consider spawn successful once the process starts
+      child.on("spawn", () => {
+        pluginLogger.info({
+          msg: "Spawned TODO analysis agent",
+          file: todoContext.file,
+          line: todoContext.lineNumber,
+          todo: todoContext.todoText,
+        });
+        child.unref();
+        resolve();
+      });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      pluginLogger.error({
+        msg: "Failed to spawn opencode agent",
+        file: todoContext.file,
+        line: todoContext.lineNumber,
+        todo: todoContext.todoText,
+        error: errorMessage,
+      });
+      reject(err);
+    }
+  });
+}
+
+type TodoCommentContext = {
+  file: string;
+  lineNumber: number;
+  todoText: string;
+  fullLine: string;
+  workdir: string;
+  projectName: string;
+};
+
+/**
+ * Handle a detected TODO comment by spawning an agent to create a bd issue.
+ */
+async function handleTodoCommentDetected(
+  ctx: TodoCommentContext
+): Promise<void> {
+  // Only proceed if bd is initialized in this project
+  if (!isBdInitialized(ctx.workdir)) {
+    return;
+  }
+
+  const prompt = buildTodoAnalysisPrompt({
+    file: ctx.file,
+    lineNumber: ctx.lineNumber,
+    todoText: ctx.todoText,
+    fullLine: ctx.fullLine,
+  });
+
+  await spawnTodoAnalysisAgent(prompt, ctx.workdir, {
+    file: ctx.file,
+    lineNumber: ctx.lineNumber,
+    todoText: ctx.todoText,
+  });
+}
+
+/**
+ * Process multiple TODOs with concurrency limit.
+ * Spawns up to TODO_AGENT_CONCURRENCY agents at a time.
+ */
+async function processTodosWithConcurrency(
+  todos: ExtractedTodo[],
+  ctx: { file: string; workdir: string; projectName: string }
+): Promise<void> {
+  for (let i = 0; i < todos.length; i += TODO_AGENT_CONCURRENCY) {
+    const batch = todos.slice(i, i + TODO_AGENT_CONCURRENCY);
+    const results = await Promise.allSettled(
+      batch.map((todo) =>
+        handleTodoCommentDetected({
+          file: ctx.file,
+          lineNumber: todo.lineNumber,
+          todoText: todo.todoText,
+          fullLine: todo.fullLine,
+          workdir: ctx.workdir,
+          projectName: ctx.projectName,
+        })
+      )
+    );
+
+    // Log any failures from this batch
+    for (const [index, result] of results.entries()) {
+      if (result.status === "rejected") {
+        const todo = batch[index];
+        pluginLogger.error({
+          msg: "Failed to process TODO for bd issue creation",
+          file: ctx.file,
+          line: todo.lineNumber,
+          todo: todo.todoText,
+          error: String(result.reason),
+        });
+      }
+    }
   }
 }
 
@@ -366,6 +585,18 @@ async function handleFileEdited(ctx: FileEditContext): Promise<void> {
     source: "file.edited",
     sessionId: ctx.sessionId,
   });
+
+  // Check for TODO comments in the diff and spawn bd agents with concurrency limit
+  if (diff) {
+    const todos = extractTodosFromDiff(diff);
+    if (todos.length > 0) {
+      await processTodosWithConcurrency(todos, {
+        file: ctx.file,
+        workdir: ctx.workdir,
+        projectName: ctx.projectName,
+      });
+    }
+  }
 }
 
 async function handleTodoUpdated(
