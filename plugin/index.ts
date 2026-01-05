@@ -38,7 +38,10 @@ import { tool } from "@opencode-ai/plugin/tool";
 import { nanoid } from "nanoid";
 import { createLogger } from "../lib/logger.ts";
 import { createMemoryStoreFunctions } from "../lib/memory-store.ts";
-import { type ExtractedTodo, extractTodosFromDiff } from "./todo-extractor.ts";
+import {
+  type ExtractedTodo,
+  extractTodosFromDiff,
+} from "../src/utils/todo-extractor.ts";
 
 // -----------------------------------------------------------------------------
 // Regex Constants
