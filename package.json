@@ -12,7 +12,7 @@
     "start": "npx -y tsx src",
     "start:http": "npx -y tsx src --http",
     "build:plugin": "bun run scripts/build-plugin.ts",
-    "plugin:install": "bun run build:plugin && bash scripts/install-plugin.sh"
+    "plugin:install": "bun run scripts/install-plugin.ts"
   },
   "keywords": [
     "codeloops",
