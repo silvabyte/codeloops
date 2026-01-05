@@ -8,7 +8,7 @@
     "allowSyntheticDefaultImports": true,
     "noEmit": true,
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": ".",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -19,6 +19,6 @@
     "noEmitOnError": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "lib/**/*", "plugin/**/*", "scripts/**/*"],
   "exclude": ["node_modules", "dist"]
 }

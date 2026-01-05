@@ -1,97 +1,40 @@
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline";
 import { nanoid } from "nanoid";
 import { lock, unlock } from "proper-lockfile";
-import { z } from "zod";
 import { getDataDir } from "./config.ts";
+import { entryMatchesFilters } from "./filters.ts";
 import type { CodeLoopsLogger } from "./logger.ts";
+import {
+  type AppendInput,
+  type DeletedMemoryEntry,
+  type MemoryEntry,
+  MemoryEntrySchema,
+  type MemoryStoreOptions,
+  type QueryOptions,
+} from "./types.ts";
 
-// -----------------------------------------------------------------------------
-// Interfaces & Schemas --------------------------------------------------------
-// -----------------------------------------------------------------------------
-
-export const MemoryEntrySchema = z.object({
-  id: z.string(),
-  project: z.string(),
-  content: z.string(),
-  tags: z.array(z.string()).optional(),
-  createdAt: z.string().datetime(),
-  sessionId: z.string().optional(),
-  source: z.string().optional(),
-});
-
-export type MemoryEntry = z.infer<typeof MemoryEntrySchema>;
-
-export interface DeletedMemoryEntry extends MemoryEntry {
-  deletedAt: string;
-  deletedReason?: string;
-}
-
-export type QueryOptions = {
-  project?: string;
-  tags?: string[];
-  query?: string;
-  limit?: number;
-  sessionId?: string;
-};
-
-// -----------------------------------------------------------------------------
-// Filter Helper Functions -----------------------------------------------------
-// -----------------------------------------------------------------------------
-
-function matchesProject(entry: MemoryEntry, project?: string): boolean {
-  return !project || entry.project === project;
-}
-
-function matchesSessionId(entry: MemoryEntry, sessionId?: string): boolean {
-  return !sessionId || entry.sessionId === sessionId;
-}
-
-function matchesTags(entry: MemoryEntry, tags?: string[]): boolean {
-  if (!tags || tags.length === 0) {
-    return true;
+/**
+ * Parse a single line from the NDJSON log file into a MemoryEntry.
+ * Returns null if the line is invalid.
+ */
+export function parseMemoryEntry(line: string): MemoryEntry | null {
+  try {
+    const parsed = JSON.parse(line);
+    return MemoryEntrySchema.parse(parsed);
+  } catch {
+    return null;
   }
-  return Boolean(entry.tags && tags.every((tag) => entry.tags?.includes(tag)));
 }
 
-function matchesQuery(entry: MemoryEntry, searchQuery?: string): boolean {
-  if (!searchQuery) {
-    return true;
-  }
-  return entry.content.toLowerCase().includes(searchQuery.toLowerCase());
-}
-
-function entryMatchesFilters(
-  entry: MemoryEntry,
-  options: QueryOptions
-): boolean {
-  return (
-    matchesProject(entry, options.project) &&
-    matchesSessionId(entry, options.sessionId) &&
-    matchesTags(entry, options.tags) &&
-    matchesQuery(entry, options.query)
-  );
-}
-
-export type AppendInput = {
-  content: string;
-  project: string;
-  tags?: string[];
-  sessionId?: string;
-  source?: string;
-};
-
-export type MemoryStoreOptions = {
-  /** Custom data directory (for testing) */
-  dataDir?: string;
-};
-
-// -----------------------------------------------------------------------------
-// MemoryStore -----------------------------------------------------------------
-// -----------------------------------------------------------------------------
-
+/**
+ * MemoryStore provides persistent storage for memory entries.
+ *
+ * Uses NDJSON format for append-only logging with file locking
+ * for concurrent access safety.
+ */
 export class MemoryStore {
   private readonly logFilePath: string;
   private readonly deletedLogFilePath: string;
@@ -104,6 +47,9 @@ export class MemoryStore {
     this.deletedLogFilePath = path.resolve(dataDir, "memory.deleted.ndjson");
   }
 
+  /**
+   * Initialize the memory store, ensuring the log file exists.
+   */
   async init(): Promise<void> {
     this.logger.info(`[MemoryStore] Initializing from ${this.logFilePath}`);
     await this.ensureLogFile();
@@ -119,19 +65,9 @@ export class MemoryStore {
     }
   }
 
-  private parseMemoryEntry(line: string): MemoryEntry | null {
-    try {
-      const parsed = JSON.parse(line);
-      const validated = MemoryEntrySchema.parse(parsed);
-      return validated;
-    } catch (err) {
-      this.logger.error({ err, line }, "Invalid MemoryEntry");
-      return null;
-    }
-  }
-
   /**
-   * Append a new memory entry to the log
+   * Append a new memory entry to the log.
+   * Includes retry logic for handling concurrent access.
    */
   async append(input: AppendInput, retries = 3): Promise<MemoryEntry> {
     const entry: MemoryEntry = {
@@ -176,17 +112,22 @@ export class MemoryStore {
   }
 
   /**
-   * Get a single entry by ID
+   * Get a single entry by ID.
    */
   async getById(id: string): Promise<MemoryEntry | undefined> {
+    if (!existsSync(this.logFilePath)) {
+      return;
+    }
+
     const fileStream = createReadStream(this.logFilePath);
     const rl = readline.createInterface({
       input: fileStream,
       crlfDelay: Number.POSITIVE_INFINITY,
     });
+
     try {
       for await (const line of rl) {
-        const entry = this.parseMemoryEntry(line);
+        const entry = parseMemoryEntry(line);
         if (entry?.id === id) {
           return entry;
         }
@@ -199,9 +140,14 @@ export class MemoryStore {
   }
 
   /**
-   * Query entries with filters
+   * Query entries with filters.
+   * Returns the most recent entries matching the criteria.
    */
   async query(options: QueryOptions = {}): Promise<MemoryEntry[]> {
+    if (!existsSync(this.logFilePath)) {
+      return [];
+    }
+
     const { limit } = options;
     const entries: MemoryEntry[] = [];
 
@@ -213,7 +159,7 @@ export class MemoryStore {
 
     try {
       for await (const line of rl) {
-        const entry = this.parseMemoryEntry(line);
+        const entry = parseMemoryEntry(line);
         if (entry && entryMatchesFilters(entry, options)) {
           entries.push(entry);
           // Keep only the most recent entries if limit is set
@@ -231,9 +177,13 @@ export class MemoryStore {
   }
 
   /**
-   * List all unique projects
+   * List all unique projects.
    */
   async listProjects(): Promise<string[]> {
+    if (!existsSync(this.logFilePath)) {
+      return [];
+    }
+
     const projects = new Set<string>();
     const fileStream = createReadStream(this.logFilePath);
     const rl = readline.createInterface({
@@ -243,7 +193,7 @@ export class MemoryStore {
 
     try {
       for await (const line of rl) {
-        const entry = this.parseMemoryEntry(line);
+        const entry = parseMemoryEntry(line);
         if (entry?.project && !projects.has(entry.project)) {
           projects.add(entry.project);
         }
@@ -256,7 +206,7 @@ export class MemoryStore {
   }
 
   /**
-   * Soft delete an entry by moving it to the deleted log
+   * Soft delete an entry by moving it to the deleted log.
    */
   async forget(
     id: string,
@@ -295,7 +245,7 @@ export class MemoryStore {
 
     try {
       for await (const line of rl) {
-        const entry = this.parseMemoryEntry(line);
+        const entry = parseMemoryEntry(line);
         if (entry && entry.id !== entryId) {
           entries.push(entry);
         }
@@ -305,12 +255,34 @@ export class MemoryStore {
       fileStream.close();
     }
 
-    // Write back all non-deleted entries
+    // Write back all non-deleted entries atomically
     const tempPath = `${this.logFilePath}.tmp`;
     const lines = entries.map((entry) => `${JSON.stringify(entry)}\n`).join("");
     await fs.writeFile(tempPath, lines, "utf8");
-
-    // Atomic replace
     await fs.rename(tempPath, this.logFilePath);
   }
+}
+
+// -----------------------------------------------------------------------------
+// Standalone Functions (for plugin use without class instantiation)
+// -----------------------------------------------------------------------------
+
+/**
+ * Create standalone memory store functions that don't require a class instance.
+ * Useful for the plugin where we want simpler function-based API.
+ */
+export function createMemoryStoreFunctions(
+  logger: CodeLoopsLogger,
+  options?: MemoryStoreOptions
+) {
+  const store = new MemoryStore(logger, options);
+
+  return {
+    init: () => store.init(),
+    append: (input: AppendInput) => store.append(input),
+    query: (opts?: QueryOptions) => store.query(opts),
+    getById: (id: string) => store.getById(id),
+    forget: (id: string, reason?: string) => store.forget(id, reason),
+    listProjects: () => store.listProjects(),
+  };
 }

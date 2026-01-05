@@ -3,7 +3,12 @@
  *
  * Provides persistent memory across coding sessions with:
  * - Custom tools: memory_store, memory_recall, memory_forget, memory_context
- * - Event hooks: file.edited, todo.updated, session.created
+ * - Event hooks: file.edited, todo.updated, session.created, message.part.updated
+ *
+ * Conversation Context Capture:
+ * - Captures user and assistant messages in a rolling buffer
+ * - Associates conversation context with file edits
+ * - Enables richer memory recall with "why" context, not just "what" changed
  *
  * bd (beads) Integration:
  * - Detects TODO comments in code changes (any syntax: //, #, /*, etc.)
@@ -11,19 +16,28 @@
  *   1. Gather context about the TODO
  *   2. Create a bd issue with that context
  *   3. Update the TODO with [bd-xxx] suffix to prevent duplicates
+ *
+ * Configuration:
+ * 1. Config file (~/.config/codeloops/config.json):
+ *    {
+ *      "todo": {
+ *        "model": "anthropic/claude-sonnet-4-20250514",
+ *        "enabled": true
+ *      }
+ *    }
+ *
+ * 2. Environment variables (override file config):
+ *    - CODELOOPS_TODO_MODEL: Model for TODO analysis
+ *    - CODELOOPS_TODO_ENABLED: Set to "false" to disable
  */
 
-import { createReadStream, existsSync, mkdirSync } from "node:fs";
-import fs from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
-import readline from "node:readline";
 import type { Plugin } from "@opencode-ai/plugin";
-import { tool } from "@opencode-ai/plugin";
-import envPaths from "env-paths";
+import { tool } from "@opencode-ai/plugin/tool";
 import { nanoid } from "nanoid";
-import { pino } from "pino";
-import { lock, unlock } from "proper-lockfile";
-import { z } from "zod";
+import { createLogger } from "../lib/logger.ts";
+import { createMemoryStoreFunctions } from "../lib/memory-store.ts";
 import { type ExtractedTodo, extractTodosFromDiff } from "./todo-extractor.ts";
 
 // -----------------------------------------------------------------------------
@@ -33,31 +47,111 @@ import { type ExtractedTodo, extractTodosFromDiff } from "./todo-extractor.ts";
 const TRAILING_SLASHES_REGEX = /\/+$/;
 
 // -----------------------------------------------------------------------------
-// Plugin Logger (XDG-compliant paths)
+// Plugin Logger
 // -----------------------------------------------------------------------------
 
-const xdgPaths = envPaths("codeloops", { suffix: "" });
-const pluginLogsDir = path.join(xdgPaths.data, "logs");
-const pluginLogFile = path.join(pluginLogsDir, "plugin.log");
-
-// Ensure logs directory exists synchronously at module load
-if (!existsSync(pluginLogsDir)) {
-  mkdirSync(pluginLogsDir, { recursive: true });
-}
-
-const pluginLogger = pino(
-  pino.transport({
-    target: "pino-roll",
-    options: {
-      file: pluginLogFile,
-      frequency: "daily",
-      limit: { count: 7 },
-    },
-  })
-);
+const pluginLogger = createLogger({
+  withFile: true,
+  logFileName: "plugin.log",
+  retentionDays: 7,
+});
 
 // Maximum number of TODO analysis agents to spawn concurrently
 const TODO_AGENT_CONCURRENCY = 3;
+
+// -----------------------------------------------------------------------------
+// TODO Agent Configuration
+// -----------------------------------------------------------------------------
+
+/**
+ * Configuration for the TODO analysis agent.
+ *
+ * Loaded from (in order of priority):
+ * 1. Environment variables (highest priority, overrides file config)
+ *    - CODELOOPS_TODO_MODEL: Model to use (e.g., "anthropic/claude-sonnet-4-20250514")
+ *    - CODELOOPS_TODO_ENABLED: Set to "false" to disable TODO detection
+ *
+ * 2. Config file: ~/.config/codeloops/config.json
+ *    {
+ *      "todo": {
+ *        "model": "anthropic/claude-sonnet-4-20250514",
+ *        "enabled": true
+ *      }
+ *    }
+ */
+type TodoAgentConfig = {
+  /** Model in provider/model format (e.g., "anthropic/claude-sonnet-4-20250514") */
+  model: string | undefined;
+  /** Whether TODO detection is enabled */
+  enabled: boolean;
+};
+
+type CodeLoopsConfig = {
+  todo?: {
+    model?: string;
+    enabled?: boolean;
+  };
+};
+
+/** Cached config to avoid re-reading file on every TODO */
+let cachedConfig: CodeLoopsConfig | null = null;
+
+function getConfigPath(): string {
+  // Use XDG config dir: ~/.config/codeloops/config.json
+  const configDir =
+    process.env.XDG_CONFIG_HOME || path.join(process.env.HOME || "", ".config");
+  return path.join(configDir, "codeloops", "config.json");
+}
+
+function loadConfigFile(): CodeLoopsConfig {
+  if (cachedConfig !== null) {
+    return cachedConfig;
+  }
+
+  const configPath = getConfigPath();
+  try {
+    if (existsSync(configPath)) {
+      const content = require("node:fs").readFileSync(configPath, "utf-8");
+      cachedConfig = JSON.parse(content) as CodeLoopsConfig;
+      pluginLogger.info({
+        msg: "Loaded codeloops config",
+        path: configPath,
+        todoModel: cachedConfig.todo?.model,
+        todoEnabled: cachedConfig.todo?.enabled,
+      });
+      return cachedConfig;
+    }
+  } catch (err) {
+    pluginLogger.warn({
+      msg: "Failed to load codeloops config",
+      path: configPath,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  cachedConfig = {};
+  return cachedConfig;
+}
+
+function getTodoAgentConfig(): TodoAgentConfig {
+  const fileConfig = loadConfigFile();
+
+  // Environment variables take precedence over file config
+  const model = process.env.CODELOOPS_TODO_MODEL ?? fileConfig.todo?.model;
+
+  // For enabled: env var "false" disables, otherwise check file config, default true
+  let enabled = true;
+  if (process.env.CODELOOPS_TODO_ENABLED === "false") {
+    enabled = false;
+  } else if (fileConfig.todo?.enabled === false) {
+    enabled = false;
+  }
+
+  return { model, enabled };
+}
+
+// Create memory store functions using the shared lib
+const memoryStore = createMemoryStoreFunctions(pluginLogger);
 
 // -----------------------------------------------------------------------------
 // Git Diff Helper
@@ -149,13 +243,21 @@ IMPORTANT:
 async function spawnTodoAnalysisAgent(
   prompt: string,
   workdir: string,
-  todoContext: { todoText: string; lineNumber: number; file: string }
+  todoContext: { todoText: string; lineNumber: number; file: string },
+  config: TodoAgentConfig
 ): Promise<void> {
   const { spawn } = await import("node:child_process");
 
   return new Promise((resolve, reject) => {
     try {
-      const child = spawn("opencode", ["run", prompt], {
+      // Build command args: opencode run [--model provider/model] "prompt"
+      const args = ["run"];
+      if (config.model) {
+        args.push("--model", config.model);
+      }
+      args.push(prompt);
+
+      const child = spawn("opencode", args, {
         cwd: workdir,
         detached: true,
         stdio: "ignore",
@@ -179,6 +281,7 @@ async function spawnTodoAnalysisAgent(
           file: todoContext.file,
           line: todoContext.lineNumber,
           todo: todoContext.todoText,
+          model: config.model ?? "default",
         });
         child.unref();
         resolve();
@@ -210,7 +313,8 @@ type TodoCommentContext = {
  * Handle a detected TODO comment by spawning an agent to create a bd issue.
  */
 async function handleTodoCommentDetected(
-  ctx: TodoCommentContext
+  ctx: TodoCommentContext,
+  config: TodoAgentConfig
 ): Promise<void> {
   // Only proceed if bd is initialized in this project
   if (!isBdInitialized(ctx.workdir)) {
@@ -224,11 +328,16 @@ async function handleTodoCommentDetected(
     fullLine: ctx.fullLine,
   });
 
-  await spawnTodoAnalysisAgent(prompt, ctx.workdir, {
-    file: ctx.file,
-    lineNumber: ctx.lineNumber,
-    todoText: ctx.todoText,
-  });
+  await spawnTodoAnalysisAgent(
+    prompt,
+    ctx.workdir,
+    {
+      file: ctx.file,
+      lineNumber: ctx.lineNumber,
+      todoText: ctx.todoText,
+    },
+    config
+  );
 }
 
 /**
@@ -239,18 +348,29 @@ async function processTodosWithConcurrency(
   todos: ExtractedTodo[],
   ctx: { file: string; workdir: string; projectName: string }
 ): Promise<void> {
+  const config = getTodoAgentConfig();
+
+  // Skip if TODO detection is disabled
+  if (!config.enabled) {
+    pluginLogger.info({ msg: "TODO detection disabled via config" });
+    return;
+  }
+
   for (let i = 0; i < todos.length; i += TODO_AGENT_CONCURRENCY) {
     const batch = todos.slice(i, i + TODO_AGENT_CONCURRENCY);
     const results = await Promise.allSettled(
       batch.map((todo) =>
-        handleTodoCommentDetected({
-          file: ctx.file,
-          lineNumber: todo.lineNumber,
-          todoText: todo.todoText,
-          fullLine: todo.fullLine,
-          workdir: ctx.workdir,
-          projectName: ctx.projectName,
-        })
+        handleTodoCommentDetected(
+          {
+            file: ctx.file,
+            lineNumber: todo.lineNumber,
+            todoText: todo.todoText,
+            fullLine: todo.fullLine,
+            workdir: ctx.workdir,
+            projectName: ctx.projectName,
+          },
+          config
+        )
       )
     );
 
@@ -271,274 +391,6 @@ async function processTodosWithConcurrency(
 }
 
 // -----------------------------------------------------------------------------
-// Schema & Types
-// -----------------------------------------------------------------------------
-
-const MemoryEntrySchema = z.object({
-  id: z.string(),
-  project: z.string(),
-  content: z.string(),
-  tags: z.array(z.string()).optional(),
-  createdAt: z.string().datetime(),
-  sessionId: z.string().optional(),
-  source: z.string().optional(),
-});
-
-type MemoryEntry = z.infer<typeof MemoryEntrySchema>;
-
-interface DeletedMemoryEntry extends MemoryEntry {
-  deletedAt: string;
-  deletedReason?: string;
-}
-
-type QueryOptions = {
-  project?: string;
-  tags?: string[];
-  query?: string;
-  limit?: number;
-  sessionId?: string;
-};
-
-// -----------------------------------------------------------------------------
-// Filter Helper Functions
-// -----------------------------------------------------------------------------
-
-function matchesProject(entry: MemoryEntry, project?: string): boolean {
-  return !project || entry.project === project;
-}
-
-function matchesSessionId(entry: MemoryEntry, sessionId?: string): boolean {
-  return !sessionId || entry.sessionId === sessionId;
-}
-
-function matchesTags(entry: MemoryEntry, tags?: string[]): boolean {
-  if (!tags || tags.length === 0) {
-    return true;
-  }
-  return Boolean(entry.tags && tags.every((tag) => entry.tags?.includes(tag)));
-}
-
-function matchesQueryText(entry: MemoryEntry, searchQuery?: string): boolean {
-  if (!searchQuery) {
-    return true;
-  }
-  return entry.content.toLowerCase().includes(searchQuery.toLowerCase());
-}
-
-function entryMatchesFilters(
-  entry: MemoryEntry,
-  options: QueryOptions
-): boolean {
-  return (
-    matchesProject(entry, options.project) &&
-    matchesSessionId(entry, options.sessionId) &&
-    matchesTags(entry, options.tags) &&
-    matchesQueryText(entry, options.query)
-  );
-}
-
-// -----------------------------------------------------------------------------
-// MemoryStore (embedded for standalone plugin)
-// -----------------------------------------------------------------------------
-
-const paths = envPaths("codeloops", { suffix: "" });
-const dataDir = paths.data;
-const logFilePath = path.resolve(dataDir, "memory.ndjson");
-const deletedLogFilePath = path.resolve(dataDir, "memory.deleted.ndjson");
-
-async function ensureLogFile(): Promise<void> {
-  if (!(await fs.stat(logFilePath).catch(() => null))) {
-    await fs.mkdir(path.dirname(logFilePath), { recursive: true });
-    await fs.writeFile(logFilePath, "");
-  }
-}
-
-function parseMemoryEntry(line: string): MemoryEntry | null {
-  try {
-    const parsed = JSON.parse(line);
-    return MemoryEntrySchema.parse(parsed);
-  } catch {
-    return null;
-  }
-}
-
-async function append(input: {
-  content: string;
-  project: string;
-  tags?: string[];
-  sessionId?: string;
-  source?: string;
-}): Promise<MemoryEntry> {
-  await ensureLogFile();
-
-  const entry: MemoryEntry = {
-    id: nanoid(),
-    project: input.project,
-    content: input.content,
-    tags: input.tags,
-    createdAt: new Date().toISOString(),
-    sessionId: input.sessionId,
-    source: input.source,
-  };
-
-  const line = `${JSON.stringify(entry)}\n`;
-
-  try {
-    await lock(logFilePath, { retries: 3 });
-    await fs.appendFile(logFilePath, line, "utf8");
-  } finally {
-    try {
-      await unlock(logFilePath);
-    } catch {
-      // Ignore unlock errors
-    }
-  }
-
-  return entry;
-}
-
-async function query(options: QueryOptions): Promise<MemoryEntry[]> {
-  await ensureLogFile();
-
-  const { limit } = options;
-  const entries: MemoryEntry[] = [];
-
-  if (!existsSync(logFilePath)) {
-    return entries;
-  }
-
-  const fileStream = createReadStream(logFilePath);
-  const rl = readline.createInterface({
-    input: fileStream,
-    crlfDelay: Number.POSITIVE_INFINITY,
-  });
-
-  try {
-    for await (const line of rl) {
-      const entry = parseMemoryEntry(line);
-      if (entry && entryMatchesFilters(entry, options)) {
-        entries.push(entry);
-        if (limit && entries.length > limit) {
-          entries.shift();
-        }
-      }
-    }
-
-    return entries;
-  } finally {
-    rl.close();
-    fileStream.close();
-  }
-}
-
-async function getById(id: string): Promise<MemoryEntry | undefined> {
-  await ensureLogFile();
-
-  if (!existsSync(logFilePath)) {
-    return;
-  }
-
-  const fileStream = createReadStream(logFilePath);
-  const rl = readline.createInterface({
-    input: fileStream,
-    crlfDelay: Number.POSITIVE_INFINITY,
-  });
-
-  try {
-    for await (const line of rl) {
-      const entry = parseMemoryEntry(line);
-      if (entry?.id === id) {
-        return entry;
-      }
-    }
-    return;
-  } finally {
-    rl.close();
-    fileStream.close();
-  }
-}
-
-async function forget(
-  id: string,
-  reason?: string
-): Promise<DeletedMemoryEntry | undefined> {
-  const entry = await getById(id);
-  if (!entry) {
-    return;
-  }
-
-  const deletedEntry: DeletedMemoryEntry = {
-    ...entry,
-    deletedAt: new Date().toISOString(),
-    deletedReason: reason,
-  };
-
-  // Append to deleted log
-  await fs.mkdir(path.dirname(deletedLogFilePath), { recursive: true });
-  await fs.appendFile(
-    deletedLogFilePath,
-    `${JSON.stringify(deletedEntry)}\n`,
-    "utf8"
-  );
-
-  // Rebuild main log without deleted entry
-  const entries: MemoryEntry[] = [];
-  const fileStream = createReadStream(logFilePath);
-  const rl = readline.createInterface({
-    input: fileStream,
-    crlfDelay: Number.POSITIVE_INFINITY,
-  });
-
-  try {
-    for await (const line of rl) {
-      const e = parseMemoryEntry(line);
-      if (e && e.id !== id) {
-        entries.push(e);
-      }
-    }
-  } finally {
-    rl.close();
-    fileStream.close();
-  }
-
-  const tempPath = `${logFilePath}.tmp`;
-  const lines = entries.map((e) => `${JSON.stringify(e)}\n`).join("");
-  await fs.writeFile(tempPath, lines, "utf8");
-  await fs.rename(tempPath, logFilePath);
-
-  return deletedEntry;
-}
-
-async function listProjects(): Promise<string[]> {
-  await ensureLogFile();
-
-  const projects = new Set<string>();
-
-  if (!existsSync(logFilePath)) {
-    return [];
-  }
-
-  const fileStream = createReadStream(logFilePath);
-  const rl = readline.createInterface({
-    input: fileStream,
-    crlfDelay: Number.POSITIVE_INFINITY,
-  });
-
-  try {
-    for await (const line of rl) {
-      const entry = parseMemoryEntry(line);
-      if (entry?.project) {
-        projects.add(entry.project);
-      }
-    }
-    return Array.from(projects);
-  } finally {
-    rl.close();
-    fileStream.close();
-  }
-}
-
-// -----------------------------------------------------------------------------
 // Helper to extract project name
 // -----------------------------------------------------------------------------
 
@@ -549,6 +401,107 @@ function extractProjectName(projectPath: string): string {
     .replace(TRAILING_SLASHES_REGEX, "");
   const parts = normalized.split("/");
   return parts.at(-1) || "unknown";
+}
+
+// -----------------------------------------------------------------------------
+// Conversation Context Buffer
+// -----------------------------------------------------------------------------
+
+/**
+ * Buffer to accumulate recent conversation context.
+ * This allows us to associate what was said with file edits.
+ */
+type ConversationBuffer = {
+  /** Recent user messages */
+  userMessages: Array<{ text: string; timestamp: number }>;
+  /** Recent assistant messages */
+  assistantMessages: Array<{ text: string; timestamp: number }>;
+  /** Track message IDs to their roles */
+  messageRoles: Map<string, "user" | "assistant">;
+  /** Maximum age of messages to keep (ms) */
+  maxAge: number;
+  /** Maximum number of messages to keep per role */
+  maxMessages: number;
+};
+
+function createConversationBuffer(): ConversationBuffer {
+  return {
+    userMessages: [],
+    assistantMessages: [],
+    messageRoles: new Map(),
+    maxAge: 60_000, // 1 minute
+    maxMessages: 5,
+  };
+}
+
+function addToBuffer(
+  buffer: ConversationBuffer,
+  role: "user" | "assistant",
+  text: string
+): void {
+  const messages =
+    role === "user" ? buffer.userMessages : buffer.assistantMessages;
+  const now = Date.now();
+
+  // Add new message
+  messages.push({ text, timestamp: now });
+
+  // Clean up old messages
+  const cutoff = now - buffer.maxAge;
+  while (messages.length > 0 && messages[0].timestamp < cutoff) {
+    messages.shift();
+  }
+
+  // Trim to max size
+  while (messages.length > buffer.maxMessages) {
+    messages.shift();
+  }
+}
+
+function getRecentContext(buffer: ConversationBuffer): string {
+  const now = Date.now();
+  const cutoff = now - buffer.maxAge;
+
+  const recentUser = buffer.userMessages
+    .filter((m) => m.timestamp >= cutoff)
+    .map((m) => m.text)
+    .join("\n");
+
+  const recentAssistant = buffer.assistantMessages
+    .filter((m) => m.timestamp >= cutoff)
+    .map((m) => m.text)
+    .join("\n");
+
+  const parts: string[] = [];
+  if (recentUser) {
+    parts.push(`**User said:**\n${recentUser}`);
+  }
+  if (recentAssistant) {
+    parts.push(`**Assistant said:**\n${recentAssistant}`);
+  }
+
+  return parts.join("\n\n");
+}
+
+function clearBuffer(buffer: ConversationBuffer): void {
+  buffer.userMessages = [];
+  buffer.assistantMessages = [];
+  buffer.messageRoles.clear();
+}
+
+function setMessageRole(
+  buffer: ConversationBuffer,
+  messageId: string,
+  role: "user" | "assistant"
+): void {
+  buffer.messageRoles.set(messageId, role);
+}
+
+function getMessageRole(
+  buffer: ConversationBuffer,
+  messageId: string
+): "user" | "assistant" | undefined {
+  return buffer.messageRoles.get(messageId);
 }
 
 // -----------------------------------------------------------------------------
@@ -564,6 +517,7 @@ type FileEditContext = {
   sessionId: string | undefined;
   isDuplicate: DedupFn;
   workdir: string;
+  conversationContext: string;
 };
 
 async function handleFileEdited(ctx: FileEditContext): Promise<void> {
@@ -574,11 +528,28 @@ async function handleFileEdited(ctx: FileEditContext): Promise<void> {
 
   // Get git diff for the file
   const diff = await getFileDiff(ctx.file, ctx.workdir);
-  const content = diff
-    ? `Edited file: ${ctx.file}\n\n\`\`\`diff\n${diff}\n\`\`\``
-    : `Edited file: ${ctx.file}`;
 
-  await append({
+  // Build content with conversation context
+  const contentParts: string[] = [];
+
+  // Add conversation context if available
+  if (ctx.conversationContext) {
+    contentParts.push("## Conversation Context\n");
+    contentParts.push(ctx.conversationContext);
+    contentParts.push("\n");
+  }
+
+  // Add file edit info
+  contentParts.push("## File Edit\n");
+  contentParts.push(`Edited file: ${ctx.file}`);
+
+  if (diff) {
+    contentParts.push(`\n\n\`\`\`diff\n${diff}\n\`\`\``);
+  }
+
+  const content = contentParts.join("");
+
+  await memoryStore.append({
     content,
     project: ctx.projectName,
     tags: ["file-edit", "auto-capture"],
@@ -610,7 +581,7 @@ async function handleTodoUpdated(
     return;
   }
   const todoCount = todos?.length || 0;
-  await append({
+  await memoryStore.append({
     content: `Todo list updated (${todoCount} items)`,
     project: projectName,
     tags: ["todo", "auto-capture"],
@@ -637,21 +608,81 @@ type EventContext = {
   isDuplicate: DedupFn;
   setSession: SetSessionFn;
   workdir: string;
+  conversationBuffer: ConversationBuffer;
 };
+
+/**
+ * Message part type from OpenCode SDK
+ */
+type MessagePart = {
+  type: string;
+  text?: string;
+  messageID?: string;
+  sessionID?: string;
+};
+
+/**
+ * Message info type from OpenCode SDK
+ */
+type MessageInfo = {
+  role?: string;
+  id?: string;
+  sessionID?: string;
+};
+
+function handleMessageUpdated(
+  properties: Record<string, unknown> | undefined,
+  buffer: ConversationBuffer
+): void {
+  const info = properties?.info as MessageInfo | undefined;
+  if (info?.id && info.role) {
+    const role = info.role as "user" | "assistant";
+    setMessageRole(buffer, info.id, role);
+  }
+}
+
+function handleMessagePartUpdated(
+  properties: Record<string, unknown> | undefined,
+  buffer: ConversationBuffer
+): void {
+  const part = properties?.part as MessagePart | undefined;
+  if (part?.type === "text" && part.text && part.messageID) {
+    const role = getMessageRole(buffer, part.messageID) ?? "assistant";
+    addToBuffer(buffer, role, part.text);
+  }
+}
 
 async function handleEvent(
   event: { type: string; properties?: Record<string, unknown> },
   ctx: EventContext
 ): Promise<void> {
+  // Capture full messages to get role information
+  if (event.type === "message.updated") {
+    handleMessageUpdated(event.properties, ctx.conversationBuffer);
+    return;
+  }
+
+  // Capture message parts (conversation text)
+  if (event.type === "message.part.updated") {
+    handleMessagePartUpdated(event.properties, ctx.conversationBuffer);
+    return;
+  }
+
   if (event.type === "file.edited") {
     const file = (event.properties?.file as string) || "";
+    const conversationContext = getRecentContext(ctx.conversationBuffer);
+
     await handleFileEdited({
       file,
       projectName: ctx.projectName,
       sessionId: ctx.sessionId,
       isDuplicate: ctx.isDuplicate,
       workdir: ctx.workdir,
+      conversationContext,
     });
+
+    // Clear buffer after capturing context for a file edit
+    clearBuffer(ctx.conversationBuffer);
     return;
   }
 
@@ -667,13 +698,35 @@ async function handleEvent(
   }
 
   if (event.type === "session.created") {
-    await handleSessionCreated(
-      ctx.projectName,
-      ctx.isDuplicate,
-      ctx.setSession
-    );
+    clearBuffer(ctx.conversationBuffer);
+    handleSessionCreated(ctx.projectName, ctx.isDuplicate, ctx.setSession);
   }
 }
+
+// -----------------------------------------------------------------------------
+// Tool Argument Types
+// -----------------------------------------------------------------------------
+
+type MemoryStoreArgs = {
+  content: string;
+  tags?: string[];
+  source?: string;
+};
+
+type MemoryRecallArgs = {
+  query?: string;
+  tags?: string[];
+  limit: number;
+};
+
+type MemoryForgetArgs = {
+  id: string;
+  reason?: string;
+};
+
+type MemoryContextArgs = {
+  limit: number;
+};
 
 // -----------------------------------------------------------------------------
 // Plugin Export
@@ -686,6 +739,9 @@ export const CodeLoopsMemory: Plugin = async ({ project, directory }) => {
     ? extractProjectName(project.worktree)
     : extractProjectName(directory);
   let currentSessionId: string | undefined;
+
+  // Conversation buffer to capture context around file edits
+  const conversationBuffer = createConversationBuffer();
 
   // Deduplication: track recent events to prevent duplicates
   const recentEvents = new Map<string, number>();
@@ -710,8 +766,8 @@ export const CodeLoopsMemory: Plugin = async ({ project, directory }) => {
     return false;
   }
 
-  // Ensure log file exists on plugin initialization
-  await ensureLogFile();
+  // Initialize memory store
+  await memoryStore.init();
 
   return {
     // -------------------------------------------------------------------------
@@ -728,10 +784,9 @@ export const CodeLoopsMemory: Plugin = async ({ project, directory }) => {
             .optional()
             .describe("Tags for filtering"),
           source: tool.schema.string().optional().describe("Source of memory"),
-          //todo: store git diff from project dir as well for context...
         },
-        async execute(args) {
-          const entry = await append({
+        async execute(args: MemoryStoreArgs) {
+          const entry = await memoryStore.append({
             content: args.content,
             project: projectName,
             tags: args.tags,
@@ -759,8 +814,8 @@ export const CodeLoopsMemory: Plugin = async ({ project, directory }) => {
             .default(10)
             .describe("Max entries to return"),
         },
-        async execute(args) {
-          const entries = await query({
+        async execute(args: MemoryRecallArgs) {
+          const entries = await memoryStore.query({
             project: projectName,
             query: args.query,
             tags: args.tags,
@@ -779,8 +834,8 @@ export const CodeLoopsMemory: Plugin = async ({ project, directory }) => {
             .optional()
             .describe("Reason for deletion"),
         },
-        async execute(args) {
-          const deleted = await forget(args.id, args.reason);
+        async execute(args: MemoryForgetArgs) {
+          const deleted = await memoryStore.forget(args.id, args.reason);
           if (!deleted) {
             return `Memory ${args.id} not found`;
           }
@@ -797,8 +852,8 @@ export const CodeLoopsMemory: Plugin = async ({ project, directory }) => {
             .default(5)
             .describe("Number of recent entries"),
         },
-        async execute(args) {
-          const entries = await query({
+        async execute(args: MemoryContextArgs) {
+          const entries = await memoryStore.query({
             project: projectName,
             limit: args.limit,
           });
@@ -818,7 +873,7 @@ export const CodeLoopsMemory: Plugin = async ({ project, directory }) => {
         description: "List all projects with stored memories.",
         args: {},
         async execute() {
-          const projects = await listProjects();
+          const projects = await memoryStore.listProjects();
           return JSON.stringify(
             {
               current: projectName,
@@ -844,6 +899,7 @@ export const CodeLoopsMemory: Plugin = async ({ project, directory }) => {
           currentSessionId = id;
         },
         workdir,
+        conversationBuffer,
       });
     },
   };

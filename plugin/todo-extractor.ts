@@ -8,8 +8,14 @@
 // Regex Constants
 // -----------------------------------------------------------------------------
 
-// Match TODO comments in any syntax (// TODO:, # TODO:, /* TODO:, etc.)
-const TODO_REGEX = /TODO[:\s]+(.+)/i;
+// Match TODO comments that appear after common comment prefixes
+// Supported prefixes:
+//   // (JS/TS/C/Go)    # (Python/Shell/YAML)    /* (C-style block)
+//   /** (JSDoc)        * (block comment line)   -- (SQL)
+//   ;; (Lisp/Clojure)  <!-- (HTML/XML)
+// This prevents false positives from TODOs in prose or variable names
+const TODO_COMMENT_REGEX =
+  /^[\s]*(\/\/|#|\/\*\*?|\*|--|;{1,2}|<!--)\s*TODO[:\s]+(.+)/i;
 
 // Detect if a TODO is already tracked by bd (has [bd-xxx] suffix)
 const BD_TRACKED_REGEX = /\[bd-[a-z0-9]+\]/i;
@@ -55,8 +61,8 @@ export function extractTodosFromDiff(diff: string): ExtractedTodo[] {
       currentLineNumber += 1;
       const content = line.slice(1); // Remove the + prefix
 
-      // Check for TODO pattern
-      const todoMatch = content.match(TODO_REGEX);
+      // Check for TODO pattern (must be in a comment, not prose)
+      const todoMatch = content.match(TODO_COMMENT_REGEX);
       if (todoMatch) {
         // Skip if already tracked by bd
         if (BD_TRACKED_REGEX.test(content)) {
@@ -65,7 +71,7 @@ export function extractTodosFromDiff(diff: string): ExtractedTodo[] {
 
         todos.push({
           lineNumber: currentLineNumber,
-          todoText: todoMatch[1].trim(),
+          todoText: todoMatch[2].trim(), // Group 2 is the TODO text (group 1 is comment prefix)
           fullLine: content.trim(),
         });
       }

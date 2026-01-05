@@ -1,11 +1,11 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { MemoryStore } from "../../lib/memory-store.ts";
 import {
   type CodeLoopsLogger,
   getInstance as getLogger,
   setGlobalLogger,
 } from "../logger.js";
-import { MemoryStore } from "../memory-store.js";
 import { extractProjectName } from "../utils/project.js";
 
 // Shared dependencies interface

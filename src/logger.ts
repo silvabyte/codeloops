@@ -1,79 +1,54 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { type Logger, pino } from "pino";
+import type { Logger } from "pino";
+import {
+  createLogger as createLoggerFromLib,
+  getLoggerInstance as getLoggerInstanceFromLib,
+  type CreateLoggerOptions as LibCreateLoggerOptions,
+  setGlobalLogger as setGlobalLoggerFromLib,
+} from "../lib/logger.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export type CodeLoopsLogger = Logger;
-let globalLogger: CodeLoopsLogger | null = null;
-
-type CreateLoggerOptions = {
-  withDevStdout?: boolean;
-  withFile?: boolean;
-  sync?: boolean;
-  setGlobal?: boolean;
-};
-
+// Legacy logs directory for backwards compatibility
 const logsDir = path.resolve(__dirname, "../logs");
-const logFile = path.join(logsDir, "codeloops.log");
+
+// Ensure logs directory exists
 if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir, { recursive: true });
 }
+
+// Types
+export type CodeLoopsLogger = Logger;
+export type CreateLoggerOptions = LibCreateLoggerOptions;
+
 /**
  * Creates and returns a new pino logger instance with the given options.
  * Also sets the global logger if not already set.
  */
 export function createLogger(options?: CreateLoggerOptions): CodeLoopsLogger {
-  // Ensure logs directory exists
-  const targets: pino.TransportTargetOptions[] = [];
-  if (options?.withFile) {
-    targets.push({
-      target: "pino-roll",
-      options: {
-        file: logFile,
-        //TODO: make this all configurable by the user
-        frequency: "daily",
-        limit: {
-          count: 14, // 14 days of log retention
-        },
-      },
-    });
-  }
-  if (options?.withDevStdout) {
-    targets.push({
-      target: "pino-pretty",
-      options: {
-        destination: 1,
-      },
-    });
-  }
-  const transports = pino.transport({
-    targets,
-    ...(options ?? {}),
+  return createLoggerFromLib({
+    logsDir,
+    ...options,
   });
-  const logger = pino(transports);
-  if (options?.setGlobal && !globalLogger) {
-    globalLogger = logger;
-  }
-  return logger;
 }
 
 /**
- * Returns the global singleton logger instance. If not created, creates with default options.
+ * Returns the global singleton logger instance.
+ * If not created, creates with default options.
  */
 export function getInstance(options?: CreateLoggerOptions): CodeLoopsLogger {
-  if (!globalLogger) {
-    globalLogger = createLogger({
-      withFile: true,
-      ...options,
-      setGlobal: true,
-    });
-  }
-  return globalLogger;
+  return getLoggerInstanceFromLib({
+    logsDir,
+    ...options,
+  });
 }
 
-export function setGlobalLogger(logger: CodeLoopsLogger) {
-  globalLogger = logger;
+/**
+ * Set the global logger instance.
+ */
+export function setGlobalLogger(logger: CodeLoopsLogger): void {
+  setGlobalLoggerFromLib(logger);
 }

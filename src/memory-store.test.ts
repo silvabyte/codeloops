@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { pino } from "pino";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { MemoryStore } from "./memory-store.ts";
+import { MemoryStore } from "../lib/memory-store.ts";
 
 // Create a silent logger for tests
 const testLogger = pino({ level: "silent" });

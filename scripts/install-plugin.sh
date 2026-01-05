@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # CodeLoops Plugin Installation Script
-# Installs the memory plugin for OpenCode
+# Installs the bundled memory plugin for OpenCode
 
 set -e
 
@@ -13,35 +13,41 @@ BLUE="\033[0;34m"
 RED="\033[0;31m"
 NC="\033[0m"
 
-PLUGIN_NAME="memory.ts"
-SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/plugin"
+PLUGIN_NAME="codeloops.js"
+SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/dist"
 TARGET_DIR="$HOME/.config/opencode/plugin"
 
 echo -e "${BOLD}${BLUE}CodeLoops Plugin Installer${NC}\n"
 
-# Check if source plugin exists
+# Check if bundled plugin exists
 if [ ! -f "$SOURCE_DIR/$PLUGIN_NAME" ]; then
-  echo -e "${RED}Error: Plugin not found at $SOURCE_DIR/$PLUGIN_NAME${NC}"
-  exit 1
+	echo -e "${YELLOW}Plugin bundle not found. Building...${NC}"
+	cd "$(dirname "${BASH_SOURCE[0]}")/.."
+	bun run scripts/build-plugin.ts
+	if [ ! -f "$SOURCE_DIR/$PLUGIN_NAME" ]; then
+		echo -e "${RED}Error: Build failed. Plugin not found at $SOURCE_DIR/$PLUGIN_NAME${NC}"
+		exit 1
+	fi
+	echo -e "${GREEN}Build complete!${NC}\n"
 fi
 
 # Create target directory if it doesn't exist
 if [ ! -d "$TARGET_DIR" ]; then
-  echo -e "Creating plugin directory: ${BOLD}$TARGET_DIR${NC}"
-  mkdir -p "$TARGET_DIR"
+	echo -e "Creating plugin directory: ${BOLD}$TARGET_DIR${NC}"
+	mkdir -p "$TARGET_DIR"
 fi
 
-# Check if plugin already exists
+# Check if plugin already exists (file or symlink)
 if [ -f "$TARGET_DIR/$PLUGIN_NAME" ] || [ -L "$TARGET_DIR/$PLUGIN_NAME" ]; then
-  echo -e "${YELLOW}Plugin already exists. Removing old version...${NC}"
-  rm -f "$TARGET_DIR/$PLUGIN_NAME"
+	echo -e "${YELLOW}Plugin already exists. Removing old version...${NC}"
+	rm -f "$TARGET_DIR/$PLUGIN_NAME"
 fi
 
-# Create symlink
+# Create symlink to bundled plugin
 echo -e "Creating symlink: ${BOLD}$TARGET_DIR/$PLUGIN_NAME${NC} -> ${BOLD}$SOURCE_DIR/$PLUGIN_NAME${NC}"
 ln -s "$SOURCE_DIR/$PLUGIN_NAME" "$TARGET_DIR/$PLUGIN_NAME"
 
-echo -e "\n${GREEN}✅ Plugin installed successfully!${NC}"
+echo -e "\n${GREEN}Plugin installed successfully!${NC}"
 echo -e "\n${BOLD}Available tools:${NC}"
 echo -e "  - memory_store   Store a memory for later recall"
 echo -e "  - memory_recall  Query stored memories"
@@ -54,9 +60,9 @@ echo -e "  - todo.updated   Captures todo list changes"
 echo -e "  - session.created Loads recent memories on start"
 echo -e "\n${BOLD}Data location:${NC}"
 if [[ "$OSTYPE" == "darwin"* ]]; then
-  echo -e "  ~/Library/Application Support/codeloops/"
+	echo -e "  ~/Library/Application Support/codeloops/"
 elif [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "win32" ]]; then
-  echo -e "  %APPDATA%/codeloops/"
+	echo -e "  %APPDATA%/codeloops/"
 else
-  echo -e "  ~/.local/share/codeloops/"
+	echo -e "  ~/.local/share/codeloops/"
 fi
