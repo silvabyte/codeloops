@@ -48,6 +48,7 @@ import {
 // -----------------------------------------------------------------------------
 
 const TRAILING_SLASHES_REGEX = /\/+$/;
+const JSON_EXTRACT_REGEX = /\{[\s\S]*\}/;
 
 // -----------------------------------------------------------------------------
 // Plugin Logger
@@ -94,6 +95,10 @@ type CodeLoopsConfig = {
     model?: string;
     enabled?: boolean;
   };
+  critic?: {
+    model?: string;
+    enabled?: boolean;
+  };
 };
 
 /** Cached config to avoid re-reading file on every TODO */
@@ -121,6 +126,8 @@ function loadConfigFile(): CodeLoopsConfig {
         path: configPath,
         todoModel: cachedConfig.todo?.model,
         todoEnabled: cachedConfig.todo?.enabled,
+        criticModel: cachedConfig.critic?.model,
+        criticEnabled: cachedConfig.critic?.enabled,
       });
       return cachedConfig;
     }
@@ -153,8 +160,437 @@ function getTodoAgentConfig(): TodoAgentConfig {
   return { model, enabled };
 }
 
+// -----------------------------------------------------------------------------
+// Critic Agent Configuration
+// -----------------------------------------------------------------------------
+
+/**
+ * Configuration for the Critic agent in the actor-critic loop.
+ *
+ * Loaded from (in order of priority):
+ * 1. Environment variables (highest priority, overrides file config)
+ *    - CODELOOPS_CRITIC_MODEL: Model to use (defaults to actor's model if not set)
+ *    - CODELOOPS_CRITIC_ENABLED: Set to "false" to disable critic
+ *
+ * 2. Config file: ~/.config/codeloops/config.json
+ *    {
+ *      "critic": {
+ *        "model": "anthropic/claude-haiku-4-20250514",
+ *        "enabled": true
+ *      }
+ *    }
+ */
+type CriticConfig = {
+  /** Model in provider/model format (null = use actor's model) */
+  model: string | undefined;
+  /** Whether critic is enabled */
+  enabled: boolean;
+};
+
+function getCriticConfig(): CriticConfig {
+  const fileConfig = loadConfigFile();
+
+  // Environment variables take precedence over file config
+  const model = process.env.CODELOOPS_CRITIC_MODEL ?? fileConfig.critic?.model;
+
+  // For enabled: env var "false" disables, otherwise check file config, default true
+  let enabled = true;
+  if (process.env.CODELOOPS_CRITIC_ENABLED === "false") {
+    enabled = false;
+  } else if (fileConfig.critic?.enabled === false) {
+    enabled = false;
+  }
+
+  return { model, enabled };
+}
+
+// -----------------------------------------------------------------------------
+// Critic Types
+// -----------------------------------------------------------------------------
+
+/**
+ * Structured feedback from the critic agent.
+ */
+type CriticFeedback = {
+  verdict: "proceed" | "revise" | "stop";
+  confidence: number;
+  issues: string[];
+  suggestions: string[];
+  context: string;
+  reasoning: string;
+};
+
+/**
+ * Context provided to the critic for analysis.
+ */
+type CriticContext = {
+  action: {
+    tool: string;
+    args: Record<string, unknown>;
+    result: string;
+  };
+  diff?: string;
+  conversationContext: string;
+  project: {
+    name: string;
+    workdir: string;
+  };
+};
+
 // Create memory store functions using the shared lib
 const memoryStore = createMemoryStoreFunctions(pluginLogger);
+
+// -----------------------------------------------------------------------------
+// Critic Implementation
+// -----------------------------------------------------------------------------
+
+/**
+ * Format the context into a prompt for the critic agent.
+ */
+function formatCriticPrompt(ctx: CriticContext): string {
+  const parts: string[] = [
+    "## Action Taken",
+    "",
+    `**Tool:** ${ctx.action.tool}`,
+    "**Arguments:**",
+    "```json",
+    JSON.stringify(ctx.action.args, null, 2),
+    "```",
+    "",
+    "**Result:**",
+    "```",
+    ctx.action.result.slice(0, 2000), // Truncate very long results
+    "```",
+  ];
+
+  if (ctx.diff) {
+    parts.push(
+      "",
+      "## File Changes",
+      "```diff",
+      ctx.diff.slice(0, 3000),
+      "```"
+    );
+  }
+
+  if (ctx.conversationContext) {
+    parts.push("", "## Conversation Context", ctx.conversationContext);
+  }
+
+  parts.push(
+    "",
+    "## Your Task",
+    "",
+    "Analyze this action and provide structured JSON feedback.",
+    "Use your tools to read files, search code, or gather additional context as needed."
+  );
+
+  return parts.join("\n");
+}
+
+/**
+ * Parse the critic's JSON response.
+ * Falls back to a default "proceed" response if parsing fails.
+ */
+function parseCriticResponse(responseText: string): CriticFeedback {
+  try {
+    // Try to extract JSON from the response (critic might include extra text)
+    const jsonMatch = responseText.match(JSON_EXTRACT_REGEX);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        verdict: parsed.verdict || "proceed",
+        confidence:
+          typeof parsed.confidence === "number" ? parsed.confidence : 0.5,
+        issues: Array.isArray(parsed.issues) ? parsed.issues : [],
+        suggestions: Array.isArray(parsed.suggestions)
+          ? parsed.suggestions
+          : [],
+        context: parsed.context || "",
+        reasoning: parsed.reasoning || "",
+      };
+    }
+  } catch (err) {
+    pluginLogger.warn({
+      msg: "Failed to parse critic response",
+      error: err instanceof Error ? err.message : String(err),
+      responsePreview: responseText.slice(0, 200),
+    });
+  }
+
+  // Default fallback
+  return {
+    verdict: "proceed",
+    confidence: 0.5,
+    issues: [],
+    suggestions: [],
+    context: "",
+    reasoning: "Unable to parse critic response, defaulting to proceed.",
+  };
+}
+
+/**
+ * Format critic feedback for injection into the actor's context.
+ */
+function formatFeedbackForActor(feedback: CriticFeedback): string {
+  const verdictSymbol: Record<string, string> = {
+    proceed: "[PROCEED]",
+    revise: "[REVISE]",
+    stop: "[STOP]",
+  };
+
+  const parts: string[] = [
+    "---",
+    `## Critic Feedback ${verdictSymbol[feedback.verdict] || ""}`,
+    "",
+    `**Verdict:** ${feedback.verdict.toUpperCase()} (confidence: ${Math.round(feedback.confidence * 100)}%)`,
+  ];
+
+  if (feedback.issues.length > 0) {
+    parts.push("", "### Issues");
+    for (const issue of feedback.issues) {
+      parts.push(`- ${issue}`);
+    }
+  }
+
+  if (feedback.suggestions.length > 0) {
+    parts.push("", "### Suggestions");
+    for (const suggestion of feedback.suggestions) {
+      parts.push(`- ${suggestion}`);
+    }
+  }
+
+  if (feedback.context) {
+    parts.push("", "### Context", feedback.context);
+  }
+
+  if (feedback.reasoning) {
+    parts.push("", "### Reasoning", feedback.reasoning);
+  }
+
+  parts.push("---");
+
+  return parts.join("\n");
+}
+
+/**
+ * Set of session IDs that are critic sessions (to avoid critic critiquing itself).
+ */
+const criticSessionIds = new Set<string>();
+
+/**
+ * Tools that should trigger critic analysis.
+ * We focus on tools that make changes or could affect the codebase.
+ */
+const CRITIC_TRIGGER_TOOLS = new Set(["edit", "write", "bash", "multiEdit"]);
+
+/**
+ * Invoke the critic agent to analyze an action.
+ * Returns structured feedback.
+ *
+ * Uses the OpenCode SDK client which is typed via @opencode-ai/plugin.
+ */
+async function invokeCritic(
+  // biome-ignore lint/suspicious/noExplicitAny: SDK client types are complex
+  client: any,
+  context: CriticContext,
+  config: CriticConfig,
+  actorModel?: { providerID: string; modelID: string }
+): Promise<CriticFeedback> {
+  // Create a new session for the critic (fresh context)
+  const sessionResult = await client.session.create({
+    body: { title: `critic-${Date.now()}` },
+  });
+
+  const sessionId = sessionResult.data?.id;
+  if (!sessionId) {
+    pluginLogger.error({ msg: "Failed to create critic session" });
+    return parseCriticResponse("");
+  }
+
+  // Track this as a critic session
+  criticSessionIds.add(sessionId);
+
+  try {
+    // Determine model to use
+    let model: { providerID: string; modelID: string } | undefined;
+    if (config.model) {
+      const [providerID, ...modelParts] = config.model.split("/");
+      model = { providerID, modelID: modelParts.join("/") };
+    } else if (actorModel) {
+      model = actorModel;
+    }
+
+    // Send context to critic and get response
+    const response = await client.session.prompt({
+      path: { id: sessionId },
+      body: {
+        model,
+        agent: "critic",
+        parts: [{ type: "text" as const, text: formatCriticPrompt(context) }],
+      },
+    });
+
+    // Extract text from response parts
+    const responseParts = response.data?.parts || [];
+    const textParts = responseParts
+      // biome-ignore lint/suspicious/noExplicitAny: SDK response types
+      .filter((p: any) => p.type === "text" && p.text)
+      // biome-ignore lint/suspicious/noExplicitAny: SDK response types
+      .map((p: any) => p.text)
+      .join("\n");
+
+    return parseCriticResponse(textParts);
+  } finally {
+    // Clean up critic session
+    criticSessionIds.delete(sessionId);
+    try {
+      await client.session.delete({ path: { id: sessionId } });
+    } catch (err) {
+      pluginLogger.warn({
+        msg: "Failed to delete critic session",
+        sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+}
+
+/**
+ * Inject feedback into the actor's session without triggering a response.
+ */
+async function injectFeedbackIntoSession(
+  // biome-ignore lint/suspicious/noExplicitAny: SDK client types are complex
+  client: any,
+  sessionId: string,
+  feedback: CriticFeedback
+): Promise<void> {
+  const formatted = formatFeedbackForActor(feedback);
+
+  await client.session.prompt({
+    path: { id: sessionId },
+    body: {
+      noReply: true,
+      parts: [{ type: "text" as const, text: formatted }],
+    },
+  });
+}
+
+/**
+ * Check if critic should be skipped for this tool execution.
+ */
+function shouldSkipCritic(
+  toolName: string,
+  sessionId: string | undefined,
+  // biome-ignore lint/suspicious/noExplicitAny: SDK client types
+  client: any
+): { skip: boolean; reason?: string } {
+  const criticConfig = getCriticConfig();
+
+  if (!criticConfig.enabled) {
+    return { skip: true, reason: "disabled" };
+  }
+
+  if (sessionId && criticSessionIds.has(sessionId)) {
+    return { skip: true, reason: "critic-session" };
+  }
+
+  if (!CRITIC_TRIGGER_TOOLS.has(toolName)) {
+    return { skip: true, reason: "non-trigger-tool" };
+  }
+
+  if (!client) {
+    return { skip: true, reason: "no-client" };
+  }
+
+  return { skip: false };
+}
+
+/**
+ * Options for the critic hook handler.
+ */
+type CriticHookOptions = {
+  toolName: string;
+  inputArgs: Record<string, unknown>;
+  toolOutput: string;
+  sessionId: string | undefined;
+  projectName: string;
+  workdir: string;
+  currentSessionId: string | undefined;
+  currentModel: { providerID: string; modelID: string } | undefined;
+  conversationBuffer: ConversationBuffer;
+  // biome-ignore lint/suspicious/noExplicitAny: SDK client types
+  client: any;
+};
+
+/**
+ * Handle critic analysis for a tool execution.
+ * Extracted to reduce complexity in the main hook.
+ */
+async function handleCriticAnalysis(opts: CriticHookOptions): Promise<void> {
+  const criticConfig = getCriticConfig();
+
+  // Get conversation context
+  const conversationContext = getRecentContext(opts.conversationBuffer);
+
+  // Get diff if this was a file edit
+  let diff: string | undefined;
+  if (opts.toolName === "edit" || opts.toolName === "write") {
+    const filePath =
+      (opts.inputArgs.filePath as string) || (opts.inputArgs.file as string);
+    if (filePath) {
+      const fileDiff = await getFileDiff(filePath, opts.workdir);
+      if (fileDiff) {
+        diff = fileDiff;
+      }
+    }
+  }
+
+  // Build context for critic
+  const criticContext: CriticContext = {
+    action: {
+      tool: opts.toolName,
+      args: opts.inputArgs,
+      result: opts.toolOutput,
+    },
+    diff,
+    conversationContext,
+    project: {
+      name: opts.projectName,
+      workdir: opts.workdir,
+    },
+  };
+
+  // Invoke critic (blocking)
+  const feedback = await invokeCritic(
+    opts.client,
+    criticContext,
+    criticConfig,
+    opts.currentModel
+  );
+
+  // Store feedback in memory with role: "critic"
+  await memoryStore.append({
+    content: JSON.stringify(feedback),
+    project: opts.projectName,
+    tags: ["critic", "feedback", feedback.verdict],
+    source: "actor-critic",
+    sessionId: opts.currentSessionId,
+    role: "critic",
+  });
+
+  // Inject formatted feedback into actor's session
+  if (opts.sessionId) {
+    await injectFeedbackIntoSession(opts.client, opts.sessionId, feedback);
+  }
+
+  pluginLogger.info({
+    msg: "Critic analysis complete",
+    verdict: feedback.verdict,
+    confidence: feedback.confidence,
+    issueCount: feedback.issues.length,
+  });
+}
 
 // -----------------------------------------------------------------------------
 // Git Diff Helper
@@ -735,13 +1171,21 @@ type MemoryContextArgs = {
 // Plugin Export
 // -----------------------------------------------------------------------------
 
-export const CodeLoopsMemory: Plugin = async ({ project, directory }) => {
+export const CodeLoopsMemory: Plugin = async ({
+  project,
+  directory,
+  client,
+}) => {
   // Use project id or extract from directory path
   const workdir = project?.worktree || directory;
   const projectName = project?.id
     ? extractProjectName(project.worktree)
     : extractProjectName(directory);
   let currentSessionId: string | undefined;
+  // Note: currentModel tracking would require intercepting model selection events
+  // For now, critic uses its configured model or falls back to a default
+  const currentModel: { providerID: string; modelID: string } | undefined =
+    undefined;
 
   // Conversation buffer to capture context around file edits
   const conversationBuffer = createConversationBuffer();
@@ -904,6 +1348,57 @@ export const CodeLoopsMemory: Plugin = async ({ project, directory }) => {
         workdir,
         conversationBuffer,
       });
+    },
+
+    // -------------------------------------------------------------------------
+    // Tool Execution Hooks (Actor-Critic System)
+    // -------------------------------------------------------------------------
+
+    "tool.execute.after": async (input, output) => {
+      const toolName = input.tool as string;
+      // biome-ignore lint/suspicious/noExplicitAny: Plugin hook types
+      const sessionId = (input as any).sessionId as string | undefined;
+
+      const skipCheck = shouldSkipCritic(toolName, sessionId, client);
+      if (skipCheck.skip) {
+        if (skipCheck.reason === "no-client") {
+          pluginLogger.warn({ msg: "No client available for critic" });
+        }
+        return;
+      }
+
+      pluginLogger.info({
+        msg: "Triggering critic analysis",
+        tool: toolName,
+        sessionId,
+      });
+
+      try {
+        // biome-ignore lint/suspicious/noExplicitAny: Plugin hook types vary
+        const inputArgs = ((input as any).args || {}) as Record<
+          string,
+          unknown
+        >;
+        const toolOutput = output.output || "";
+
+        await handleCriticAnalysis({
+          toolName,
+          inputArgs,
+          toolOutput,
+          sessionId,
+          projectName,
+          workdir,
+          currentSessionId,
+          currentModel,
+          conversationBuffer,
+          client,
+        });
+      } catch (err) {
+        pluginLogger.error({
+          msg: "Critic analysis failed",
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     },
   };
 };

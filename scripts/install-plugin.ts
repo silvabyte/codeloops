@@ -2,10 +2,17 @@
 
 /**
  * CodeLoops Plugin Installation Script
- * Installs the bundled memory plugin for OpenCode
+ * Installs the bundled memory plugin, agents, and skills for OpenCode
  */
 
-import { existsSync, lstatSync, mkdirSync, rmSync, symlinkSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { $ } from "bun";
 
@@ -20,7 +27,52 @@ const NC = "\x1b[0m"; // No Color
 const PLUGIN_NAME = "codeloops.js";
 const ROOT_DIR = join(dirname(import.meta.path), "..");
 const SOURCE_DIR = join(ROOT_DIR, "dist");
-const TARGET_DIR = join(process.env.HOME || "", ".config/opencode/plugin");
+const OPENCODE_CONFIG = join(process.env.HOME || "", ".config/opencode");
+const TARGET_DIR = join(OPENCODE_CONFIG, "plugin");
+const AGENTS_SOURCE = join(ROOT_DIR, "agents");
+const AGENTS_TARGET = join(OPENCODE_CONFIG, "agent");
+const SKILLS_SOURCE = join(ROOT_DIR, "skills");
+const SKILLS_TARGET = join(OPENCODE_CONFIG, "skill");
+
+/**
+ * Create a symlink, removing any existing file/symlink first.
+ */
+function createSymlink(source: string, target: string): void {
+  if (existsSync(target) || lstatSync(target, { throwIfNoEntry: false })) {
+    rmSync(target, { force: true });
+  }
+  symlinkSync(source, target);
+}
+
+/**
+ * Install symlinks for all files in a directory.
+ */
+function installDirectorySymlinks(
+  sourceDir: string,
+  targetDir: string,
+  label: string
+): void {
+  if (!existsSync(sourceDir)) {
+    console.log(`${YELLOW}No ${label} found at ${sourceDir}${NC}`);
+    return;
+  }
+
+  if (!existsSync(targetDir)) {
+    console.log(`Creating ${label} directory: ${BOLD}${targetDir}${NC}`);
+    mkdirSync(targetDir, { recursive: true });
+  }
+
+  const items = readdirSync(sourceDir);
+  for (const item of items) {
+    const sourcePath = join(sourceDir, item);
+    const targetPath = join(targetDir, item);
+
+    console.log(
+      `  Linking ${label}: ${BOLD}${item}${NC} -> ${BOLD}${sourcePath}${NC}`
+    );
+    createSymlink(sourcePath, targetPath);
+  }
+}
 
 console.log(`${BOLD}${BLUE}CodeLoops Plugin Installer${NC}\n`);
 
@@ -66,6 +118,14 @@ symlinkSync(sourcePath, targetPath);
 
 console.log(`\n${GREEN}Plugin installed successfully!${NC}`);
 
+// Install agents
+console.log(`\n${BOLD}Installing agents...${NC}`);
+installDirectorySymlinks(AGENTS_SOURCE, AGENTS_TARGET, "agent");
+
+// Install skills
+console.log(`\n${BOLD}Installing skills...${NC}`);
+installDirectorySymlinks(SKILLS_SOURCE, SKILLS_TARGET, "skill");
+
 console.log(`\n${BOLD}Available tools:${NC}`);
 console.log("  - memory_store   Store a memory for later recall");
 console.log("  - memory_recall  Query stored memories");
@@ -77,6 +137,12 @@ console.log(`\n${BOLD}Auto-capture events:${NC}`);
 console.log("  - file.edited    Captures file edits with conversation context");
 console.log("  - todo.updated   Captures todo list changes");
 console.log("  - session.created Initializes session tracking");
+
+console.log(`\n${BOLD}Actor-Critic system:${NC}`);
+console.log("  - actor agent    Primary agent with feedback awareness");
+console.log("  - critic agent   Analyzes actions and provides feedback");
+console.log("  - actor-critic-protocol skill   Detailed protocol guidance");
+console.log("  - Configure in ~/.config/codeloops/config.json");
 
 console.log(`\n${BOLD}bd (beads) integration:${NC}`);
 console.log("  - Detects TODO comments in file edits");

@@ -1,10 +1,17 @@
-import type { MemoryEntry, QueryOptions } from "./types.ts";
+import type { MemoryEntry, MemoryRole, QueryOptions } from "./types.ts";
 
 /**
  * Check if entry matches the project filter.
  */
 export function matchesProject(entry: MemoryEntry, project?: string): boolean {
   return !project || entry.project === project;
+}
+
+/**
+ * Check if entry matches the role filter.
+ */
+export function matchesRole(entry: MemoryEntry, role?: MemoryRole): boolean {
+  return !role || entry.role === role;
 }
 
 /**
@@ -51,6 +58,7 @@ export function entryMatchesFilters(
     matchesProject(entry, options.project) &&
     matchesSessionId(entry, options.sessionId) &&
     matchesTags(entry, options.tags) &&
-    matchesQuery(entry, options.query)
+    matchesQuery(entry, options.query) &&
+    matchesRole(entry, options.role)
   );
 }

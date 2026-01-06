@@ -1,6 +1,15 @@
 import { z } from "zod";
 
 /**
+ * Role of the entity that created the memory entry.
+ * - "actor": The primary coding agent
+ * - "critic": The feedback/analysis agent
+ * - "human": User-provided clarification (future)
+ */
+export const MemoryRoleSchema = z.enum(["actor", "critic", "human"]);
+export type MemoryRole = z.infer<typeof MemoryRoleSchema>;
+
+/**
  * Schema for validating memory entries stored in NDJSON format.
  */
 export const MemoryEntrySchema = z.object({
@@ -11,6 +20,7 @@ export const MemoryEntrySchema = z.object({
   createdAt: z.string().datetime(),
   sessionId: z.string().optional(),
   source: z.string().optional(),
+  role: MemoryRoleSchema.optional(),
 });
 
 /**
@@ -41,6 +51,8 @@ export type QueryOptions = {
   limit?: number;
   /** Filter by session ID */
   sessionId?: string;
+  /** Filter by role (actor, critic, human) */
+  role?: MemoryRole;
 };
 
 /**
@@ -52,6 +64,7 @@ export type AppendInput = {
   tags?: string[];
   sessionId?: string;
   source?: string;
+  role?: MemoryRole;
 };
 
 /**

@@ -78,6 +78,7 @@ export class MemoryStore {
       createdAt: new Date().toISOString(),
       sessionId: input.sessionId,
       source: input.source,
+      role: input.role,
     };
 
     const line = `${JSON.stringify(entry)}\n`;
