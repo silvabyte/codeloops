@@ -1,6 +1,6 @@
 import { exec } from "node:child_process";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createLogger } from "../logger.ts";
+import { createLogger } from "../../lib/logger.ts";
 import { getGitDiff } from "./git.ts";
 
 // Mock child_process exec

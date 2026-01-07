@@ -1,5 +1,5 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import type { CodeLoopsLogger } from "../logger.js";
+import type { CodeLoopsLogger } from "../../lib/logger.js";
 import { createMcpServerInstance } from "./index.js";
 import { registerTools } from "./tools.js";
 

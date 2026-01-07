@@ -1,6 +1,6 @@
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import type { CodeLoopsLogger } from "../logger.ts";
+import type { CodeLoopsLogger } from "../../lib/logger.ts";
 
 const execAsync = promisify(exec);
 

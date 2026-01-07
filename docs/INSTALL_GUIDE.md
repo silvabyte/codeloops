@@ -102,14 +102,13 @@ For clients that support HTTP transport:
 
 ### Available MCP Tools
 
-| Tool             | Description                                |
-| ---------------- | ------------------------------------------ |
-| `memory_store`   | Store a memory with content, project, tags |
-| `memory_recall`  | Query memories by text, tags, project      |
-| `memory_forget`  | Soft-delete a memory by ID                 |
-| `memory_context` | Get recent memories for current project    |
-| `list_projects`  | List all projects with memories            |
-| `resume`         | Load recent memories to continue work      |
+| Tool              | Description                                |
+| ----------------- | ------------------------------------------ |
+| `memory_store`    | Store a memory with content, project, tags |
+| `memory_recall`   | Query memories by text, tags, project      |
+| `memory_forget`   | Soft-delete a memory by ID                 |
+| `memory_context`  | Get recent memories for current project    |
+| `memory_projects` | List all projects with memories            |
 
 ---
 

@@ -1,4 +1,4 @@
-import { createLogger } from "./logger.js";
+import { createLogger } from "../lib/logger.js";
 import { http } from "./server/http.js";
 import { stdio } from "./server/stdio.js";
 

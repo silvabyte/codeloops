@@ -67,14 +67,14 @@ npm run start:http
 
 ## Available Tools
 
-| Tool             | Description                                            |
-| ---------------- | ------------------------------------------------------ |
-| `memory_store`   | Store a memory with content, tags, and optional source |
-| `memory_recall`  | Query memories by text search, tags, or project        |
-| `memory_forget`  | Soft-delete a memory (moves to deleted log)            |
-| `memory_context` | Quick retrieval of recent project memories             |
-| `list_projects`  | List all projects with stored memories                 |
-| `resume`         | Load recent memories to continue where you left off    |
+| Tool              | Description                                            |
+| ----------------- | ------------------------------------------------------ |
+| `memory_store`    | Store a memory with content, tags, and optional source |
+| `memory_recall`   | Query memories by text search, tags, or project        |
+| `memory_forget`   | Soft-delete a memory (moves to deleted log)            |
+| `memory_context`  | Quick retrieval of recent project memories             |
+| `memory_projects` | List all projects with stored memories                 |
+| `critic_toggle`   | Enable/disable the actor-critic feedback system        |
 
 ## Usage Examples
 
@@ -135,6 +135,31 @@ npx -y tsx src --http --port 8080 --host 127.0.0.1
 npm run plugin:install
 ```
 
+## Actor-Critic System (OpenCode Plugin)
+
+The OpenCode plugin includes an optional **actor-critic feedback system** that provides real-time analysis of your actions:
+
+### Enabling the Critic
+
+```
+Use critic_toggle with action "on" to enable
+Use critic_toggle with action "off" to disable
+Use critic_toggle with action "status" to check
+```
+
+Or use the slash commands: `/critic-on`, `/critic-off`, `/critic-status`
+
+### How It Works
+
+When enabled, after each action (file edits, bash commands), a critic agent analyzes your work and provides structured feedback:
+
+- **Verdict**: `proceed` (continue), `revise` (address issues), or `stop` (critical problem)
+- **Confidence**: How certain the critic is (0-100%)
+- **Issues**: Specific problems found
+- **Suggestions**: Actionable improvements
+
+The critic uses tools to verify its assessments (reading files, checking diffs) before providing feedback.
+
 ## Architecture
 
 ```
@@ -148,7 +173,7 @@ npm run plugin:install
          ▼                           ▼
 ┌─────────────────┐       ┌─────────────────┐
 │   MCP Server    │       │ OpenCode Plugin │
-│  (stdio/HTTP)   │       │   (memory.ts)   │
+│  (stdio/HTTP)   │       │  + Actor-Critic │
 └────────┬────────┘       └────────┬────────┘
          │                         │
          └───────────┬─────────────┘
