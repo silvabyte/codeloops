@@ -442,17 +442,21 @@ async function invokeCritic(
 
     return parseCriticResponse(textParts);
   } finally {
-    // Clean up critic session
-    criticSessionIds.delete(sessionId);
-    try {
-      await client.session.delete({ path: { id: sessionId } });
-    } catch (err) {
-      pluginLogger.warn({
-        msg: "Failed to delete critic session",
-        sessionId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
+    // Clean up critic session after a delay to ensure all tool calls complete
+    // The delay prevents race conditions where tool.execute.after fires after
+    // we've removed the session ID from the tracking set
+    setTimeout(async () => {
+      criticSessionIds.delete(sessionId);
+      try {
+        await client.session.delete({ path: { id: sessionId } });
+      } catch (err) {
+        pluginLogger.warn({
+          msg: "Failed to delete critic session",
+          sessionId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }, 5000); // 5 second delay
   }
 }
 
@@ -477,6 +481,12 @@ async function injectFeedbackIntoSession(
 }
 
 /**
+ * Flag to prevent nested critic invocations.
+ * This is a simple mutex to ensure only one critic analysis runs at a time.
+ */
+const criticState = { inProgress: false };
+
+/**
  * Check if critic should be skipped for this tool execution.
  */
 function shouldSkipCritic(
@@ -489,6 +499,11 @@ function shouldSkipCritic(
 
   if (!criticConfig.enabled) {
     return { skip: true, reason: "disabled" };
+  }
+
+  // Skip if a critic is already running (prevents infinite loops)
+  if (criticState.inProgress) {
+    return { skip: true, reason: "critic-in-progress" };
   }
 
   if (sessionId && criticSessionIds.has(sessionId)) {
@@ -528,6 +543,21 @@ type CriticHookOptions = {
  * Extracted to reduce complexity in the main hook.
  */
 async function handleCriticAnalysis(opts: CriticHookOptions): Promise<void> {
+  // Set flag to prevent nested critic invocations
+  criticState.inProgress = true;
+
+  try {
+    await performCriticAnalysis(opts);
+  } finally {
+    criticState.inProgress = false;
+  }
+}
+
+/**
+ * Perform the actual critic analysis.
+ * Separated to allow wrapping with the inProgress flag.
+ */
+async function performCriticAnalysis(opts: CriticHookOptions): Promise<void> {
   const criticConfig = getCriticConfig();
 
   // Get conversation context
