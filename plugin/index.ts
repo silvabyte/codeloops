@@ -224,6 +224,12 @@ type CriticFeedback = {
 
 /**
  * Context provided to the critic for analysis.
+ *
+ * Note: conversationContext was removed because the conversation buffer
+ * captures streaming/partial message updates that the critic misinterprets
+ * as UI rendering issues, causing hallucinated feedback about "technical
+ * problems" that don't exist. The critic should rely on tool args, result,
+ * and git diff for context instead.
  */
 type CriticContext = {
   action: {
@@ -232,7 +238,6 @@ type CriticContext = {
     result: string;
   };
   diff?: string;
-  conversationContext: string;
   project: {
     name: string;
     workdir: string;
@@ -273,10 +278,6 @@ function formatCriticPrompt(ctx: CriticContext): string {
       ctx.diff.slice(0, 3000),
       "```"
     );
-  }
-
-  if (ctx.conversationContext) {
-    parts.push("", "## Conversation Context", ctx.conversationContext);
   }
 
   parts.push(
@@ -824,8 +825,9 @@ async function handleCriticAnalysis(opts: CriticHookOptions): Promise<void> {
 async function performCriticAnalysis(opts: CriticHookOptions): Promise<void> {
   const criticConfig = getCriticConfig();
 
-  // Get conversation context
-  const conversationContext = getRecentContext(opts.conversationBuffer);
+  // Note: We no longer pass conversationContext to the critic because
+  // the buffer captures streaming message fragments that cause the critic
+  // to hallucinate "UI rendering issues". See CriticContext type comment.
 
   // Get diff if this was a file edit
   let diff: string | undefined;
@@ -840,7 +842,7 @@ async function performCriticAnalysis(opts: CriticHookOptions): Promise<void> {
     }
   }
 
-  // Build context for critic
+  // Build context for critic (no conversationContext - see CriticContext comment)
   const criticContext: CriticContext = {
     action: {
       tool: opts.toolName,
@@ -848,7 +850,6 @@ async function performCriticAnalysis(opts: CriticHookOptions): Promise<void> {
       result: opts.toolOutput,
     },
     diff,
-    conversationContext,
     project: {
       name: opts.projectName,
       workdir: opts.workdir,

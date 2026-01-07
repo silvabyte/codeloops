@@ -19695,9 +19695,6 @@ function formatCriticPrompt(ctx) {
   if (ctx.diff) {
     parts.push("", "## File Changes", "```diff", ctx.diff.slice(0, 3000), "```");
   }
-  if (ctx.conversationContext) {
-    parts.push("", "## Conversation Context", ctx.conversationContext);
-  }
   parts.push("", "## Your Task", "", "Analyze this action and provide structured JSON feedback.", "Use your tools to read files, search code, or gather additional context as needed.");
   return parts.join(`
 `);
@@ -20000,7 +19997,6 @@ async function handleCriticAnalysis(opts) {
 }
 async function performCriticAnalysis(opts) {
   const criticConfig = getCriticConfig();
-  const conversationContext = getRecentContext(opts.conversationBuffer);
   let diff;
   if (opts.toolName === "edit" || opts.toolName === "write") {
     const filePath = opts.inputArgs.filePath || opts.inputArgs.file;
@@ -20018,7 +20014,6 @@ async function performCriticAnalysis(opts) {
       result: opts.toolOutput
     },
     diff,
-    conversationContext,
     project: {
       name: opts.projectName,
       workdir: opts.workdir
