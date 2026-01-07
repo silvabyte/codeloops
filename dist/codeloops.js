@@ -20284,6 +20284,25 @@ var CodeLoopsMemory = async ({
   let currentSessionId;
   const currentModel = undefined;
   const conversationBuffer = createConversationBuffer();
+  const toolArgsCache = new Map;
+  const TOOL_ARGS_CACHE_TTL_MS = 30000;
+  function cacheToolArgs(callId, args) {
+    const now = Date.now();
+    for (const [key, value] of toolArgsCache) {
+      if (now - value.timestamp > TOOL_ARGS_CACHE_TTL_MS) {
+        toolArgsCache.delete(key);
+      }
+    }
+    toolArgsCache.set(callId, { args, timestamp: now });
+  }
+  function getCachedToolArgs(callId) {
+    const cached2 = toolArgsCache.get(callId);
+    if (cached2) {
+      toolArgsCache.delete(callId);
+      return cached2.args;
+    }
+    return {};
+  }
   const recentEvents = new Map;
   const DEDUP_WINDOW_MS = 1000;
   function isDuplicateEvent(eventKey) {
@@ -20420,19 +20439,28 @@ var CodeLoopsMemory = async ({
         conversationBuffer
       });
     },
+    "tool.execute.before": async (input, output) => {
+      const callId = input.callID;
+      const args = output.args;
+      if (callId && args) {
+        cacheToolArgs(callId, args);
+      }
+      await Promise.resolve();
+    },
     "tool.execute.after": async (input, output) => {
       const toolName = input.tool;
-      const inputAny = input;
-      const sessionId = inputAny.sessionID ?? inputAny.sessionId;
+      const sessionId = input.sessionID;
+      const callId = input.callID;
       if (!shouldRunCritic(client, toolName, sessionId)) {
         return;
       }
       pluginLogger.info({
         msg: "Triggering critic analysis",
         tool: toolName,
-        sessionId
+        sessionId,
+        callId
       });
-      const inputArgs = input.args || {};
+      const inputArgs = getCachedToolArgs(callId);
       const toolOutput = output.output || "";
       try {
         await handleCriticAnalysis({

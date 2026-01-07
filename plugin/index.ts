@@ -1339,6 +1339,34 @@ export const CodeLoopsMemory: Plugin = async ({
   // Conversation buffer to capture context around file edits
   const conversationBuffer = createConversationBuffer();
 
+  // Tool args cache: capture args in before hook for use in after hook
+  // Keyed by callID, stores args and timestamp for cleanup
+  const toolArgsCache = new Map<
+    string,
+    { args: Record<string, unknown>; timestamp: number }
+  >();
+  const TOOL_ARGS_CACHE_TTL_MS = 30_000; // 30 seconds TTL for cached args
+
+  function cacheToolArgs(callId: string, args: Record<string, unknown>): void {
+    // Clean up old entries
+    const now = Date.now();
+    for (const [key, value] of toolArgsCache) {
+      if (now - value.timestamp > TOOL_ARGS_CACHE_TTL_MS) {
+        toolArgsCache.delete(key);
+      }
+    }
+    toolArgsCache.set(callId, { args, timestamp: now });
+  }
+
+  function getCachedToolArgs(callId: string): Record<string, unknown> {
+    const cached = toolArgsCache.get(callId);
+    if (cached) {
+      toolArgsCache.delete(callId); // Remove after retrieval
+      return cached.args;
+    }
+    return {};
+  }
+
   // Deduplication: track recent events to prevent duplicates
   const recentEvents = new Map<string, number>();
   const DEDUP_WINDOW_MS = 1000; // Ignore duplicate events within 1 second
@@ -1546,14 +1574,24 @@ export const CodeLoopsMemory: Plugin = async ({
     // Tool Execution Hooks (Actor-Critic System)
     // -------------------------------------------------------------------------
 
+    "tool.execute.before": async (input, output) => {
+      // Cache tool args by callID for retrieval in after hook
+      // The after hook doesn't receive args, so we capture them here
+      const callId = input.callID;
+      const args = output.args as Record<string, unknown>;
+
+      if (callId && args) {
+        cacheToolArgs(callId, args);
+      }
+
+      // Await to satisfy async function requirement
+      await Promise.resolve();
+    },
+
     "tool.execute.after": async (input, output) => {
-      const toolName = input.tool as string;
-      // biome-ignore lint/suspicious/noExplicitAny: Plugin hook types
-      const inputAny = input as any;
-      // Note: OpenCode uses sessionID (capital ID), not sessionId
-      const sessionId = (inputAny.sessionID ?? inputAny.sessionId) as
-        | string
-        | undefined;
+      const toolName = input.tool;
+      const sessionId = input.sessionID;
+      const callId = input.callID;
 
       // Check all conditions for running critic
       if (!shouldRunCritic(client, toolName, sessionId)) {
@@ -1564,10 +1602,11 @@ export const CodeLoopsMemory: Plugin = async ({
         msg: "Triggering critic analysis",
         tool: toolName,
         sessionId,
+        callId,
       });
 
-      // biome-ignore lint/suspicious/noExplicitAny: Plugin hook types vary
-      const inputArgs = ((input as any).args || {}) as Record<string, unknown>;
+      // Retrieve cached args from before hook
+      const inputArgs = getCachedToolArgs(callId);
       const toolOutput = output.output || "";
 
       try {
