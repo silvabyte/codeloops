@@ -19469,6 +19469,29 @@ class MemoryStore {
       fileStream.close();
     }
   }
+  async hasDuplicateRecent(project, source, contentHash, windowMs = 5000) {
+    if (!existsSync2(this.logFilePath)) {
+      return false;
+    }
+    const cutoffTime = new Date(Date.now() - windowMs).toISOString();
+    const fileStream = createReadStream(this.logFilePath);
+    const rl = readline.createInterface({
+      input: fileStream,
+      crlfDelay: Number.POSITIVE_INFINITY
+    });
+    try {
+      for await (const line of rl) {
+        const entry = parseMemoryEntry(line);
+        if (entry && entry.project === project && entry.source === source && entry.createdAt >= cutoffTime && entry.content.includes(contentHash)) {
+          return true;
+        }
+      }
+      return false;
+    } finally {
+      rl.close();
+      fileStream.close();
+    }
+  }
   async query(options = {}) {
     if (!existsSync2(this.logFilePath)) {
       return [];
@@ -19570,7 +19593,8 @@ function createMemoryStoreFunctions(logger, options) {
     query: (opts) => store.query(opts),
     getById: (id) => store.getById(id),
     forget: (id, reason) => store.forget(id, reason),
-    listProjects: () => store.listProjects()
+    listProjects: () => store.listProjects(),
+    hasDuplicateRecent: (project, source, contentHash, windowMs) => store.hasDuplicateRecent(project, source, contentHash, windowMs)
   };
 }
 
@@ -20316,6 +20340,14 @@ async function handleFileEdited(ctx) {
   if (ctx.isDuplicate(eventKey)) {
     return;
   }
+  const isDuplicateAcrossInstances = await memoryStore.hasDuplicateRecent(ctx.projectName, "file.edited", `Edited file: ${ctx.file}`, 5000);
+  if (isDuplicateAcrossInstances) {
+    pluginLogger.info({
+      msg: "Skipping duplicate file edit (cross-instance)",
+      file: ctx.file
+    });
+    return;
+  }
   const diff = await getFileDiff(ctx.file, ctx.workdir);
   const contentParts = [];
   if (ctx.conversationContext) {
@@ -20360,8 +20392,17 @@ async function handleTodoUpdated(todos, projectName, sessionId, isDuplicate) {
     return;
   }
   const todoCount = todos?.length || 0;
+  const contentHash = `Todo list updated (${todoCount} items)`;
+  const isDuplicateAcrossInstances = await memoryStore.hasDuplicateRecent(projectName, "todo.updated", contentHash, 5000);
+  if (isDuplicateAcrossInstances) {
+    pluginLogger.info({
+      msg: "Skipping duplicate todo update (cross-instance)",
+      todoCount
+    });
+    return;
+  }
   await memoryStore.append({
-    content: `Todo list updated (${todoCount} items)`,
+    content: contentHash,
     project: projectName,
     tags: ["todo", "auto-capture"],
     source: "todo.updated",
