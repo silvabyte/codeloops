@@ -1376,8 +1376,25 @@ type FileEditContext = {
 };
 
 async function handleFileEdited(ctx: FileEditContext): Promise<void> {
+  // First check in-memory dedup (fast path for same instance)
   const eventKey = `file.edited:${ctx.file}`;
   if (ctx.isDuplicate(eventKey)) {
+    return;
+  }
+
+  // Then check file-based dedup (cross-instance coordination)
+  // Use file path as content hash for deduplication
+  const isDuplicateAcrossInstances = await memoryStore.hasDuplicateRecent(
+    ctx.projectName,
+    "file.edited",
+    `Edited file: ${ctx.file}`,
+    5000 // 5 second window
+  );
+  if (isDuplicateAcrossInstances) {
+    pluginLogger.info({
+      msg: "Skipping duplicate file edit (cross-instance)",
+      file: ctx.file,
+    });
     return;
   }
 
@@ -1431,13 +1448,32 @@ async function handleTodoUpdated(
   sessionId: string | undefined,
   isDuplicate: DedupFn
 ): Promise<void> {
+  // In-memory dedup (fast path)
   const eventKey = `todo.updated:${JSON.stringify(todos)}`;
   if (isDuplicate(eventKey)) {
     return;
   }
+
   const todoCount = todos?.length || 0;
+  const contentHash = `Todo list updated (${todoCount} items)`;
+
+  // File-based dedup (cross-instance)
+  const isDuplicateAcrossInstances = await memoryStore.hasDuplicateRecent(
+    projectName,
+    "todo.updated",
+    contentHash,
+    5000
+  );
+  if (isDuplicateAcrossInstances) {
+    pluginLogger.info({
+      msg: "Skipping duplicate todo update (cross-instance)",
+      todoCount,
+    });
+    return;
+  }
+
   await memoryStore.append({
-    content: `Todo list updated (${todoCount} items)`,
+    content: contentHash,
     project: projectName,
     tags: ["todo", "auto-capture"],
     source: "todo.updated",

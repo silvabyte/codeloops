@@ -141,6 +141,53 @@ export class MemoryStore {
   }
 
   /**
+   * Check if a similar entry exists within a time window.
+   * Used for cross-instance deduplication of auto-captured events.
+   *
+   * @param project - Project name to check within
+   * @param source - Event source (e.g., "file.edited")
+   * @param contentHash - A hash/key to identify duplicate content
+   * @param windowMs - Time window in milliseconds (default: 5 seconds)
+   */
+  async hasDuplicateRecent(
+    project: string,
+    source: string,
+    contentHash: string,
+    windowMs = 5000
+  ): Promise<boolean> {
+    if (!existsSync(this.logFilePath)) {
+      return false;
+    }
+
+    const cutoffTime = new Date(Date.now() - windowMs).toISOString();
+
+    const fileStream = createReadStream(this.logFilePath);
+    const rl = readline.createInterface({
+      input: fileStream,
+      crlfDelay: Number.POSITIVE_INFINITY,
+    });
+
+    try {
+      for await (const line of rl) {
+        const entry = parseMemoryEntry(line);
+        if (
+          entry &&
+          entry.project === project &&
+          entry.source === source &&
+          entry.createdAt >= cutoffTime &&
+          entry.content.includes(contentHash)
+        ) {
+          return true;
+        }
+      }
+      return false;
+    } finally {
+      rl.close();
+      fileStream.close();
+    }
+  }
+
+  /**
    * Query entries with filters.
    * Returns the most recent entries matching the criteria.
    */
@@ -285,5 +332,11 @@ export function createMemoryStoreFunctions(
     getById: (id: string) => store.getById(id),
     forget: (id: string, reason?: string) => store.forget(id, reason),
     listProjects: () => store.listProjects(),
+    hasDuplicateRecent: (
+      project: string,
+      source: string,
+      contentHash: string,
+      windowMs?: number
+    ) => store.hasDuplicateRecent(project, source, contentHash, windowMs),
   };
 }
