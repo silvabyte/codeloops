@@ -385,49 +385,136 @@ const criticSessionIds = new Set<string>();
 const CRITIC_TRIGGER_TOOLS = new Set(["edit", "write", "bash", "multiEdit"]);
 
 /**
- * Invoke the critic agent to analyze an action.
- * Returns structured feedback.
- *
- * Uses the OpenCode SDK client which is typed via @opencode-ai/plugin.
+ * Get or create a critic session for the current actor session.
+ * Reuses existing session if available, creates new one if needed.
  */
-async function invokeCritic(
+async function getOrCreateCriticSession(
   // biome-ignore lint/suspicious/noExplicitAny: SDK client types are complex
   client: any,
-  context: CriticContext,
-  config: CriticConfig,
-  actorModel?: { providerID: string; modelID: string }
-): Promise<CriticFeedback> {
-  // Create a new session for the critic (fresh context)
+  actorSessionId: string
+): Promise<string | null> {
+  // If actor session changed, clean up old critic session
+  if (
+    criticState.actorSessionId &&
+    criticState.actorSessionId !== actorSessionId
+  ) {
+    await cleanupCriticSession(client);
+  }
+
+  // Reuse existing critic session if available
+  if (criticState.criticSessionId) {
+    return criticState.criticSessionId;
+  }
+
+  // Create new critic session
   const sessionResult = await client.session.create({
-    body: { title: `critic-${Date.now()}` },
+    body: { title: `critic-for-${actorSessionId}` },
   });
 
   const sessionId = sessionResult.data?.id;
   if (!sessionId) {
     pluginLogger.error({ msg: "Failed to create critic session" });
-    return parseCriticResponse("");
+    return null;
   }
 
-  // Track this as a critic session
+  // Track the new session
+  criticState.criticSessionId = sessionId;
+  criticState.actorSessionId = actorSessionId;
   criticSessionIds.add(sessionId);
+
+  pluginLogger.info({
+    msg: "Created reusable critic session",
+    criticSessionId: sessionId,
+    actorSessionId,
+  });
+
+  return sessionId;
+}
+
+/**
+ * Clean up the current critic session.
+ * Called when actor session changes or critic is disabled.
+ */
+async function cleanupCriticSession(
+  // biome-ignore lint/suspicious/noExplicitAny: SDK client types are complex
+  client: any
+): Promise<void> {
+  if (!criticState.criticSessionId) {
+    return;
+  }
+
+  const sessionId = criticState.criticSessionId;
+  criticSessionIds.delete(sessionId);
+  criticState.criticSessionId = null;
+  criticState.actorSessionId = null;
+
+  try {
+    await client.session.delete({ path: { id: sessionId } });
+    pluginLogger.info({
+      msg: "Cleaned up critic session",
+      sessionId,
+    });
+  } catch (err) {
+    pluginLogger.warn({
+      msg: "Failed to delete critic session",
+      sessionId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/**
+ * Options for invoking the critic agent.
+ */
+type InvokeCriticOptions = {
+  // biome-ignore lint/suspicious/noExplicitAny: SDK client types are complex
+  client: any;
+  context: CriticContext;
+  config: CriticConfig;
+  actorSessionId: string;
+  actorModel?: { providerID: string; modelID: string };
+};
+
+/**
+ * Invoke the critic agent to analyze an action.
+ * Returns structured feedback.
+ *
+ * Uses a reusable critic session per actor session to:
+ * 1. Reduce session creation overhead
+ * 2. Allow critic to build context across multiple analyses
+ * 3. Enable continuity in feedback within an actor session
+ */
+async function invokeCritic(
+  opts: InvokeCriticOptions
+): Promise<CriticFeedback> {
+  // Get or create a reusable critic session
+  const sessionId = await getOrCreateCriticSession(
+    opts.client,
+    opts.actorSessionId
+  );
+  if (!sessionId) {
+    return parseCriticResponse("");
+  }
 
   try {
     // Determine model to use
     let model: { providerID: string; modelID: string } | undefined;
-    if (config.model) {
-      const [providerID, ...modelParts] = config.model.split("/");
+    if (opts.config.model) {
+      const [providerID, ...modelParts] = opts.config.model.split("/");
       model = { providerID, modelID: modelParts.join("/") };
-    } else if (actorModel) {
-      model = actorModel;
+    } else if (opts.actorModel) {
+      model = opts.actorModel;
     }
 
     // Send context to critic and get response
-    const response = await client.session.prompt({
+    const response = await opts.client.session.prompt({
       path: { id: sessionId },
       body: {
         model,
         agent: "critic",
-        parts: [{ type: "text" as const, text: formatCriticPrompt(context) }],
+        parts: [
+          { type: "text" as const, text: formatCriticPrompt(opts.context) },
+        ],
       },
     });
 
@@ -441,22 +528,16 @@ async function invokeCritic(
       .join("\n");
 
     return parseCriticResponse(textParts);
-  } finally {
-    // Clean up critic session after a delay to ensure all tool calls complete
-    // The delay prevents race conditions where tool.execute.after fires after
-    // we've removed the session ID from the tracking set
-    setTimeout(async () => {
-      criticSessionIds.delete(sessionId);
-      try {
-        await client.session.delete({ path: { id: sessionId } });
-      } catch (err) {
-        pluginLogger.warn({
-          msg: "Failed to delete critic session",
-          sessionId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }, 5000); // 5 second delay
+  } catch (err) {
+    // If session became invalid, clear it so next call creates a new one
+    pluginLogger.error({
+      msg: "Critic session error, will recreate on next call",
+      sessionId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    criticState.criticSessionId = null;
+    criticSessionIds.delete(sessionId);
+    return parseCriticResponse("");
   }
 }
 
@@ -484,10 +565,19 @@ async function injectFeedbackIntoSession(
  * Critic state tracking.
  * - inProgress: Mutex to prevent nested critic invocations
  * - sessionEnabled: Per-session toggle, controlled via /critic command
+ * - criticSessionId: Reusable critic session for the current actor session
+ * - actorSessionId: Track which actor session the critic session belongs to
  */
-const criticState = {
+const criticState: {
+  inProgress: boolean;
+  sessionEnabled: boolean;
+  criticSessionId: string | null;
+  actorSessionId: string | null;
+} = {
   inProgress: false,
   sessionEnabled: false, // Default to disabled, user must run /critic on
+  criticSessionId: null,
+  actorSessionId: null,
 };
 
 /**
@@ -618,13 +708,15 @@ async function performCriticAnalysis(opts: CriticHookOptions): Promise<void> {
     },
   };
 
-  // Invoke critic (blocking)
-  const feedback = await invokeCritic(
-    opts.client,
-    criticContext,
-    criticConfig,
-    opts.currentModel
-  );
+  // Invoke critic (blocking) - use sessionId from tool execution as actor session
+  const actorSessionId = opts.sessionId || opts.currentSessionId || "unknown";
+  const feedback = await invokeCritic({
+    client: opts.client,
+    context: criticContext,
+    config: criticConfig,
+    actorSessionId,
+    actorModel: opts.currentModel,
+  });
 
   // Store feedback in memory with role: "critic"
   await memoryStore.append({
@@ -1415,6 +1507,12 @@ export const CodeLoopsMemory: Plugin = async ({
           }
 
           criticState.sessionEnabled = args.action === "on";
+
+          // Clean up critic session when disabled
+          if (!criticState.sessionEnabled && client) {
+            await cleanupCriticSession(client);
+          }
+
           pluginLogger.info({
             msg: "Critic toggled",
             enabled: criticState.sessionEnabled,

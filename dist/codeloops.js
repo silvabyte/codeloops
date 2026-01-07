@@ -19767,49 +19767,89 @@ function formatFeedbackForActor(feedback) {
 }
 var criticSessionIds = new Set;
 var CRITIC_TRIGGER_TOOLS = new Set(["edit", "write", "bash", "multiEdit"]);
-async function invokeCritic(client, context, config2, actorModel) {
+async function getOrCreateCriticSession(client, actorSessionId) {
+  if (criticState.actorSessionId && criticState.actorSessionId !== actorSessionId) {
+    await cleanupCriticSession(client);
+  }
+  if (criticState.criticSessionId) {
+    return criticState.criticSessionId;
+  }
   const sessionResult = await client.session.create({
-    body: { title: `critic-${Date.now()}` }
+    body: { title: `critic-for-${actorSessionId}` }
   });
   const sessionId = sessionResult.data?.id;
   if (!sessionId) {
     pluginLogger.error({ msg: "Failed to create critic session" });
+    return null;
+  }
+  criticState.criticSessionId = sessionId;
+  criticState.actorSessionId = actorSessionId;
+  criticSessionIds.add(sessionId);
+  pluginLogger.info({
+    msg: "Created reusable critic session",
+    criticSessionId: sessionId,
+    actorSessionId
+  });
+  return sessionId;
+}
+async function cleanupCriticSession(client) {
+  if (!criticState.criticSessionId) {
+    return;
+  }
+  const sessionId = criticState.criticSessionId;
+  criticSessionIds.delete(sessionId);
+  criticState.criticSessionId = null;
+  criticState.actorSessionId = null;
+  try {
+    await client.session.delete({ path: { id: sessionId } });
+    pluginLogger.info({
+      msg: "Cleaned up critic session",
+      sessionId
+    });
+  } catch (err) {
+    pluginLogger.warn({
+      msg: "Failed to delete critic session",
+      sessionId,
+      error: err instanceof Error ? err.message : String(err)
+    });
+  }
+}
+async function invokeCritic(opts) {
+  const sessionId = await getOrCreateCriticSession(opts.client, opts.actorSessionId);
+  if (!sessionId) {
     return parseCriticResponse("");
   }
-  criticSessionIds.add(sessionId);
   try {
     let model;
-    if (config2.model) {
-      const [providerID, ...modelParts] = config2.model.split("/");
+    if (opts.config.model) {
+      const [providerID, ...modelParts] = opts.config.model.split("/");
       model = { providerID, modelID: modelParts.join("/") };
-    } else if (actorModel) {
-      model = actorModel;
+    } else if (opts.actorModel) {
+      model = opts.actorModel;
     }
-    const response = await client.session.prompt({
+    const response = await opts.client.session.prompt({
       path: { id: sessionId },
       body: {
         model,
         agent: "critic",
-        parts: [{ type: "text", text: formatCriticPrompt(context) }]
+        parts: [
+          { type: "text", text: formatCriticPrompt(opts.context) }
+        ]
       }
     });
     const responseParts = response.data?.parts || [];
     const textParts = responseParts.filter((p) => p.type === "text" && p.text).map((p) => p.text).join(`
 `);
     return parseCriticResponse(textParts);
-  } finally {
-    setTimeout(async () => {
-      criticSessionIds.delete(sessionId);
-      try {
-        await client.session.delete({ path: { id: sessionId } });
-      } catch (err) {
-        pluginLogger.warn({
-          msg: "Failed to delete critic session",
-          sessionId,
-          error: err instanceof Error ? err.message : String(err)
-        });
-      }
-    }, 5000);
+  } catch (err) {
+    pluginLogger.error({
+      msg: "Critic session error, will recreate on next call",
+      sessionId,
+      error: err instanceof Error ? err.message : String(err)
+    });
+    criticState.criticSessionId = null;
+    criticSessionIds.delete(sessionId);
+    return parseCriticResponse("");
   }
 }
 async function injectFeedbackIntoSession(client, sessionId, feedback) {
@@ -19824,7 +19864,9 @@ async function injectFeedbackIntoSession(client, sessionId, feedback) {
 }
 var criticState = {
   inProgress: false,
-  sessionEnabled: false
+  sessionEnabled: false,
+  criticSessionId: null,
+  actorSessionId: null
 };
 function shouldRunCritic(client, toolName, sessionId) {
   if (!client) {
@@ -19891,7 +19933,14 @@ async function performCriticAnalysis(opts) {
       workdir: opts.workdir
     }
   };
-  const feedback = await invokeCritic(opts.client, criticContext, criticConfig, opts.currentModel);
+  const actorSessionId = opts.sessionId || opts.currentSessionId || "unknown";
+  const feedback = await invokeCritic({
+    client: opts.client,
+    context: criticContext,
+    config: criticConfig,
+    actorSessionId,
+    actorModel: opts.currentModel
+  });
   await memoryStore.append({
     content: JSON.stringify(feedback),
     project: opts.projectName,
@@ -20348,6 +20397,9 @@ var CodeLoopsMemory = async ({
             });
           }
           criticState.sessionEnabled = args.action === "on";
+          if (!criticState.sessionEnabled && client) {
+            await cleanupCriticSession(client);
+          }
           pluginLogger.info({
             msg: "Critic toggled",
             enabled: criticState.sessionEnabled
