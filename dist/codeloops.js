@@ -5932,6 +5932,9 @@ var import_proper_lockfile = __toESM(require_proper_lockfile(), 1);
 function matchesProject(entry, project) {
   return !project || entry.project === project;
 }
+function matchesRole(entry, role) {
+  return !role || entry.role === role;
+}
 function matchesSessionId(entry, sessionId) {
   return !sessionId || entry.sessionId === sessionId;
 }
@@ -5948,7 +5951,7 @@ function matchesQuery(entry, searchQuery) {
   return entry.content.toLowerCase().includes(searchQuery.toLowerCase());
 }
 function entryMatchesFilters(entry, options) {
-  return matchesProject(entry, options.project) && matchesSessionId(entry, options.sessionId) && matchesTags(entry, options.tags) && matchesQuery(entry, options.query);
+  return matchesProject(entry, options.project) && matchesSessionId(entry, options.sessionId) && matchesTags(entry, options.tags) && matchesQuery(entry, options.query) && matchesRole(entry, options.role);
 }
 
 // node_modules/zod/v4/classic/external.js
@@ -19364,6 +19367,7 @@ function date4(params) {
 // node_modules/zod/v4/classic/external.js
 config(en_default());
 // lib/types.ts
+var MemoryRoleSchema = exports_external.enum(["actor", "critic", "human"]);
 var MemoryEntrySchema = exports_external.object({
   id: exports_external.string(),
   project: exports_external.string(),
@@ -19371,7 +19375,8 @@ var MemoryEntrySchema = exports_external.object({
   tags: exports_external.array(exports_external.string()).optional(),
   createdAt: exports_external.string().datetime(),
   sessionId: exports_external.string().optional(),
-  source: exports_external.string().optional()
+  source: exports_external.string().optional(),
+  role: MemoryRoleSchema.optional()
 });
 
 // lib/memory-store.ts
@@ -19413,7 +19418,8 @@ class MemoryStore {
       tags: input.tags,
       createdAt: new Date().toISOString(),
       sessionId: input.sessionId,
-      source: input.source
+      source: input.source,
+      role: input.role
     };
     const line = `${JSON.stringify(entry)}
 `;
@@ -19568,7 +19574,7 @@ function createMemoryStoreFunctions(logger, options) {
   };
 }
 
-// plugin/todo-extractor.ts
+// src/utils/todo-extractor.ts
 var TODO_COMMENT_REGEX = /^[\s]*(\/\/|#|\/\*\*?|\*|--|;{1,2}|<!--)\s*TODO[:\s]+(.+)/i;
 var BD_TRACKED_REGEX = /\[bd-[a-z0-9]+\]/i;
 var HUNK_HEADER_REGEX = /^@@\s+-\d+(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@/;
@@ -19606,6 +19612,7 @@ function extractTodosFromDiff(diff) {
 
 // plugin/index.ts
 var TRAILING_SLASHES_REGEX = /\/+$/;
+var JSON_EXTRACT_REGEX = /\{[\s\S]*\}/;
 var pluginLogger = createLogger({
   withFile: true,
   logFileName: "plugin.log",
@@ -19630,7 +19637,9 @@ function loadConfigFile() {
         msg: "Loaded codeloops config",
         path: configPath,
         todoModel: cachedConfig.todo?.model,
-        todoEnabled: cachedConfig.todo?.enabled
+        todoEnabled: cachedConfig.todo?.enabled,
+        criticModel: cachedConfig.critic?.model,
+        criticEnabled: cachedConfig.critic?.enabled
       });
       return cachedConfig;
     }
@@ -19655,7 +19664,252 @@ function getTodoAgentConfig() {
   }
   return { model, enabled };
 }
+function getCriticConfig() {
+  const fileConfig = loadConfigFile();
+  const model = process.env.CODELOOPS_CRITIC_MODEL ?? fileConfig.critic?.model;
+  let enabled = true;
+  if (process.env.CODELOOPS_CRITIC_ENABLED === "false") {
+    enabled = false;
+  } else if (fileConfig.critic?.enabled === false) {
+    enabled = false;
+  }
+  return { model, enabled };
+}
 var memoryStore = createMemoryStoreFunctions(pluginLogger);
+function formatCriticPrompt(ctx) {
+  const parts = [
+    "## Action Taken",
+    "",
+    `**Tool:** ${ctx.action.tool}`,
+    "**Arguments:**",
+    "```json",
+    JSON.stringify(ctx.action.args, null, 2),
+    "```",
+    "",
+    "**Result:**",
+    "```",
+    ctx.action.result.slice(0, 2000),
+    "```"
+  ];
+  if (ctx.diff) {
+    parts.push("", "## File Changes", "```diff", ctx.diff.slice(0, 3000), "```");
+  }
+  if (ctx.conversationContext) {
+    parts.push("", "## Conversation Context", ctx.conversationContext);
+  }
+  parts.push("", "## Your Task", "", "Analyze this action and provide structured JSON feedback.", "Use your tools to read files, search code, or gather additional context as needed.");
+  return parts.join(`
+`);
+}
+function parseCriticResponse(responseText) {
+  try {
+    const jsonMatch = responseText.match(JSON_EXTRACT_REGEX);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return {
+        verdict: parsed.verdict || "proceed",
+        confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.5,
+        issues: Array.isArray(parsed.issues) ? parsed.issues : [],
+        suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
+        context: parsed.context || "",
+        reasoning: parsed.reasoning || ""
+      };
+    }
+  } catch (err) {
+    pluginLogger.warn({
+      msg: "Failed to parse critic response",
+      error: err instanceof Error ? err.message : String(err),
+      responsePreview: responseText.slice(0, 200)
+    });
+  }
+  return {
+    verdict: "proceed",
+    confidence: 0.5,
+    issues: [],
+    suggestions: [],
+    context: "",
+    reasoning: "Unable to parse critic response, defaulting to proceed."
+  };
+}
+function formatFeedbackForActor(feedback) {
+  const verdictSymbol = {
+    proceed: "[PROCEED]",
+    revise: "[REVISE]",
+    stop: "[STOP]"
+  };
+  const parts = [
+    "---",
+    `## Critic Feedback ${verdictSymbol[feedback.verdict] || ""}`,
+    "",
+    `**Verdict:** ${feedback.verdict.toUpperCase()} (confidence: ${Math.round(feedback.confidence * 100)}%)`
+  ];
+  if (feedback.issues.length > 0) {
+    parts.push("", "### Issues");
+    for (const issue2 of feedback.issues) {
+      parts.push(`- ${issue2}`);
+    }
+  }
+  if (feedback.suggestions.length > 0) {
+    parts.push("", "### Suggestions");
+    for (const suggestion of feedback.suggestions) {
+      parts.push(`- ${suggestion}`);
+    }
+  }
+  if (feedback.context) {
+    parts.push("", "### Context", feedback.context);
+  }
+  if (feedback.reasoning) {
+    parts.push("", "### Reasoning", feedback.reasoning);
+  }
+  parts.push("---");
+  return parts.join(`
+`);
+}
+var criticSessionIds = new Set;
+var CRITIC_TRIGGER_TOOLS = new Set(["edit", "write", "bash", "multiEdit"]);
+async function invokeCritic(client, context, config2, actorModel) {
+  const sessionResult = await client.session.create({
+    body: { title: `critic-${Date.now()}` }
+  });
+  const sessionId = sessionResult.data?.id;
+  if (!sessionId) {
+    pluginLogger.error({ msg: "Failed to create critic session" });
+    return parseCriticResponse("");
+  }
+  criticSessionIds.add(sessionId);
+  try {
+    let model;
+    if (config2.model) {
+      const [providerID, ...modelParts] = config2.model.split("/");
+      model = { providerID, modelID: modelParts.join("/") };
+    } else if (actorModel) {
+      model = actorModel;
+    }
+    const response = await client.session.prompt({
+      path: { id: sessionId },
+      body: {
+        model,
+        agent: "critic",
+        parts: [{ type: "text", text: formatCriticPrompt(context) }]
+      }
+    });
+    const responseParts = response.data?.parts || [];
+    const textParts = responseParts.filter((p) => p.type === "text" && p.text).map((p) => p.text).join(`
+`);
+    return parseCriticResponse(textParts);
+  } finally {
+    setTimeout(async () => {
+      criticSessionIds.delete(sessionId);
+      try {
+        await client.session.delete({ path: { id: sessionId } });
+      } catch (err) {
+        pluginLogger.warn({
+          msg: "Failed to delete critic session",
+          sessionId,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+    }, 5000);
+  }
+}
+async function injectFeedbackIntoSession(client, sessionId, feedback) {
+  const formatted = formatFeedbackForActor(feedback);
+  await client.session.prompt({
+    path: { id: sessionId },
+    body: {
+      noReply: true,
+      parts: [{ type: "text", text: formatted }]
+    }
+  });
+}
+var criticState = {
+  inProgress: false,
+  sessionEnabled: false
+};
+function shouldRunCritic(client, toolName, sessionId) {
+  if (!client) {
+    return false;
+  }
+  if (!sessionId) {
+    return false;
+  }
+  if (shouldSkipCritic(toolName, sessionId)) {
+    return false;
+  }
+  return true;
+}
+function shouldSkipCritic(toolName, sessionId) {
+  const criticConfig = getCriticConfig();
+  if (!criticConfig.enabled) {
+    return true;
+  }
+  if (!criticState.sessionEnabled) {
+    return true;
+  }
+  if (criticState.inProgress) {
+    return true;
+  }
+  if (criticSessionIds.has(sessionId)) {
+    return true;
+  }
+  if (!CRITIC_TRIGGER_TOOLS.has(toolName)) {
+    return true;
+  }
+  return false;
+}
+async function handleCriticAnalysis(opts) {
+  criticState.inProgress = true;
+  try {
+    await performCriticAnalysis(opts);
+  } finally {
+    criticState.inProgress = false;
+  }
+}
+async function performCriticAnalysis(opts) {
+  const criticConfig = getCriticConfig();
+  const conversationContext = getRecentContext(opts.conversationBuffer);
+  let diff;
+  if (opts.toolName === "edit" || opts.toolName === "write") {
+    const filePath = opts.inputArgs.filePath || opts.inputArgs.file;
+    if (filePath) {
+      const fileDiff = await getFileDiff(filePath, opts.workdir);
+      if (fileDiff) {
+        diff = fileDiff;
+      }
+    }
+  }
+  const criticContext = {
+    action: {
+      tool: opts.toolName,
+      args: opts.inputArgs,
+      result: opts.toolOutput
+    },
+    diff,
+    conversationContext,
+    project: {
+      name: opts.projectName,
+      workdir: opts.workdir
+    }
+  };
+  const feedback = await invokeCritic(opts.client, criticContext, criticConfig, opts.currentModel);
+  await memoryStore.append({
+    content: JSON.stringify(feedback),
+    project: opts.projectName,
+    tags: ["critic", "feedback", feedback.verdict],
+    source: "actor-critic",
+    sessionId: opts.currentSessionId,
+    role: "critic"
+  });
+  if (opts.sessionId) {
+    await injectFeedbackIntoSession(opts.client, opts.sessionId, feedback);
+  }
+  pluginLogger.info({
+    msg: "Critic analysis complete",
+    verdict: feedback.verdict,
+    confidence: feedback.confidence,
+    issueCount: feedback.issues.length
+  });
+}
 async function getFileDiff(filePath, workdir) {
   const { exec } = await import("child_process");
   const { promisify } = await import("util");
@@ -19971,10 +20225,15 @@ async function handleEvent(event, ctx) {
     handleSessionCreated(ctx.projectName, ctx.isDuplicate, ctx.setSession);
   }
 }
-var CodeLoopsMemory = async ({ project, directory }) => {
+var CodeLoopsMemory = async ({
+  project,
+  directory,
+  client
+}) => {
   const workdir = project?.worktree || directory;
   const projectName = project?.id ? extractProjectName(project.worktree) : extractProjectName(directory);
   let currentSessionId;
+  const currentModel = undefined;
   const conversationBuffer = createConversationBuffer();
   const recentEvents = new Map;
   const DEDUP_WINDOW_MS = 1000;
@@ -20071,6 +20330,30 @@ var CodeLoopsMemory = async ({ project, directory }) => {
             projects
           }, null, 2);
         }
+      }),
+      critic_toggle: tool({
+        description: "Toggle the actor-critic feedback system on or off for this session. Use 'on' to enable critic feedback after each action, 'off' to disable, or 'status' to check current state.",
+        args: {
+          action: tool.schema.enum(["on", "off", "status"]).describe("Action: 'on' to enable, 'off' to disable, 'status' to check")
+        },
+        async execute(args) {
+          if (args.action === "status") {
+            const configEnabled = getCriticConfig().enabled;
+            await Promise.resolve();
+            return JSON.stringify({
+              sessionEnabled: criticState.sessionEnabled,
+              configEnabled,
+              active: criticState.sessionEnabled && configEnabled,
+              message: criticState.sessionEnabled ? "Critic is ON for this session" : "Critic is OFF for this session"
+            });
+          }
+          criticState.sessionEnabled = args.action === "on";
+          pluginLogger.info({
+            msg: "Critic toggled",
+            enabled: criticState.sessionEnabled
+          });
+          return criticState.sessionEnabled ? "Critic enabled. I will now receive feedback after each action." : "Critic disabled. No feedback will be provided.";
+        }
       })
     },
     event: async ({ event }) => {
@@ -20084,6 +20367,40 @@ var CodeLoopsMemory = async ({ project, directory }) => {
         workdir,
         conversationBuffer
       });
+    },
+    "tool.execute.after": async (input, output) => {
+      const toolName = input.tool;
+      const inputAny = input;
+      const sessionId = inputAny.sessionID ?? inputAny.sessionId;
+      if (!shouldRunCritic(client, toolName, sessionId)) {
+        return;
+      }
+      pluginLogger.info({
+        msg: "Triggering critic analysis",
+        tool: toolName,
+        sessionId
+      });
+      const inputArgs = input.args || {};
+      const toolOutput = output.output || "";
+      try {
+        await handleCriticAnalysis({
+          toolName,
+          inputArgs,
+          toolOutput,
+          sessionId,
+          projectName,
+          workdir,
+          currentSessionId,
+          currentModel,
+          conversationBuffer,
+          client
+        });
+      } catch (err) {
+        pluginLogger.error({
+          msg: "Critic analysis failed",
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
     }
   };
 };

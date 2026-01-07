@@ -33,6 +33,8 @@ const AGENTS_SOURCE = join(ROOT_DIR, "agents");
 const AGENTS_TARGET = join(OPENCODE_CONFIG, "agent");
 const SKILLS_SOURCE = join(ROOT_DIR, "skills");
 const SKILLS_TARGET = join(OPENCODE_CONFIG, "skill");
+const COMMANDS_SOURCE = join(ROOT_DIR, "commands");
+const COMMANDS_TARGET = join(OPENCODE_CONFIG, "command");
 
 /**
  * Create a symlink, removing any existing file/symlink first.
@@ -126,6 +128,10 @@ installDirectorySymlinks(AGENTS_SOURCE, AGENTS_TARGET, "agent");
 console.log(`\n${BOLD}Installing skills...${NC}`);
 installDirectorySymlinks(SKILLS_SOURCE, SKILLS_TARGET, "skill");
 
+// Install commands
+console.log(`\n${BOLD}Installing commands...${NC}`);
+installDirectorySymlinks(COMMANDS_SOURCE, COMMANDS_TARGET, "command");
+
 console.log(`\n${BOLD}Available tools:${NC}`);
 console.log("  - memory_store   Store a memory for later recall");
 console.log("  - memory_recall  Query stored memories");
@@ -142,6 +148,9 @@ console.log(`\n${BOLD}Actor-Critic system:${NC}`);
 console.log("  - actor agent    Primary agent with feedback awareness");
 console.log("  - critic agent   Analyzes actions and provides feedback");
 console.log("  - actor-critic-protocol skill   Detailed protocol guidance");
+console.log("  - /critic-on     Enable critic for this session");
+console.log("  - /critic-off    Disable critic for this session");
+console.log("  - /critic-status Check critic status");
 console.log("  - Configure in ~/.config/codeloops/config.json");
 
 console.log(`\n${BOLD}bd (beads) integration:${NC}`);
