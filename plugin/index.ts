@@ -1391,8 +1391,9 @@ export const CodeLoopsMemory: Plugin = async ({
       const sessionId = inputAny.sessionId as string | undefined;
       const agentName = inputAny.agent as string | undefined;
 
-      // Skip if the current agent is the critic itself
-      if (agentName === "critic") {
+      // Only run critic when the actor agent is active
+      // Skip for all other agents (critic, build, plan, custom agents, etc.)
+      if (agentName !== "actor") {
         return;
       }
 
