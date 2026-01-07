@@ -481,10 +481,14 @@ async function injectFeedbackIntoSession(
 }
 
 /**
- * Flag to prevent nested critic invocations.
- * This is a simple mutex to ensure only one critic analysis runs at a time.
+ * Critic state tracking.
+ * - inProgress: Mutex to prevent nested critic invocations
+ * - sessionEnabled: Per-session toggle, controlled via /critic command
  */
-const criticState = { inProgress: false };
+const criticState = {
+  inProgress: false,
+  sessionEnabled: false, // Default to disabled, user must run /critic on
+};
 
 /**
  * Determines if critic analysis should run for this tool execution.
@@ -518,7 +522,13 @@ function shouldRunCritic(
 function shouldSkipCritic(toolName: string, sessionId: string): boolean {
   const criticConfig = getCriticConfig();
 
+  // Config must have critic enabled (global kill switch)
   if (!criticConfig.enabled) {
+    return true;
+  }
+
+  // Session must have critic enabled via /critic on command
+  if (!criticState.sessionEnabled) {
     return true;
   }
 
@@ -1376,6 +1386,43 @@ export const CodeLoopsMemory: Plugin = async ({
             null,
             2
           );
+        },
+      }),
+
+      critic_toggle: tool({
+        description:
+          "Toggle the actor-critic feedback system on or off for this session. Use 'on' to enable critic feedback after each action, 'off' to disable, or 'status' to check current state.",
+        args: {
+          action: tool.schema
+            .enum(["on", "off", "status"])
+            .describe(
+              "Action: 'on' to enable, 'off' to disable, 'status' to check"
+            ),
+        },
+        async execute(args: { action: "on" | "off" | "status" }) {
+          if (args.action === "status") {
+            const configEnabled = getCriticConfig().enabled;
+            // Use await to satisfy async requirement
+            await Promise.resolve();
+            return JSON.stringify({
+              sessionEnabled: criticState.sessionEnabled,
+              configEnabled,
+              active: criticState.sessionEnabled && configEnabled,
+              message: criticState.sessionEnabled
+                ? "Critic is ON for this session"
+                : "Critic is OFF for this session",
+            });
+          }
+
+          criticState.sessionEnabled = args.action === "on";
+          pluginLogger.info({
+            msg: "Critic toggled",
+            enabled: criticState.sessionEnabled,
+          });
+
+          return criticState.sessionEnabled
+            ? "Critic enabled. I will now receive feedback after each action."
+            : "Critic disabled. No feedback will be provided.";
         },
       }),
     },
