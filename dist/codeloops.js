@@ -19997,16 +19997,7 @@ async function handleCriticAnalysis(opts) {
 }
 async function performCriticAnalysis(opts) {
   const criticConfig = getCriticConfig();
-  let diff;
-  if (opts.toolName === "edit" || opts.toolName === "write") {
-    const filePath = opts.inputArgs.filePath || opts.inputArgs.file;
-    if (filePath) {
-      const fileDiff = await getFileDiff(filePath, opts.workdir);
-      if (fileDiff) {
-        diff = fileDiff;
-      }
-    }
-  }
+  const diff = await getDiffForTool(opts.toolName, opts.inputArgs, opts.workdir) ?? undefined;
   const criticContext = {
     action: {
       tool: opts.toolName,
@@ -20056,9 +20047,80 @@ async function getFileDiff(filePath, workdir) {
     const { stdout } = await execAsync(`git diff HEAD -- "${filePath}"`, {
       cwd: workdir
     });
-    return stdout.trim() || null;
-  } catch {
-    return null;
+    if (stdout.trim()) {
+      return stdout.trim();
+    }
+  } catch {}
+  try {
+    const { stdout } = await execAsync(`git diff --cached -- "${filePath}"`, {
+      cwd: workdir
+    });
+    if (stdout.trim()) {
+      return stdout.trim();
+    }
+  } catch {}
+  try {
+    const { stdout } = await execAsync(`git diff -- "${filePath}"`, {
+      cwd: workdir
+    });
+    if (stdout.trim()) {
+      return stdout.trim();
+    }
+  } catch {}
+  try {
+    const { stdout: statusOut } = await execAsync(`git status --porcelain -- "${filePath}"`, { cwd: workdir });
+    if (statusOut.startsWith("??")) {
+      const { stdout: content } = await execAsync(`head -100 "${filePath}"`, {
+        cwd: workdir
+      });
+      if (content.trim()) {
+        return `[New untracked file]
+${content.trim()}`;
+      }
+    }
+  } catch {}
+  return null;
+}
+async function getMultiFileDiff(filePaths, workdir) {
+  const diffs = [];
+  for (const filePath of filePaths) {
+    const diff = await getFileDiff(filePath, workdir);
+    if (diff) {
+      diffs.push(`### ${filePath}
+${diff}`);
+    }
+  }
+  return diffs.length > 0 ? diffs.join(`
+
+`) : null;
+}
+function getDiffForEditTool(args, workdir) {
+  const filePath = args.filePath || args.file;
+  if (filePath) {
+    return getFileDiff(filePath, workdir);
+  }
+  return Promise.resolve(null);
+}
+function getDiffForMultiEditTool(args, workdir) {
+  const edits = args.edits;
+  if (!Array.isArray(edits)) {
+    return Promise.resolve(null);
+  }
+  const filePaths = edits.map((e) => e.filePath || e.file).filter((p) => typeof p === "string");
+  if (filePaths.length > 0) {
+    return getMultiFileDiff(filePaths, workdir);
+  }
+  return Promise.resolve(null);
+}
+function getDiffForTool(toolName, args, workdir) {
+  switch (toolName) {
+    case "edit":
+    case "write":
+      return getDiffForEditTool(args, workdir);
+    case "multiEdit":
+      return getDiffForMultiEditTool(args, workdir);
+    default:
+      return Promise.resolve(null);
   }
 }
 function isBdInitialized(workdir) {

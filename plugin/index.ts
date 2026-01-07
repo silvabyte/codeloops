@@ -829,18 +829,10 @@ async function performCriticAnalysis(opts: CriticHookOptions): Promise<void> {
   // the buffer captures streaming message fragments that cause the critic
   // to hallucinate "UI rendering issues". See CriticContext type comment.
 
-  // Get diff if this was a file edit
-  let diff: string | undefined;
-  if (opts.toolName === "edit" || opts.toolName === "write") {
-    const filePath =
-      (opts.inputArgs.filePath as string) || (opts.inputArgs.file as string);
-    if (filePath) {
-      const fileDiff = await getFileDiff(filePath, opts.workdir);
-      if (fileDiff) {
-        diff = fileDiff;
-      }
-    }
-  }
+  // Get diff for file-modifying tools (convert null to undefined for type compat)
+  const diff =
+    (await getDiffForTool(opts.toolName, opts.inputArgs, opts.workdir)) ??
+    undefined;
 
   // Build context for critic (no conversationContext - see CriticContext comment)
   const criticContext: CriticContext = {
@@ -893,6 +885,13 @@ async function performCriticAnalysis(opts: CriticHookOptions): Promise<void> {
 // Git Diff Helper
 // -----------------------------------------------------------------------------
 
+/**
+ * Get git diff for a file, trying multiple strategies:
+ * 1. diff HEAD (staged + unstaged vs last commit)
+ * 2. diff --cached (staged only, for new files)
+ * 3. diff (unstaged only)
+ * 4. show file content for untracked files
+ */
 async function getFileDiff(
   filePath: string,
   workdir: string
@@ -905,15 +904,135 @@ async function getFileDiff(
     return null;
   }
 
+  // Strategy 1: Try diff against HEAD (most common case)
   try {
-    // Get diff for the specific file (staged + unstaged)
     const { stdout } = await execAsync(`git diff HEAD -- "${filePath}"`, {
       cwd: workdir,
     });
-    return stdout.trim() || null;
+    if (stdout.trim()) {
+      return stdout.trim();
+    }
   } catch {
-    // Git not available or file not tracked
-    return null;
+    // Continue to next strategy
+  }
+
+  // Strategy 2: Try staged diff (for newly added files)
+  try {
+    const { stdout } = await execAsync(`git diff --cached -- "${filePath}"`, {
+      cwd: workdir,
+    });
+    if (stdout.trim()) {
+      return stdout.trim();
+    }
+  } catch {
+    // Continue to next strategy
+  }
+
+  // Strategy 3: Try unstaged diff
+  try {
+    const { stdout } = await execAsync(`git diff -- "${filePath}"`, {
+      cwd: workdir,
+    });
+    if (stdout.trim()) {
+      return stdout.trim();
+    }
+  } catch {
+    // Continue to next strategy
+  }
+
+  // Strategy 4: Check if file is untracked and show content preview
+  try {
+    const { stdout: statusOut } = await execAsync(
+      `git status --porcelain -- "${filePath}"`,
+      { cwd: workdir }
+    );
+    if (statusOut.startsWith("??")) {
+      // Untracked file - show first 100 lines as context
+      const { stdout: content } = await execAsync(`head -100 "${filePath}"`, {
+        cwd: workdir,
+      });
+      if (content.trim()) {
+        return `[New untracked file]\n${content.trim()}`;
+      }
+    }
+  } catch {
+    // Git not available or other error
+  }
+
+  return null;
+}
+
+/**
+ * Get diffs for multiple files (used for multiEdit tool).
+ */
+async function getMultiFileDiff(
+  filePaths: string[],
+  workdir: string
+): Promise<string | null> {
+  const diffs: string[] = [];
+
+  for (const filePath of filePaths) {
+    const diff = await getFileDiff(filePath, workdir);
+    if (diff) {
+      diffs.push(`### ${filePath}\n${diff}`);
+    }
+  }
+
+  return diffs.length > 0 ? diffs.join("\n\n") : null;
+}
+
+/**
+ * Get diff for single-file edit tools (edit, write).
+ */
+function getDiffForEditTool(
+  args: Record<string, unknown>,
+  workdir: string
+): Promise<string | null> {
+  const filePath = (args.filePath as string) || (args.file as string);
+  if (filePath) {
+    return getFileDiff(filePath, workdir);
+  }
+  return Promise.resolve(null);
+}
+
+/**
+ * Get diff for multiEdit tool.
+ */
+function getDiffForMultiEditTool(
+  args: Record<string, unknown>,
+  workdir: string
+): Promise<string | null> {
+  const edits = args.edits as Array<{ filePath?: string; file?: string }>;
+  if (!Array.isArray(edits)) {
+    return Promise.resolve(null);
+  }
+  const filePaths = edits
+    .map((e) => e.filePath || e.file)
+    .filter((p): p is string => typeof p === "string");
+  if (filePaths.length > 0) {
+    return getMultiFileDiff(filePaths, workdir);
+  }
+  return Promise.resolve(null);
+}
+
+/**
+ * Get diff for a tool execution based on tool type and args.
+ */
+function getDiffForTool(
+  toolName: string,
+  args: Record<string, unknown>,
+  workdir: string
+): Promise<string | null> {
+  switch (toolName) {
+    case "edit":
+    case "write":
+      return getDiffForEditTool(args, workdir);
+
+    case "multiEdit":
+      return getDiffForMultiEditTool(args, workdir);
+
+    default:
+      return Promise.resolve(null);
   }
 }
 
