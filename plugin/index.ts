@@ -487,38 +487,75 @@ async function injectFeedbackIntoSession(
 const criticState = { inProgress: false };
 
 /**
- * Check if critic should be skipped for this tool execution.
+ * Check if the current session is using the actor agent.
+ * Returns true only if the session's agent is explicitly "actor".
  */
-function shouldSkipCritic(
-  toolName: string,
-  sessionId: string | undefined,
+async function isActorAgent(
   // biome-ignore lint/suspicious/noExplicitAny: SDK client types
-  client: any
-): { skip: boolean; reason?: string } {
+  client: any,
+  sessionId: string
+): Promise<boolean> {
+  try {
+    const sessionResult = await client.session.get({
+      path: { id: sessionId },
+    });
+    // biome-ignore lint/suspicious/noExplicitAny: Session type may vary
+    const agentName = (sessionResult.data as any)?.agent as string | undefined;
+    return agentName === "actor";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Determines if critic analysis should run for this tool execution.
+ */
+async function shouldRunCritic(
+  // biome-ignore lint/suspicious/noExplicitAny: SDK client types
+  client: any,
+  toolName: string,
+  sessionId: string | undefined
+): Promise<boolean> {
+  if (!client) {
+    return false;
+  }
+  if (!sessionId) {
+    return false;
+  }
+  if (!(await isActorAgent(client, sessionId))) {
+    return false;
+  }
+  if (shouldSkipCritic(toolName, sessionId)) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Check if critic should be skipped for this tool execution.
+ * Assumes client and sessionId have already been validated.
+ */
+function shouldSkipCritic(toolName: string, sessionId: string): boolean {
   const criticConfig = getCriticConfig();
 
   if (!criticConfig.enabled) {
-    return { skip: true, reason: "disabled" };
+    return true;
   }
 
   // Skip if a critic is already running (prevents infinite loops)
   if (criticState.inProgress) {
-    return { skip: true, reason: "critic-in-progress" };
+    return true;
   }
 
-  if (sessionId && criticSessionIds.has(sessionId)) {
-    return { skip: true, reason: "critic-session" };
+  if (criticSessionIds.has(sessionId)) {
+    return true;
   }
 
   if (!CRITIC_TRIGGER_TOOLS.has(toolName)) {
-    return { skip: true, reason: "non-trigger-tool" };
+    return true;
   }
 
-  if (!client) {
-    return { skip: true, reason: "no-client" };
-  }
-
-  return { skip: false };
+  return false;
 }
 
 /**
@@ -1388,20 +1425,13 @@ export const CodeLoopsMemory: Plugin = async ({
       const toolName = input.tool as string;
       // biome-ignore lint/suspicious/noExplicitAny: Plugin hook types
       const inputAny = input as any;
-      const sessionId = inputAny.sessionId as string | undefined;
-      const agentName = inputAny.agent as string | undefined;
+      // Note: OpenCode uses sessionID (capital ID), not sessionId
+      const sessionId = (inputAny.sessionID ?? inputAny.sessionId) as
+        | string
+        | undefined;
 
-      // Only run critic when the actor agent is active
-      // Skip for all other agents (critic, build, plan, custom agents, etc.)
-      if (agentName !== "actor") {
-        return;
-      }
-
-      const skipCheck = shouldSkipCritic(toolName, sessionId, client);
-      if (skipCheck.skip) {
-        if (skipCheck.reason === "no-client") {
-          pluginLogger.warn({ msg: "No client available for critic" });
-        }
+      // Check all conditions for running critic
+      if (!(await shouldRunCritic(client, toolName, sessionId))) {
         return;
       }
 
@@ -1411,14 +1441,11 @@ export const CodeLoopsMemory: Plugin = async ({
         sessionId,
       });
 
-      try {
-        // biome-ignore lint/suspicious/noExplicitAny: Plugin hook types vary
-        const inputArgs = ((input as any).args || {}) as Record<
-          string,
-          unknown
-        >;
-        const toolOutput = output.output || "";
+      // biome-ignore lint/suspicious/noExplicitAny: Plugin hook types vary
+      const inputArgs = ((input as any).args || {}) as Record<string, unknown>;
+      const toolOutput = output.output || "";
 
+      try {
         await handleCriticAnalysis({
           toolName,
           inputArgs,
