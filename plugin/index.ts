@@ -487,42 +487,22 @@ async function injectFeedbackIntoSession(
 const criticState = { inProgress: false };
 
 /**
- * Check if the current session is using the actor agent.
- * Returns true only if the session's agent is explicitly "actor".
- */
-async function isActorAgent(
-  // biome-ignore lint/suspicious/noExplicitAny: SDK client types
-  client: any,
-  sessionId: string
-): Promise<boolean> {
-  try {
-    const sessionResult = await client.session.get({
-      path: { id: sessionId },
-    });
-    // biome-ignore lint/suspicious/noExplicitAny: Session type may vary
-    const agentName = (sessionResult.data as any)?.agent as string | undefined;
-    return agentName === "actor";
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Determines if critic analysis should run for this tool execution.
+ *
+ * Note: We cannot reliably detect which agent is active via the SDK,
+ * so critic runs based on configuration alone. Users should set
+ * critic.enabled = false when not using the actor agent.
  */
-async function shouldRunCritic(
+function shouldRunCritic(
   // biome-ignore lint/suspicious/noExplicitAny: SDK client types
   client: any,
   toolName: string,
   sessionId: string | undefined
-): Promise<boolean> {
+): boolean {
   if (!client) {
     return false;
   }
   if (!sessionId) {
-    return false;
-  }
-  if (!(await isActorAgent(client, sessionId))) {
     return false;
   }
   if (shouldSkipCritic(toolName, sessionId)) {
@@ -1431,7 +1411,7 @@ export const CodeLoopsMemory: Plugin = async ({
         | undefined;
 
       // Check all conditions for running critic
-      if (!(await shouldRunCritic(client, toolName, sessionId))) {
+      if (!shouldRunCritic(client, toolName, sessionId)) {
         return;
       }
 
