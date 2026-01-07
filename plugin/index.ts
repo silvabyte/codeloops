@@ -1387,7 +1387,14 @@ export const CodeLoopsMemory: Plugin = async ({
     "tool.execute.after": async (input, output) => {
       const toolName = input.tool as string;
       // biome-ignore lint/suspicious/noExplicitAny: Plugin hook types
-      const sessionId = (input as any).sessionId as string | undefined;
+      const inputAny = input as any;
+      const sessionId = inputAny.sessionId as string | undefined;
+      const agentName = inputAny.agent as string | undefined;
+
+      // Skip if the current agent is the critic itself
+      if (agentName === "critic") {
+        return;
+      }
 
       const skipCheck = shouldSkipCritic(toolName, sessionId, client);
       if (skipCheck.skip) {
