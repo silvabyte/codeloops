@@ -19612,7 +19612,8 @@ function extractTodosFromDiff(diff) {
 
 // plugin/index.ts
 var TRAILING_SLASHES_REGEX = /\/+$/;
-var JSON_EXTRACT_REGEX = /\{[\s\S]*\}/;
+var MARKDOWN_CODE_BLOCK_REGEX = /```(?:json)?\s*([\s\S]*?)```/g;
+var JSON_OBJECT_REGEX = /\{[\s\S]*\}/;
 var pluginLogger = createLogger({
   withFile: true,
   logFileName: "plugin.log",
@@ -19701,11 +19702,10 @@ function formatCriticPrompt(ctx) {
   return parts.join(`
 `);
 }
-function parseCriticResponse(responseText) {
+function tryParseCriticJson(text) {
   try {
-    const jsonMatch = responseText.match(JSON_EXTRACT_REGEX);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === "object" && "verdict" in parsed) {
       return {
         verdict: parsed.verdict || "proceed",
         confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.5,
@@ -19715,20 +19715,111 @@ function parseCriticResponse(responseText) {
         reasoning: parsed.reasoning || ""
       };
     }
-  } catch (err) {
-    pluginLogger.warn({
-      msg: "Failed to parse critic response",
-      error: err instanceof Error ? err.message : String(err),
-      responsePreview: responseText.slice(0, 200)
-    });
+  } catch {}
+  return null;
+}
+function extractFromCodeBlocks(text) {
+  const blocks = [];
+  const matches = text.matchAll(MARKDOWN_CODE_BLOCK_REGEX);
+  for (const match of matches) {
+    if (match[1]) {
+      blocks.push(match[1].trim());
+    }
   }
+  return blocks;
+}
+function processJsonChar(char, state) {
+  if (state.isEscaped) {
+    state.isEscaped = false;
+    return { endFound: false };
+  }
+  if (char === "\\") {
+    state.isEscaped = true;
+    return { endFound: false };
+  }
+  if (char === '"') {
+    state.inString = !state.inString;
+    return { endFound: false };
+  }
+  if (state.inString) {
+    return { endFound: false };
+  }
+  if (char === "{") {
+    state.depth += 1;
+  } else if (char === "}") {
+    state.depth -= 1;
+    if (state.depth === 0) {
+      return { endFound: true };
+    }
+  }
+  return { endFound: false };
+}
+function extractJsonObject(text) {
+  const start = text.indexOf("{");
+  if (start === -1) {
+    return null;
+  }
+  const state = { depth: 0, inString: false, isEscaped: false };
+  for (let i = start;i < text.length; i += 1) {
+    const { endFound } = processJsonChar(text[i], state);
+    if (endFound) {
+      return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+function tryParseWithExtraction(text, extractor) {
+  const extracted = extractor(text);
+  if (extracted) {
+    return tryParseCriticJson(extracted);
+  }
+  return null;
+}
+function parseCriticResponse(responseText) {
+  if (!responseText?.trim()) {
+    pluginLogger.warn({ msg: "Empty critic response" });
+    return createDefaultFeedback("Empty critic response");
+  }
+  const directParse = tryParseCriticJson(responseText.trim());
+  if (directParse) {
+    return directParse;
+  }
+  const codeBlocks = extractFromCodeBlocks(responseText);
+  for (const block of codeBlocks) {
+    const fromBlock = tryParseCriticJson(block);
+    if (fromBlock) {
+      return fromBlock;
+    }
+    const fromBlockExtract = tryParseWithExtraction(block, extractJsonObject);
+    if (fromBlockExtract) {
+      return fromBlockExtract;
+    }
+  }
+  const fromBalanced = tryParseWithExtraction(responseText, extractJsonObject);
+  if (fromBalanced) {
+    return fromBalanced;
+  }
+  const greedyMatch = responseText.match(JSON_OBJECT_REGEX);
+  if (greedyMatch) {
+    const fromGreedy = tryParseCriticJson(greedyMatch[0]);
+    if (fromGreedy) {
+      return fromGreedy;
+    }
+  }
+  pluginLogger.warn({
+    msg: "Failed to parse critic response after all strategies",
+    responsePreview: responseText.slice(0, 300)
+  });
+  return createDefaultFeedback("Unable to parse critic response");
+}
+function createDefaultFeedback(reason) {
   return {
     verdict: "proceed",
     confidence: 0.5,
     issues: [],
     suggestions: [],
     context: "",
-    reasoning: "Unable to parse critic response, defaulting to proceed."
+    reasoning: `${reason}, defaulting to proceed.`
   };
 }
 function formatFeedbackForActor(feedback) {
