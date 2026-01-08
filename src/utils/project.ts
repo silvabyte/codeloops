@@ -1,5 +1,5 @@
 import type { Logger } from "pino";
-import { getLoggerInstance as getLogger } from "../../lib/logger.ts";
+import { getLoggerInstance as getLogger } from "../core/logger.ts";
 
 // Regex constants for project name validation
 const VALID_CHARS_REGEX = /[a-zA-Z0-9_-]/;

@@ -5801,12 +5801,12 @@ function nanoid(size = 21) {
   return id;
 }
 
-// lib/logger.ts
+// src/core/logger.ts
 var import_pino = __toESM(require_pino(), 1);
 import { existsSync, mkdirSync } from "fs";
 import path3 from "path";
 
-// lib/config.ts
+// src/core/config.ts
 import path2 from "path";
 
 // node_modules/env-paths/index.js
@@ -5863,7 +5863,7 @@ function envPaths(name, { suffix = "nodejs" } = {}) {
   return linux(name);
 }
 
-// lib/config.ts
+// src/core/config.ts
 var paths = envPaths("codeloops", { suffix: "" });
 function getDataDir() {
   return paths.data;
@@ -5872,7 +5872,7 @@ function getLogsDir() {
   return path2.join(paths.data, "logs");
 }
 
-// lib/logger.ts
+// src/core/logger.ts
 var globalLogger = null;
 function createLogger(options) {
   const logsDir = options?.logsDir ?? getLogsDir();
@@ -5920,15 +5920,25 @@ function createLogger(options) {
   }
   return logger;
 }
+function getLoggerInstance(options) {
+  if (!globalLogger) {
+    globalLogger = createLogger({
+      withFile: true,
+      ...options,
+      setGlobal: true
+    });
+  }
+  return globalLogger;
+}
 
-// lib/memory-store.ts
+// src/core/memory-store.ts
 import { createReadStream, existsSync as existsSync2 } from "fs";
 import fs from "fs/promises";
 import path4 from "path";
 import readline from "readline";
 var import_proper_lockfile = __toESM(require_proper_lockfile(), 1);
 
-// lib/filters.ts
+// src/core/filters.ts
 function matchesProject(entry, project) {
   return !project || entry.project === project;
 }
@@ -19366,7 +19376,7 @@ function date4(params) {
 
 // node_modules/zod/v4/classic/external.js
 config(en_default());
-// lib/types.ts
+// src/core/types.ts
 var MemoryRoleSchema = exports_external.enum(["actor", "critic", "human"]);
 var MemoryEntrySchema = exports_external.object({
   id: exports_external.string(),
@@ -19379,7 +19389,7 @@ var MemoryEntrySchema = exports_external.object({
   role: MemoryRoleSchema.optional()
 });
 
-// lib/memory-store.ts
+// src/core/memory-store.ts
 function parseMemoryEntry(line) {
   try {
     const parsed = JSON.parse(line);
@@ -19598,6 +19608,51 @@ function createMemoryStoreFunctions(logger, options) {
   };
 }
 
+// src/utils/project.ts
+var VALID_CHARS_REGEX = /[a-zA-Z0-9_-]/;
+var LEADING_UNDERSCORES_REGEX = /^_+/;
+var VALID_NAME_REGEX = /^[a-zA-Z0-9_-]+$/;
+var PROJECT_CONTEXT_CACHE = new Map;
+function extractProjectName(projectContext, { logger } = { logger: getLoggerInstance() }) {
+  if (!projectContext || typeof projectContext !== "string" || projectContext.trim() === "") {
+    logger.info(`Invalid projectContext: ${projectContext}`);
+    return null;
+  }
+  if (PROJECT_CONTEXT_CACHE.has(projectContext)) {
+    return PROJECT_CONTEXT_CACHE.get(projectContext) ?? null;
+  }
+  const normalizedInput = projectContext.replace(/\\/g, "/");
+  const segments = normalizedInput.split("/").filter(Boolean);
+  const lastSegment = segments.length > 0 ? segments.at(-1) : "";
+  if (!lastSegment) {
+    logger.info(`Invalid projectContext (no valid segments): ${projectContext}`);
+    return null;
+  }
+  const hasValidChars = VALID_CHARS_REGEX.test(lastSegment);
+  if (!hasValidChars) {
+    logger.info(`Invalid project name (no valid characters): ${lastSegment}`);
+    return null;
+  }
+  let cleanedProjectName = lastSegment.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const hasTrailingUnderscore = cleanedProjectName.endsWith("_");
+  cleanedProjectName = cleanedProjectName.replace(/_+/g, "_");
+  cleanedProjectName = cleanedProjectName.replace(LEADING_UNDERSCORES_REGEX, "");
+  if (hasTrailingUnderscore && !cleanedProjectName.endsWith("_")) {
+    cleanedProjectName += "_";
+  }
+  cleanedProjectName = cleanedProjectName.substring(0, 50);
+  if (!cleanedProjectName) {
+    logger.info(`Invalid project name (empty after cleaning): ${lastSegment}`);
+    return null;
+  }
+  if (!VALID_NAME_REGEX.test(cleanedProjectName)) {
+    logger.info(`Invalid project name: ${cleanedProjectName}`);
+    return null;
+  }
+  PROJECT_CONTEXT_CACHE.set(projectContext, cleanedProjectName);
+  return cleanedProjectName;
+}
+
 // src/utils/todo-extractor.ts
 var TODO_COMMENT_REGEX = /^[\s]*(\/\/|#|\/\*\*?|\*|--|;{1,2}|<!--)\s*TODO[:\s]+(.+)/i;
 var BD_TRACKED_REGEX = /\[bd-[a-z0-9]+\]/i;
@@ -19634,8 +19689,59 @@ function extractTodosFromDiff(diff) {
   return todos;
 }
 
+// src/utils/git.ts
+import { exec } from "child_process";
+import { promisify } from "util";
+var execAsync = promisify(exec);
+async function execGitInDir(command, workdir) {
+  try {
+    const { stdout } = await execAsync(command, { cwd: workdir });
+    return stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}
+async function getFileDiff(filePath, workdir) {
+  if (!filePath?.trim()) {
+    return null;
+  }
+  const headDiff = await execGitInDir(`git diff HEAD -- "${filePath}"`, workdir);
+  if (headDiff) {
+    return headDiff;
+  }
+  const stagedDiff = await execGitInDir(`git diff --cached -- "${filePath}"`, workdir);
+  if (stagedDiff) {
+    return stagedDiff;
+  }
+  const unstagedDiff = await execGitInDir(`git diff -- "${filePath}"`, workdir);
+  if (unstagedDiff) {
+    return unstagedDiff;
+  }
+  const status = await execGitInDir(`git status --porcelain -- "${filePath}"`, workdir);
+  if (status?.startsWith("??")) {
+    const content = await execGitInDir(`head -100 "${filePath}"`, workdir);
+    if (content) {
+      return `[New untracked file]
+${content}`;
+    }
+  }
+  return null;
+}
+async function getMultiFileDiff(filePaths, workdir) {
+  const diffs = [];
+  for (const filePath of filePaths) {
+    const diff = await getFileDiff(filePath, workdir);
+    if (diff) {
+      diffs.push(`### ${filePath}
+${diff}`);
+    }
+  }
+  return diffs.length > 0 ? diffs.join(`
+
+`) : null;
+}
+
 // plugin/index.ts
-var TRAILING_SLASHES_REGEX = /\/+$/;
 var MARKDOWN_CODE_BLOCK_REGEX = /```(?:json)?\s*([\s\S]*?)```/g;
 var JSON_OBJECT_REGEX = /\{[\s\S]*\}/;
 var pluginLogger = createLogger({
@@ -20060,64 +20166,6 @@ async function performCriticAnalysis(opts) {
     issueCount: feedback.issues.length
   });
 }
-async function getFileDiff(filePath, workdir) {
-  const { exec } = await import("child_process");
-  const { promisify } = await import("util");
-  const execAsync = promisify(exec);
-  if (!filePath?.trim()) {
-    return null;
-  }
-  try {
-    const { stdout } = await execAsync(`git diff HEAD -- "${filePath}"`, {
-      cwd: workdir
-    });
-    if (stdout.trim()) {
-      return stdout.trim();
-    }
-  } catch {}
-  try {
-    const { stdout } = await execAsync(`git diff --cached -- "${filePath}"`, {
-      cwd: workdir
-    });
-    if (stdout.trim()) {
-      return stdout.trim();
-    }
-  } catch {}
-  try {
-    const { stdout } = await execAsync(`git diff -- "${filePath}"`, {
-      cwd: workdir
-    });
-    if (stdout.trim()) {
-      return stdout.trim();
-    }
-  } catch {}
-  try {
-    const { stdout: statusOut } = await execAsync(`git status --porcelain -- "${filePath}"`, { cwd: workdir });
-    if (statusOut.startsWith("??")) {
-      const { stdout: content } = await execAsync(`head -100 "${filePath}"`, {
-        cwd: workdir
-      });
-      if (content.trim()) {
-        return `[New untracked file]
-${content.trim()}`;
-      }
-    }
-  } catch {}
-  return null;
-}
-async function getMultiFileDiff(filePaths, workdir) {
-  const diffs = [];
-  for (const filePath of filePaths) {
-    const diff = await getFileDiff(filePath, workdir);
-    if (diff) {
-      diffs.push(`### ${filePath}
-${diff}`);
-    }
-  }
-  return diffs.length > 0 ? diffs.join(`
-
-`) : null;
-}
 function getDiffForEditTool(args, workdir) {
   const filePath = args.filePath || args.file;
   if (filePath) {
@@ -20278,10 +20326,8 @@ async function processTodosWithConcurrency(todos, ctx) {
     }
   }
 }
-function extractProjectName(projectPath) {
-  const normalized = projectPath.replace(/\\/g, "/").replace(TRAILING_SLASHES_REGEX, "");
-  const parts = normalized.split("/");
-  return parts.at(-1) || "unknown";
+function extractProjectName2(projectPath) {
+  return extractProjectName(projectPath) || "unknown";
 }
 function createConversationBuffer() {
   return {
@@ -20469,7 +20515,7 @@ var CodeLoopsMemory = async ({
   client
 }) => {
   const workdir = project?.worktree || directory;
-  const projectName = project?.id ? extractProjectName(project.worktree) : extractProjectName(directory);
+  const projectName = project?.id ? extractProjectName2(project.worktree) : extractProjectName2(directory);
   let currentSessionId;
   const currentModel = undefined;
   const conversationBuffer = createConversationBuffer();

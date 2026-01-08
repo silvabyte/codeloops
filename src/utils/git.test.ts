@@ -1,7 +1,7 @@
 import { exec } from "node:child_process";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createLogger } from "../../lib/logger.ts";
-import { getGitDiff } from "./git.ts";
+import { createLogger } from "../core/logger.ts";
+import { getFileDiff, getGitDiff, getMultiFileDiff } from "./git.ts";
 
 // Mock child_process exec
 vi.mock("node:child_process", () => ({
@@ -137,5 +137,141 @@ describe("getGitDiff", () => {
 
       expect(result).toBe("");
     });
+  });
+});
+
+describe("getFileDiff", () => {
+  const mockExec = vi.mocked(exec);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns diff from HEAD when available", async () => {
+    mockExec.mockImplementationOnce((_cmd, options, callback) => {
+      const cb = callback || options;
+      (cb as any)(null, {
+        stdout: "diff --git a/file.ts b/file.ts\n+added line",
+        stderr: "",
+      });
+      return {} as ReturnType<typeof exec>;
+    });
+
+    const result = await getFileDiff("file.ts", "/project");
+
+    expect(result).toBe("diff --git a/file.ts b/file.ts\n+added line");
+    expect(mockExec).toHaveBeenCalledWith(
+      'git diff HEAD -- "file.ts"',
+      { cwd: "/project" },
+      expect.any(Function)
+    );
+  });
+
+  it("returns staged diff when HEAD diff is empty", async () => {
+    mockExec
+      .mockImplementationOnce((_cmd, options, callback) => {
+        const cb = callback || options;
+        (cb as any)(null, { stdout: "", stderr: "" });
+        return {} as ReturnType<typeof exec>;
+      })
+      .mockImplementationOnce((_cmd, options, callback) => {
+        const cb = callback || options;
+        (cb as any)(null, {
+          stdout: "diff --git a/new.ts b/new.ts\n+new file",
+          stderr: "",
+        });
+        return {} as ReturnType<typeof exec>;
+      });
+
+    const result = await getFileDiff("new.ts", "/project");
+
+    expect(result).toBe("diff --git a/new.ts b/new.ts\n+new file");
+    expect(mockExec).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns null when no diff available", async () => {
+    mockExec.mockImplementation((_cmd, options, callback) => {
+      const cb = callback || options;
+      (cb as any)(null, { stdout: "", stderr: "" });
+      return {} as ReturnType<typeof exec>;
+    });
+
+    const result = await getFileDiff("unchanged.ts", "/project");
+
+    expect(result).toBeNull();
+  });
+
+  it("shows content for untracked files", async () => {
+    mockExec
+      .mockImplementationOnce((_cmd, options, callback) => {
+        const cb = callback || options;
+        (cb as any)(null, { stdout: "", stderr: "" });
+        return {} as ReturnType<typeof exec>;
+      })
+      .mockImplementationOnce((_cmd, options, callback) => {
+        const cb = callback || options;
+        (cb as any)(null, { stdout: "", stderr: "" });
+        return {} as ReturnType<typeof exec>;
+      })
+      .mockImplementationOnce((_cmd, options, callback) => {
+        const cb = callback || options;
+        (cb as any)(null, { stdout: "", stderr: "" });
+        return {} as ReturnType<typeof exec>;
+      })
+      .mockImplementationOnce((_cmd, options, callback) => {
+        const cb = callback || options;
+        (cb as any)(null, { stdout: "?? untracked.ts", stderr: "" });
+        return {} as ReturnType<typeof exec>;
+      })
+      .mockImplementationOnce((_cmd, options, callback) => {
+        const cb = callback || options;
+        (cb as any)(null, { stdout: "console.log('new file');", stderr: "" });
+        return {} as ReturnType<typeof exec>;
+      });
+
+    const result = await getFileDiff("untracked.ts", "/project");
+
+    expect(result).toBe("[New untracked file]\nconsole.log('new file');");
+    expect(mockExec).toHaveBeenCalledTimes(5);
+  });
+});
+
+describe("getMultiFileDiff", () => {
+  const mockExec = vi.mocked(exec);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("combines diffs from multiple files", async () => {
+    mockExec
+      .mockImplementationOnce((_cmd, options, callback) => {
+        const cb = callback || options;
+        (cb as any)(null, { stdout: "diff for file1", stderr: "" });
+        return {} as ReturnType<typeof exec>;
+      })
+      .mockImplementationOnce((_cmd, options, callback) => {
+        const cb = callback || options;
+        (cb as any)(null, { stdout: "diff for file2", stderr: "" });
+        return {} as ReturnType<typeof exec>;
+      });
+
+    const result = await getMultiFileDiff(["file1.ts", "file2.ts"], "/project");
+
+    expect(result).toBe(
+      "### file1.ts\ndiff for file1\n\n### file2.ts\ndiff for file2"
+    );
+  });
+
+  it("returns null when no files have diffs", async () => {
+    mockExec.mockImplementation((_cmd, options, callback) => {
+      const cb = callback || options;
+      (cb as any)(null, { stdout: "", stderr: "" });
+      return {} as ReturnType<typeof exec>;
+    });
+
+    const result = await getMultiFileDiff(["file1.ts", "file2.ts"], "/project");
+
+    expect(result).toBeNull();
   });
 });

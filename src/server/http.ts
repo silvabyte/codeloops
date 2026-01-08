@@ -7,7 +7,7 @@ import Fastify, {
   type FastifyRequest,
 } from "fastify";
 import { nanoid } from "nanoid";
-import type { CodeLoopsLogger } from "../../lib/logger.js";
+import type { CodeLoopsLogger } from "../core/logger.js";
 import { createMcpServerInstance } from "./index.js";
 import { registerTools } from "./tools.js";
 

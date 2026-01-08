@@ -36,8 +36,10 @@ import path from "node:path";
 import type { Plugin } from "@opencode-ai/plugin";
 import { tool } from "@opencode-ai/plugin/tool";
 import { nanoid } from "nanoid";
-import { createLogger } from "../lib/logger.ts";
-import { createMemoryStoreFunctions } from "../lib/memory-store.ts";
+import { createLogger } from "../src/core/logger.ts";
+import { createMemoryStoreFunctions } from "../src/core/memory-store.ts";
+import { getFileDiff, getMultiFileDiff } from "../src/utils/git.ts";
+import { extractProjectName as extractProjectNameOrNull } from "../src/utils/project.ts";
 import {
   type ExtractedTodo,
   extractTodosFromDiff,
@@ -47,7 +49,6 @@ import {
 // Regex Constants
 // -----------------------------------------------------------------------------
 
-const TRAILING_SLASHES_REGEX = /\/+$/;
 // Regex patterns for JSON extraction
 const MARKDOWN_CODE_BLOCK_REGEX = /```(?:json)?\s*([\s\S]*?)```/g;
 const JSON_OBJECT_REGEX = /\{[\s\S]*\}/;
@@ -892,94 +893,10 @@ async function performCriticAnalysis(opts: CriticHookOptions): Promise<void> {
  * 3. diff (unstaged only)
  * 4. show file content for untracked files
  */
-async function getFileDiff(
-  filePath: string,
-  workdir: string
-): Promise<string | null> {
-  const { exec } = await import("node:child_process");
-  const { promisify } = await import("node:util");
-  const execAsync = promisify(exec);
-
-  if (!filePath?.trim()) {
-    return null;
-  }
-
-  // Strategy 1: Try diff against HEAD (most common case)
-  try {
-    const { stdout } = await execAsync(`git diff HEAD -- "${filePath}"`, {
-      cwd: workdir,
-    });
-    if (stdout.trim()) {
-      return stdout.trim();
-    }
-  } catch {
-    // Continue to next strategy
-  }
-
-  // Strategy 2: Try staged diff (for newly added files)
-  try {
-    const { stdout } = await execAsync(`git diff --cached -- "${filePath}"`, {
-      cwd: workdir,
-    });
-    if (stdout.trim()) {
-      return stdout.trim();
-    }
-  } catch {
-    // Continue to next strategy
-  }
-
-  // Strategy 3: Try unstaged diff
-  try {
-    const { stdout } = await execAsync(`git diff -- "${filePath}"`, {
-      cwd: workdir,
-    });
-    if (stdout.trim()) {
-      return stdout.trim();
-    }
-  } catch {
-    // Continue to next strategy
-  }
-
-  // Strategy 4: Check if file is untracked and show content preview
-  try {
-    const { stdout: statusOut } = await execAsync(
-      `git status --porcelain -- "${filePath}"`,
-      { cwd: workdir }
-    );
-    if (statusOut.startsWith("??")) {
-      // Untracked file - show first 100 lines as context
-      const { stdout: content } = await execAsync(`head -100 "${filePath}"`, {
-        cwd: workdir,
-      });
-      if (content.trim()) {
-        return `[New untracked file]\n${content.trim()}`;
-      }
-    }
-  } catch {
-    // Git not available or other error
-  }
-
-  return null;
-}
 
 /**
  * Get diffs for multiple files (used for multiEdit tool).
  */
-async function getMultiFileDiff(
-  filePaths: string[],
-  workdir: string
-): Promise<string | null> {
-  const diffs: string[] = [];
-
-  for (const filePath of filePaths) {
-    const diff = await getFileDiff(filePath, workdir);
-    if (diff) {
-      diffs.push(`### ${filePath}\n${diff}`);
-    }
-  }
-
-  return diffs.length > 0 ? diffs.join("\n\n") : null;
-}
 
 /**
  * Get diff for single-file edit tools (edit, write).
@@ -1248,14 +1165,9 @@ async function processTodosWithConcurrency(
 // -----------------------------------------------------------------------------
 // Helper to extract project name
 // -----------------------------------------------------------------------------
-
+// Wrapper to match the original API (returns "unknown" instead of null)
 function extractProjectName(projectPath: string): string {
-  // Extract last directory name from path
-  const normalized = projectPath
-    .replace(/\\/g, "/")
-    .replace(TRAILING_SLASHES_REGEX, "");
-  const parts = normalized.split("/");
-  return parts.at(-1) || "unknown";
+  return extractProjectNameOrNull(projectPath) || "unknown";
 }
 
 // -----------------------------------------------------------------------------

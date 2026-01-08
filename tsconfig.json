@@ -19,6 +19,6 @@
     "noEmitOnError": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*", "lib/**/*", "plugin/**/*", "scripts/**/*"],
+  "include": ["src/**/*", "plugin/**/*", "scripts/**/*"],
   "exclude": ["node_modules", "dist"]
 }

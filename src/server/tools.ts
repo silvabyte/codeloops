@@ -4,8 +4,8 @@ import {
   type CodeLoopsLogger,
   getLoggerInstance as getLogger,
   setGlobalLogger,
-} from "../../lib/logger.js";
-import { MemoryStore } from "../../lib/memory-store.ts";
+} from "../core/logger.js";
+import { MemoryStore } from "../core/memory-store.ts";
 import { extractProjectName } from "../utils/project.js";
 
 // Shared dependencies interface
