@@ -38,20 +38,21 @@ import { tool } from "@opencode-ai/plugin/tool";
 import { nanoid } from "nanoid";
 import { createLogger } from "../src/core/logger.ts";
 import { createMemoryStoreFunctions } from "../src/core/memory-store.ts";
+import {
+  type CriticConfig,
+  type CriticContext,
+  type CriticFeedback,
+  cleanupCriticSession,
+  formatFeedbackForActor,
+  invokeCritic,
+  isCriticSession,
+} from "../src/critic/index.ts";
 import { getFileDiff, getMultiFileDiff } from "../src/utils/git.ts";
 import { extractProjectName as extractProjectNameOrNull } from "../src/utils/project.ts";
 import {
   type ExtractedTodo,
   extractTodosFromDiff,
 } from "../src/utils/todo-extractor.ts";
-
-// -----------------------------------------------------------------------------
-// Regex Constants
-// -----------------------------------------------------------------------------
-
-// Regex patterns for JSON extraction
-const MARKDOWN_CODE_BLOCK_REGEX = /```(?:json)?\s*([\s\S]*?)```/g;
-const JSON_OBJECT_REGEX = /\{[\s\S]*\}/;
 
 // -----------------------------------------------------------------------------
 // Plugin Logger
@@ -167,29 +168,6 @@ function getTodoAgentConfig(): TodoAgentConfig {
 // Critic Agent Configuration
 // -----------------------------------------------------------------------------
 
-/**
- * Configuration for the Critic agent in the actor-critic loop.
- *
- * Loaded from (in order of priority):
- * 1. Environment variables (highest priority, overrides file config)
- *    - CODELOOPS_CRITIC_MODEL: Model to use (defaults to actor's model if not set)
- *    - CODELOOPS_CRITIC_ENABLED: Set to "false" to disable critic
- *
- * 2. Config file: ~/.config/codeloops/config.json
- *    {
- *      "critic": {
- *        "model": "anthropic/claude-haiku-4-20250514",
- *        "enabled": true
- *      }
- *    }
- */
-type CriticConfig = {
-  /** Model in provider/model format (null = use actor's model) */
-  model: string | undefined;
-  /** Whether critic is enabled */
-  enabled: boolean;
-};
-
 function getCriticConfig(): CriticConfig {
   const fileConfig = loadConfigFile();
 
@@ -207,488 +185,18 @@ function getCriticConfig(): CriticConfig {
   return { model, enabled };
 }
 
-// -----------------------------------------------------------------------------
-// Critic Types
-// -----------------------------------------------------------------------------
-
-/**
- * Structured feedback from the critic agent.
- */
-type CriticFeedback = {
-  verdict: "proceed" | "revise" | "stop";
-  confidence: number;
-  issues: string[];
-  suggestions: string[];
-  context: string;
-  reasoning: string;
-};
-
-/**
- * Context provided to the critic for analysis.
- *
- * Note: conversationContext was removed because the conversation buffer
- * captures streaming/partial message updates that the critic misinterprets
- * as UI rendering issues, causing hallucinated feedback about "technical
- * problems" that don't exist. The critic should rely on tool args, result,
- * and git diff for context instead.
- */
-type CriticContext = {
-  action: {
-    tool: string;
-    args: Record<string, unknown>;
-    result: string;
-  };
-  diff?: string;
-  project: {
-    name: string;
-    workdir: string;
-  };
-};
-
 // Create memory store functions using the shared lib
 const memoryStore = createMemoryStoreFunctions(pluginLogger);
 
 // -----------------------------------------------------------------------------
-// Critic Implementation
+// Critic Implementation (using extracted module)
 // -----------------------------------------------------------------------------
-
-/**
- * Format the context into a prompt for the critic agent.
- */
-function formatCriticPrompt(ctx: CriticContext): string {
-  const parts: string[] = [
-    "## Action Taken",
-    "",
-    `**Tool:** ${ctx.action.tool}`,
-    "**Arguments:**",
-    "```json",
-    JSON.stringify(ctx.action.args, null, 2),
-    "```",
-    "",
-    "**Result:**",
-    "```",
-    ctx.action.result.slice(0, 2000), // Truncate very long results
-    "```",
-  ];
-
-  if (ctx.diff) {
-    parts.push(
-      "",
-      "## File Changes",
-      "```diff",
-      ctx.diff.slice(0, 3000),
-      "```"
-    );
-  }
-
-  parts.push(
-    "",
-    "## Your Task",
-    "",
-    "Analyze this action and provide structured JSON feedback.",
-    "Use your tools to read files, search code, or gather additional context as needed."
-  );
-
-  return parts.join("\n");
-}
-
-/**
- * Try to parse a string as JSON and validate it has expected critic fields.
- */
-function tryParseCriticJson(text: string): CriticFeedback | null {
-  try {
-    const parsed = JSON.parse(text);
-    // Validate it looks like a critic response (has verdict field)
-    if (parsed && typeof parsed === "object" && "verdict" in parsed) {
-      return {
-        verdict: parsed.verdict || "proceed",
-        confidence:
-          typeof parsed.confidence === "number" ? parsed.confidence : 0.5,
-        issues: Array.isArray(parsed.issues) ? parsed.issues : [],
-        suggestions: Array.isArray(parsed.suggestions)
-          ? parsed.suggestions
-          : [],
-        context: parsed.context || "",
-        reasoning: parsed.reasoning || "",
-      };
-    }
-  } catch {
-    // Not valid JSON, return null
-  }
-  return null;
-}
-
-/**
- * Extract JSON from markdown code blocks.
- */
-function extractFromCodeBlocks(text: string): string[] {
-  const blocks: string[] = [];
-  const matches = text.matchAll(MARKDOWN_CODE_BLOCK_REGEX);
-  for (const match of matches) {
-    if (match[1]) {
-      blocks.push(match[1].trim());
-    }
-  }
-  return blocks;
-}
-
-/**
- * Process a single character in JSON extraction.
- * Returns updated state and optional end position if object is complete.
- */
-function processJsonChar(
-  char: string,
-  state: { depth: number; inString: boolean; isEscaped: boolean }
-): { endFound: boolean } {
-  if (state.isEscaped) {
-    state.isEscaped = false;
-    return { endFound: false };
-  }
-
-  if (char === "\\") {
-    state.isEscaped = true;
-    return { endFound: false };
-  }
-
-  if (char === '"') {
-    state.inString = !state.inString;
-    return { endFound: false };
-  }
-
-  if (state.inString) {
-    return { endFound: false };
-  }
-
-  if (char === "{") {
-    state.depth += 1;
-  } else if (char === "}") {
-    state.depth -= 1;
-    if (state.depth === 0) {
-      return { endFound: true };
-    }
-  }
-
-  return { endFound: false };
-}
-
-/**
- * Extract JSON object from text using balanced brace matching.
- * More reliable than greedy regex for nested objects.
- */
-function extractJsonObject(text: string): string | null {
-  const start = text.indexOf("{");
-  if (start === -1) {
-    return null;
-  }
-
-  const state = { depth: 0, inString: false, isEscaped: false };
-
-  for (let i = start; i < text.length; i += 1) {
-    const { endFound } = processJsonChar(text[i], state);
-    if (endFound) {
-      return text.slice(start, i + 1);
-    }
-  }
-
-  return null;
-}
-
-/**
- * Try parsing with a specific extraction strategy.
- */
-function tryParseWithExtraction(
-  text: string,
-  extractor: (t: string) => string | null
-): CriticFeedback | null {
-  const extracted = extractor(text);
-  if (extracted) {
-    return tryParseCriticJson(extracted);
-  }
-  return null;
-}
-
-/**
- * Parse the critic's JSON response.
- * Tries multiple extraction strategies:
- * 1. Direct JSON parse (if response is pure JSON)
- * 2. Extract from markdown code blocks
- * 3. Extract JSON object with balanced brace matching
- * Falls back to a default "proceed" response if all strategies fail.
- */
-function parseCriticResponse(responseText: string): CriticFeedback {
-  if (!responseText?.trim()) {
-    pluginLogger.warn({ msg: "Empty critic response" });
-    return createDefaultFeedback("Empty critic response");
-  }
-
-  // Strategy 1: Try direct parse (response might be pure JSON)
-  const directParse = tryParseCriticJson(responseText.trim());
-  if (directParse) {
-    return directParse;
-  }
-
-  // Strategy 2: Try extracting from markdown code blocks
-  const codeBlocks = extractFromCodeBlocks(responseText);
-  for (const block of codeBlocks) {
-    const fromBlock = tryParseCriticJson(block);
-    if (fromBlock) {
-      return fromBlock;
-    }
-    // Try extracting JSON object from within the code block
-    const fromBlockExtract = tryParseWithExtraction(block, extractJsonObject);
-    if (fromBlockExtract) {
-      return fromBlockExtract;
-    }
-  }
-
-  // Strategy 3: Try balanced brace extraction from full text
-  const fromBalanced = tryParseWithExtraction(responseText, extractJsonObject);
-  if (fromBalanced) {
-    return fromBalanced;
-  }
-
-  // Strategy 4: Fallback to greedy regex (last resort)
-  const greedyMatch = responseText.match(JSON_OBJECT_REGEX);
-  if (greedyMatch) {
-    const fromGreedy = tryParseCriticJson(greedyMatch[0]);
-    if (fromGreedy) {
-      return fromGreedy;
-    }
-  }
-
-  pluginLogger.warn({
-    msg: "Failed to parse critic response after all strategies",
-    responsePreview: responseText.slice(0, 300),
-  });
-
-  return createDefaultFeedback("Unable to parse critic response");
-}
-
-/**
- * Create a default feedback response for error cases.
- */
-function createDefaultFeedback(reason: string): CriticFeedback {
-  return {
-    verdict: "proceed",
-    confidence: 0.5,
-    issues: [],
-    suggestions: [],
-    context: "",
-    reasoning: `${reason}, defaulting to proceed.`,
-  };
-}
-
-/**
- * Format critic feedback for injection into the actor's context.
- */
-function formatFeedbackForActor(feedback: CriticFeedback): string {
-  const verdictSymbol: Record<string, string> = {
-    proceed: "[PROCEED]",
-    revise: "[REVISE]",
-    stop: "[STOP]",
-  };
-
-  const parts: string[] = [
-    "---",
-    `## Critic Feedback ${verdictSymbol[feedback.verdict] || ""}`,
-    "",
-    `**Verdict:** ${feedback.verdict.toUpperCase()} (confidence: ${Math.round(feedback.confidence * 100)}%)`,
-  ];
-
-  if (feedback.issues.length > 0) {
-    parts.push("", "### Issues");
-    for (const issue of feedback.issues) {
-      parts.push(`- ${issue}`);
-    }
-  }
-
-  if (feedback.suggestions.length > 0) {
-    parts.push("", "### Suggestions");
-    for (const suggestion of feedback.suggestions) {
-      parts.push(`- ${suggestion}`);
-    }
-  }
-
-  if (feedback.context) {
-    parts.push("", "### Context", feedback.context);
-  }
-
-  if (feedback.reasoning) {
-    parts.push("", "### Reasoning", feedback.reasoning);
-  }
-
-  parts.push("---");
-
-  return parts.join("\n");
-}
-
-/**
- * Set of session IDs that are critic sessions (to avoid critic critiquing itself).
- */
-const criticSessionIds = new Set<string>();
 
 /**
  * Tools that should trigger critic analysis.
  * We focus on tools that make changes or could affect the codebase.
  */
 const CRITIC_TRIGGER_TOOLS = new Set(["edit", "write", "bash", "multiEdit"]);
-
-/**
- * Get or create a critic session for the current actor session.
- * Reuses existing session if available, creates new one if needed.
- */
-async function getOrCreateCriticSession(
-  // biome-ignore lint/suspicious/noExplicitAny: SDK client types are complex
-  client: any,
-  actorSessionId: string
-): Promise<string | null> {
-  // If actor session changed, clean up old critic session
-  if (
-    criticState.actorSessionId &&
-    criticState.actorSessionId !== actorSessionId
-  ) {
-    await cleanupCriticSession(client);
-  }
-
-  // Reuse existing critic session if available
-  if (criticState.criticSessionId) {
-    return criticState.criticSessionId;
-  }
-
-  // Create new critic session
-  const sessionResult = await client.session.create({
-    body: { title: `critic-for-${actorSessionId}` },
-  });
-
-  const sessionId = sessionResult.data?.id;
-  if (!sessionId) {
-    pluginLogger.error({ msg: "Failed to create critic session" });
-    return null;
-  }
-
-  // Track the new session
-  criticState.criticSessionId = sessionId;
-  criticState.actorSessionId = actorSessionId;
-  criticSessionIds.add(sessionId);
-
-  pluginLogger.info({
-    msg: "Created reusable critic session",
-    criticSessionId: sessionId,
-    actorSessionId,
-  });
-
-  return sessionId;
-}
-
-/**
- * Clean up the current critic session.
- * Called when actor session changes or critic is disabled.
- */
-async function cleanupCriticSession(
-  // biome-ignore lint/suspicious/noExplicitAny: SDK client types are complex
-  client: any
-): Promise<void> {
-  if (!criticState.criticSessionId) {
-    return;
-  }
-
-  const sessionId = criticState.criticSessionId;
-  criticSessionIds.delete(sessionId);
-  criticState.criticSessionId = null;
-  criticState.actorSessionId = null;
-
-  try {
-    await client.session.delete({ path: { id: sessionId } });
-    pluginLogger.info({
-      msg: "Cleaned up critic session",
-      sessionId,
-    });
-  } catch (err) {
-    pluginLogger.warn({
-      msg: "Failed to delete critic session",
-      sessionId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-}
-
-/**
- * Options for invoking the critic agent.
- */
-type InvokeCriticOptions = {
-  // biome-ignore lint/suspicious/noExplicitAny: SDK client types are complex
-  client: any;
-  context: CriticContext;
-  config: CriticConfig;
-  actorSessionId: string;
-  actorModel?: { providerID: string; modelID: string };
-};
-
-/**
- * Invoke the critic agent to analyze an action.
- * Returns structured feedback.
- *
- * Uses a reusable critic session per actor session to:
- * 1. Reduce session creation overhead
- * 2. Allow critic to build context across multiple analyses
- * 3. Enable continuity in feedback within an actor session
- */
-async function invokeCritic(
-  opts: InvokeCriticOptions
-): Promise<CriticFeedback> {
-  // Get or create a reusable critic session
-  const sessionId = await getOrCreateCriticSession(
-    opts.client,
-    opts.actorSessionId
-  );
-  if (!sessionId) {
-    return parseCriticResponse("");
-  }
-
-  try {
-    // Determine model to use
-    let model: { providerID: string; modelID: string } | undefined;
-    if (opts.config.model) {
-      const [providerID, ...modelParts] = opts.config.model.split("/");
-      model = { providerID, modelID: modelParts.join("/") };
-    } else if (opts.actorModel) {
-      model = opts.actorModel;
-    }
-
-    // Send context to critic and get response
-    const response = await opts.client.session.prompt({
-      path: { id: sessionId },
-      body: {
-        model,
-        agent: "critic",
-        parts: [
-          { type: "text" as const, text: formatCriticPrompt(opts.context) },
-        ],
-      },
-    });
-
-    // Extract text from response parts
-    const responseParts = response.data?.parts || [];
-    const textParts = responseParts
-      // biome-ignore lint/suspicious/noExplicitAny: SDK response types
-      .filter((p: any) => p.type === "text" && p.text)
-      // biome-ignore lint/suspicious/noExplicitAny: SDK response types
-      .map((p: any) => p.text)
-      .join("\n");
-
-    return parseCriticResponse(textParts);
-  } catch (err) {
-    // If session became invalid, clear it so next call creates a new one
-    pluginLogger.error({
-      msg: "Critic session error, will recreate on next call",
-      sessionId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    criticState.criticSessionId = null;
-    criticSessionIds.delete(sessionId);
-    return parseCriticResponse("");
-  }
-}
 
 /**
  * Inject feedback into the actor's session without triggering a response.
@@ -776,7 +284,7 @@ function shouldSkipCritic(toolName: string, sessionId: string): boolean {
     return true;
   }
 
-  if (criticSessionIds.has(sessionId)) {
+  if (isCriticSession(sessionId)) {
     return true;
   }
 
