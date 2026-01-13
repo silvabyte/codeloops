@@ -39,9 +39,11 @@ codeloops
 # Specify which agent to use
 codeloops --agent claude --prompt "add unit tests for the API"
 codeloops --agent opencode --prompt "refactor the database layer"
+codeloops --agent cursor --prompt "add unit tests for the API"
 
 # Use different agents for actor and critic
 codeloops --actor-agent claude --critic-agent opencode --prompt "optimize performance"
+codeloops --actor-agent cursor --critic-agent claude --prompt "optimize performance"
 
 # Limit iterations (default: unlimited)
 codeloops --max-iterations 5 --prompt "complex refactoring task"
@@ -102,7 +104,7 @@ After using all the coding agents in the world. Having any sort of ui or tui end
 | `-p, --prompt <PROMPT>` | Task prompt (or reads from prompt.md) |
 | `--prompt-file <FILE>` | Path to prompt file (default: prompt.md) |
 | `-d, --working-dir <DIR>` | Working directory (default: current) |
-| `-a, --agent <AGENT>` | Agent for both actor and critic (claude/opencode) |
+| `-a, --agent <AGENT>` | Agent for both actor and critic (claude/opencode/cursor) |
 | `--actor-agent <AGENT>` | Agent specifically for actor role |
 | `--critic-agent <AGENT>` | Agent specifically for critic role |
 | `-n, --max-iterations <N>` | Maximum iterations (default: unlimited) |
@@ -117,6 +119,7 @@ After using all the coding agents in the world. Having any sort of ui or tui end
 |-------|-----|--------|
 | Claude Code | `claude` | Supported |
 | OpenCode | `opencode` | Supported |
+| Cursor | `cursor` | Supported |
 
 Agents must be installed and available in your PATH.
 
