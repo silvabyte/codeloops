@@ -1,0 +1,13 @@
+[package]
+name = "codeloops-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Agent abstraction layer for codeloops"
+
+[dependencies]
+tokio.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

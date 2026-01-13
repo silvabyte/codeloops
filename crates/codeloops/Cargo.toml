@@ -1,0 +1,28 @@
+[package]
+name = "codeloops"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Actor-critic harness for coding agents"
+
+[[bin]]
+name = "codeloops"
+path = "src/main.rs"
+
+[dependencies]
+codeloops-core.workspace = true
+codeloops-agent.workspace = true
+codeloops-critic.workspace = true
+codeloops-git.workspace = true
+codeloops-logging.workspace = true
+
+tokio.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+dirs.workspace = true
+ctrlc.workspace = true

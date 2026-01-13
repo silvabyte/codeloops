@@ -1,0 +1,53 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/codeloops",
+    "crates/codeloops-core",
+    "crates/codeloops-agent",
+    "crates/codeloops-critic",
+    "crates/codeloops-git",
+    "crates/codeloops-logging",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/matsilva/codeloops"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1.40", features = ["full"] }
+async-trait = "0.1"
+
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Git integration
+git2 = "0.19"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+
+# Utilities
+humantime-serde = "1.1"
+dirs = "5.0"
+ctrlc = "3.4"
+chrono = { version = "0.4", features = ["serde"] }
+
+# Internal crates
+codeloops-core = { path = "crates/codeloops-core" }
+codeloops-agent = { path = "crates/codeloops-agent" }
+codeloops-critic = { path = "crates/codeloops-critic" }
+codeloops-git = { path = "crates/codeloops-git" }
+codeloops-logging = { path = "crates/codeloops-logging" }

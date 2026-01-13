@@ -1,0 +1,25 @@
+mod events;
+
+pub use events::{LogEvent, LogFormat, Logger};
+
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+
+/// Initialize tracing for the application
+pub fn init_tracing(level: &str, format: LogFormat) {
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(level));
+
+    match format {
+        LogFormat::Json => {
+            tracing_subscriber::registry()
+                .with(filter)
+                .with(fmt::layer().json().with_target(false))
+                .init();
+        }
+        LogFormat::Pretty | LogFormat::Compact => {
+            tracing_subscriber::registry()
+                .with(filter)
+                .with(fmt::layer().with_target(false))
+                .init();
+        }
+    }
+}
