@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
+use colored::Colorize;
 
 use codeloops_agent::{create_agent, AgentType};
 use codeloops_core::{LoopContext, LoopOutcome, LoopRunner};
@@ -50,6 +51,10 @@ struct Cli {
     #[arg(long, value_enum, default_value = "pretty")]
     log_format: LogFormatChoice,
 
+    /// Write structured logs to a file (JSON format)
+    #[arg(long)]
+    log_file: Option<PathBuf>,
+
     /// Model to use (if agent supports it)
     #[arg(short, long)]
     model: Option<String>,
@@ -61,6 +66,10 @@ struct Cli {
     /// Dry run: show what would happen without executing
     #[arg(long)]
     dry_run: bool,
+
+    /// Disable colored output
+    #[arg(long)]
+    no_color: bool,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -99,6 +108,11 @@ impl From<LogFormatChoice> for LogFormat {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
+    // Handle no-color flag
+    if cli.no_color {
+        colored::control::set_override(false);
+    }
+
     // Determine working directory
     let working_dir = cli
         .working_dir
@@ -108,31 +122,41 @@ async fn main() -> Result<()> {
     // Get prompt
     let prompt = get_prompt(&cli, &working_dir)?;
 
-    // Create logger
+    // Create logger (with optional file output)
     let log_format: LogFormat = cli.log_format.into();
-    let logger = Logger::new(log_format);
+    let logger = if let Some(ref log_path) = cli.log_file {
+        Logger::with_file(log_format, log_path).context("Failed to create file logger")?
+    } else {
+        Logger::new(log_format)
+    };
 
     // Determine agent types
     let actor_type: AgentType = cli.actor_agent.unwrap_or(cli.agent).into();
     let critic_type: AgentType = cli.critic_agent.unwrap_or(cli.agent).into();
 
     if cli.dry_run {
-        println!("=== Dry Run ===");
+        println!("{}", "=== Dry Run ===".bright_blue().bold());
         println!(
-            "Prompt: {}",
+            "{}  {}",
+            "Prompt:".dimmed(),
             if prompt.len() > 100 {
                 format!("{}...", &prompt[..100])
             } else {
                 prompt.clone()
             }
         );
-        println!("Working dir: {}", working_dir.display());
-        println!("Actor: {}", actor_type);
-        println!("Critic: {}", critic_type);
-        if let Some(max) = cli.max_iterations {
-            println!("Max iterations: {}", max);
-        } else {
-            println!("Max iterations: unlimited");
+        println!("{}  {}", "Dir:".dimmed(), working_dir.display());
+        println!("{}  {}", "Actor:".dimmed(), actor_type);
+        println!("{}  {}", "Critic:".dimmed(), critic_type);
+        println!(
+            "{}  {}",
+            "Max iterations:".dimmed(),
+            cli.max_iterations
+                .map(|n| n.to_string())
+                .unwrap_or_else(|| "unlimited".to_string())
+        );
+        if let Some(ref log_path) = cli.log_file {
+            println!("{}  {}", "Log file:".dimmed(), log_path.display());
         }
         return Ok(());
     }
@@ -169,7 +193,10 @@ async fn main() -> Result<()> {
     // Handle Ctrl+C gracefully
     let interrupt_handle = runner.interrupt_handle();
     ctrlc::set_handler(move || {
-        eprintln!("\nInterrupted. Finishing current iteration...");
+        eprintln!(
+            "\n{} Interrupted. Finishing current iteration...",
+            "⚠".bright_yellow()
+        );
         interrupt_handle.store(true, Ordering::SeqCst);
     })
     .context("Failed to set Ctrl+C handler")?;
@@ -215,6 +242,9 @@ fn get_prompt(cli: &Cli, working_dir: &Path) -> Result<String> {
 }
 
 fn print_outcome(outcome: &LoopOutcome) {
+    let mut stderr = std::io::stderr();
+    use std::io::Write;
+
     match outcome {
         LoopOutcome::Success {
             iterations,
@@ -223,33 +253,75 @@ fn print_outcome(outcome: &LoopOutcome) {
             total_duration_secs,
             ..
         } => {
-            eprintln!();
-            eprintln!("=== SUCCESS ===");
-            eprintln!("Iterations: {}", iterations);
-            eprintln!("Confidence: {:.0}%", confidence * 100.0);
-            eprintln!("Duration: {:.1}s", total_duration_secs);
-            eprintln!("Summary: {}", summary);
+            let _ = writeln!(stderr);
+            let _ = writeln!(
+                stderr,
+                "{} {} in {} {} ({:.1}s)",
+                "✅".bright_green(),
+                "SUCCESS".bright_green().bold(),
+                iterations,
+                if *iterations == 1 {
+                    "iteration"
+                } else {
+                    "iterations"
+                },
+                total_duration_secs
+            );
+            let _ = writeln!(
+                stderr,
+                "   {} {:.0}%",
+                "Confidence:".dimmed(),
+                confidence * 100.0
+            );
+            // Word-wrap the summary at ~70 chars
+            let wrapped = wrap_text(summary, 70);
+            for (i, line) in wrapped.iter().enumerate() {
+                if i == 0 {
+                    let _ = writeln!(stderr, "   {} {}", "Summary:".dimmed(), line);
+                } else {
+                    let _ = writeln!(stderr, "            {}", line);
+                }
+            }
         }
         LoopOutcome::MaxIterationsReached {
             iterations,
             total_duration_secs,
             ..
         } => {
-            eprintln!();
-            eprintln!("=== INCOMPLETE ===");
-            eprintln!("Reached maximum iterations ({})", iterations);
-            eprintln!("Duration: {:.1}s", total_duration_secs);
-            eprintln!("The task may not be fully complete.");
+            let _ = writeln!(stderr);
+            let _ = writeln!(
+                stderr,
+                "{} {} after {} iterations ({:.1}s)",
+                "⚠".bright_yellow(),
+                "INCOMPLETE".bright_yellow().bold(),
+                iterations,
+                total_duration_secs
+            );
+            let _ = writeln!(
+                stderr,
+                "   {}",
+                "The task may not be fully complete.".dimmed()
+            );
         }
         LoopOutcome::UserInterrupted {
             iterations,
             total_duration_secs,
             ..
         } => {
-            eprintln!();
-            eprintln!("=== INTERRUPTED ===");
-            eprintln!("User stopped after {} iteration(s)", iterations);
-            eprintln!("Duration: {:.1}s", total_duration_secs);
+            let _ = writeln!(stderr);
+            let _ = writeln!(
+                stderr,
+                "{} {} after {} {} ({:.1}s)",
+                "⏸".bright_yellow(),
+                "INTERRUPTED".bright_yellow().bold(),
+                iterations,
+                if *iterations == 1 {
+                    "iteration"
+                } else {
+                    "iterations"
+                },
+                total_duration_secs
+            );
         }
         LoopOutcome::Failed {
             iterations,
@@ -257,10 +329,50 @@ fn print_outcome(outcome: &LoopOutcome) {
             total_duration_secs,
             ..
         } => {
-            eprintln!();
-            eprintln!("=== FAILED ===");
-            eprintln!("Error after {} iteration(s): {}", iterations, error);
-            eprintln!("Duration: {:.1}s", total_duration_secs);
+            let _ = writeln!(stderr);
+            let _ = writeln!(
+                stderr,
+                "{} {} after {} {} ({:.1}s)",
+                "❌".bright_red(),
+                "FAILED".bright_red().bold(),
+                iterations,
+                if *iterations == 1 {
+                    "iteration"
+                } else {
+                    "iterations"
+                },
+                total_duration_secs
+            );
+            let _ = writeln!(stderr, "   {} {}", "Error:".dimmed(), error.bright_red());
         }
     }
+    let _ = writeln!(stderr);
+}
+
+/// Wrap text to a maximum line width
+fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut current_line = String::new();
+
+    for word in text.split_whitespace() {
+        if current_line.is_empty() {
+            current_line = word.to_string();
+        } else if current_line.len() + 1 + word.len() <= max_width {
+            current_line.push(' ');
+            current_line.push_str(word);
+        } else {
+            lines.push(current_line);
+            current_line = word.to_string();
+        }
+    }
+
+    if !current_line.is_empty() {
+        lines.push(current_line);
+    }
+
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+
+    lines
 }

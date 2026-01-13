@@ -38,6 +38,10 @@ anyhow = "1.0"
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+tracing-appender = "0.2"
+
+# Terminal output
+colored = "2.1"
 
 # Utilities
 humantime-serde = "1.1"
