@@ -1,4 +1,4 @@
-use codeloops_agent::{Agent, AgentConfig};
+use codeloops_agent::{Agent, AgentConfig, OutputCallback};
 use tracing::{debug, info};
 
 use crate::{CriticDecision, CriticPrompts, DecisionParseError};
@@ -13,7 +13,7 @@ impl<'a> CriticEvaluator<'a> {
         Self { agent }
     }
 
-    /// Evaluate the actor's work
+    /// Evaluate the actor's work with optional streaming output
     pub async fn evaluate(
         &self,
         original_task: &str,
@@ -22,6 +22,29 @@ impl<'a> CriticEvaluator<'a> {
         git_diff: &str,
         iteration: usize,
         config: &AgentConfig,
+    ) -> Result<CriticDecision, EvaluationError> {
+        self.evaluate_with_callback(
+            original_task,
+            actor_stdout,
+            actor_stderr,
+            git_diff,
+            iteration,
+            config,
+            None,
+        )
+        .await
+    }
+
+    /// Evaluate the actor's work with optional streaming output callback
+    pub async fn evaluate_with_callback(
+        &self,
+        original_task: &str,
+        actor_stdout: &str,
+        actor_stderr: &str,
+        git_diff: &str,
+        iteration: usize,
+        config: &AgentConfig,
+        on_output: Option<OutputCallback>,
     ) -> Result<CriticDecision, EvaluationError> {
         let prompt = CriticPrompts::build_evaluation_prompt(
             original_task,
@@ -39,7 +62,7 @@ impl<'a> CriticEvaluator<'a> {
 
         let output = self
             .agent
-            .execute(&prompt, config)
+            .execute_with_callback(&prompt, config, on_output)
             .await
             .map_err(|e| EvaluationError::AgentError(e.to_string()))?;
 

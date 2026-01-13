@@ -7,7 +7,7 @@ mod traits;
 pub use claude::ClaudeCodeAgent;
 pub use opencode::OpenCodeAgent;
 pub use output::AgentOutput;
-pub use spawner::ProcessSpawner;
+pub use spawner::{OutputCallback, OutputType, ProcessSpawner};
 pub use traits::{Agent, AgentConfig, AgentError, AgentType};
 
 /// Create an agent by type

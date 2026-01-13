@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 use tokio::process::Command;
 use tracing::debug;
 
-use crate::{Agent, AgentConfig, AgentError, AgentOutput, AgentType, ProcessSpawner};
+use crate::{
+    Agent, AgentConfig, AgentError, AgentOutput, AgentType, OutputCallback, ProcessSpawner,
+};
 
 /// Claude Code agent implementation
 pub struct ClaudeCodeAgent {
@@ -51,7 +53,12 @@ impl Agent for ClaudeCodeAgent {
             .unwrap_or(false)
     }
 
-    async fn execute(&self, prompt: &str, config: &AgentConfig) -> Result<AgentOutput, AgentError> {
+    async fn execute_with_callback(
+        &self,
+        prompt: &str,
+        config: &AgentConfig,
+        on_output: Option<OutputCallback>,
+    ) -> Result<AgentOutput, AgentError> {
         debug!(
             agent = self.name(),
             prompt_len = prompt.len(),
@@ -74,6 +81,6 @@ impl Agent for ClaudeCodeAgent {
         // Add the prompt as the final argument
         args.push(prompt);
 
-        ProcessSpawner::spawn(&self.binary_path, &args, config).await
+        ProcessSpawner::spawn_with_callback(&self.binary_path, &args, config, on_output).await
     }
 }

@@ -1,6 +1,6 @@
 mod events;
 
-pub use events::{LogEvent, LogFormat, Logger};
+pub use events::{AgentRole, LogEvent, LogFormat, Logger, StreamType};
 
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 

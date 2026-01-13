@@ -1,5 +1,6 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
@@ -162,6 +163,7 @@ async fn main() -> Result<()> {
 
     // Create loop runner
     let diff_capture = DiffCapture::new();
+    let logger = Arc::new(logger);
     let runner = LoopRunner::new(actor.as_ref(), critic.as_ref(), diff_capture, logger);
 
     // Handle Ctrl+C gracefully
@@ -187,7 +189,7 @@ async fn main() -> Result<()> {
     std::process::exit(outcome.exit_code());
 }
 
-fn get_prompt(cli: &Cli, working_dir: &PathBuf) -> Result<String> {
+fn get_prompt(cli: &Cli, working_dir: &Path) -> Result<String> {
     // Prefer --prompt flag
     if let Some(ref prompt) = cli.prompt {
         return Ok(prompt.clone());

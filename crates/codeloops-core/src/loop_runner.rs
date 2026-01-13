@@ -3,10 +3,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
-use codeloops_agent::{Agent, AgentConfig};
+use codeloops_agent::{Agent, AgentConfig, OutputCallback, OutputType};
 use codeloops_critic::{CriticDecision, CriticEvaluator};
 use codeloops_git::DiffCapture;
-use codeloops_logging::{LogEvent, Logger};
+use codeloops_logging::{AgentRole, LogEvent, Logger, StreamType};
 
 use crate::context::IterationRecord;
 use crate::error::LoopError;
@@ -18,7 +18,7 @@ pub struct LoopRunner<'a> {
     actor: &'a dyn Agent,
     critic: &'a dyn Agent,
     diff_capture: DiffCapture,
-    logger: Logger,
+    logger: Arc<Logger>,
     interrupted: Arc<AtomicBool>,
 }
 
@@ -27,7 +27,7 @@ impl<'a> LoopRunner<'a> {
         actor: &'a dyn Agent,
         critic: &'a dyn Agent,
         diff_capture: DiffCapture,
-        logger: Logger,
+        logger: Arc<Logger>,
     ) -> Self {
         Self {
             actor,
@@ -41,6 +41,23 @@ impl<'a> LoopRunner<'a> {
     /// Get a handle to signal interruption
     pub fn interrupt_handle(&self) -> Arc<AtomicBool> {
         self.interrupted.clone()
+    }
+
+    /// Create an output callback for streaming agent output
+    fn create_output_callback(&self, iteration: usize, role: AgentRole) -> OutputCallback {
+        let logger = self.logger.clone();
+        Arc::new(move |line: &str, output_type: OutputType| {
+            let stream = match output_type {
+                OutputType::Stdout => StreamType::Stdout,
+                OutputType::Stderr => StreamType::Stderr,
+            };
+            logger.log(&LogEvent::AgentStreamLine {
+                iteration,
+                role,
+                stream,
+                line: line.to_string(),
+            });
+        })
     }
 
     /// Run the actor-critic loop until completion
@@ -115,9 +132,13 @@ impl<'a> LoopRunner<'a> {
             prompt_preview: actor_prompt.chars().take(100).collect(),
         });
 
-        // Run actor
+        // Run actor with streaming output
         debug!(iteration, "Running actor");
-        let actor_output = self.actor.execute(&actor_prompt, config).await?;
+        let actor_callback = self.create_output_callback(iteration, AgentRole::Actor);
+        let actor_output = self
+            .actor
+            .execute_with_callback(&actor_prompt, config, Some(actor_callback))
+            .await?;
 
         self.logger.log(&LogEvent::ActorCompleted {
             iteration,
@@ -152,18 +173,20 @@ impl<'a> LoopRunner<'a> {
             deletions: diff_summary.deletions,
         });
 
-        // Run critic
+        // Run critic with streaming output
         self.logger.log(&LogEvent::CriticStarted { iteration });
 
+        let critic_callback = self.create_output_callback(iteration, AgentRole::Critic);
         let evaluator = CriticEvaluator::new(self.critic);
         let decision = evaluator
-            .evaluate(
+            .evaluate_with_callback(
                 &context.prompt,
                 &actor_output.stdout,
                 &actor_output.stderr,
                 &git_diff,
                 iteration,
                 config,
+                Some(critic_callback),
             )
             .await?;
 

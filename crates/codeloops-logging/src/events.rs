@@ -2,6 +2,22 @@ use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::PathBuf;
 
+/// Role of the agent producing output
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentRole {
+    Actor,
+    Critic,
+}
+
+/// Type of output stream
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StreamType {
+    Stdout,
+    Stderr,
+}
+
 /// Structured log events for the actor-critic loop
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
@@ -23,6 +39,13 @@ pub enum LogEvent {
         iteration: usize,
         stdout_lines: usize,
         stderr_lines: usize,
+    },
+    /// Streaming output line from an agent
+    AgentStreamLine {
+        iteration: usize,
+        role: AgentRole,
+        stream: StreamType,
+        line: String,
     },
     GitDiffCaptured {
         iteration: usize,
@@ -172,6 +195,10 @@ impl Logger {
             LogEvent::ErrorEncountered { iteration, error } => {
                 let _ = writeln!(stderr, "[ERROR] Iteration {}: {}", iteration + 1, error);
             }
+            LogEvent::AgentStreamLine { line, .. } => {
+                // Stream output directly to stderr for the user to see
+                let _ = writeln!(stderr, "{}", line);
+            }
             _ => {
                 let _ = writeln!(stderr, "{:?}", event);
             }
@@ -197,6 +224,13 @@ impl Logger {
             LogEvent::MaxIterationsReached { iterations } => format!("loop:limit:{}", iterations),
             LogEvent::ErrorEncountered { iteration, error } => {
                 format!("error:{}:{}", iteration + 1, error)
+            }
+            LogEvent::AgentStreamLine { role, line, .. } => {
+                let role_str = match role {
+                    AgentRole::Actor => "actor",
+                    AgentRole::Critic => "critic",
+                };
+                format!("{}:{}", role_str, line)
             }
             _ => format!("{:?}", event),
         };

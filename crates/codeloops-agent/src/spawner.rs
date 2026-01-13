@@ -1,11 +1,23 @@
 use std::path::Path;
 use std::process::Stdio;
+use std::sync::Arc;
 use std::time::Instant;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tracing::{debug, trace};
 
 use crate::{AgentConfig, AgentError, AgentOutput};
+
+/// Type of output line (stdout or stderr)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputType {
+    Stdout,
+    Stderr,
+}
+
+/// Callback for streaming output lines
+/// Takes the line content and the output type
+pub type OutputCallback = Arc<dyn Fn(&str, OutputType) + Send + Sync>;
 
 /// Utility for spawning agent processes
 pub struct ProcessSpawner;
@@ -16,6 +28,16 @@ impl ProcessSpawner {
         binary: &Path,
         args: &[&str],
         config: &AgentConfig,
+    ) -> Result<AgentOutput, AgentError> {
+        Self::spawn_with_callback(binary, args, config, None).await
+    }
+
+    /// Spawn a process with an optional callback for streaming output
+    pub async fn spawn_with_callback(
+        binary: &Path,
+        args: &[&str],
+        config: &AgentConfig,
+        on_output: Option<OutputCallback>,
     ) -> Result<AgentOutput, AgentError> {
         let start = Instant::now();
 
@@ -59,6 +81,9 @@ impl ProcessSpawner {
                     match result {
                         Ok(Some(line)) => {
                             trace!(line = %line, "stdout");
+                            if let Some(ref cb) = on_output {
+                                cb(&line, OutputType::Stdout);
+                            }
                             if !stdout.is_empty() {
                                 stdout.push('\n');
                             }
@@ -68,6 +93,9 @@ impl ProcessSpawner {
                             // stdout closed, wait for stderr to close too
                             while let Ok(Some(line)) = stderr_reader.next_line().await {
                                 trace!(line = %line, "stderr");
+                                if let Some(ref cb) = on_output {
+                                    cb(&line, OutputType::Stderr);
+                                }
                                 if !stderr.is_empty() {
                                     stderr.push('\n');
                                 }
@@ -87,6 +115,9 @@ impl ProcessSpawner {
                     match result {
                         Ok(Some(line)) => {
                             trace!(line = %line, "stderr");
+                            if let Some(ref cb) = on_output {
+                                cb(&line, OutputType::Stderr);
+                            }
                             if !stderr.is_empty() {
                                 stderr.push('\n');
                             }

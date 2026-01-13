@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-use crate::AgentOutput;
+use crate::{AgentOutput, OutputCallback};
 
 /// Errors that can occur during agent execution
 #[derive(Error, Debug)]
@@ -110,7 +110,17 @@ pub trait Agent: Send + Sync {
     fn agent_type(&self) -> AgentType;
 
     /// Execute a task with the given prompt
-    async fn execute(&self, prompt: &str, config: &AgentConfig) -> Result<AgentOutput, AgentError>;
+    async fn execute(&self, prompt: &str, config: &AgentConfig) -> Result<AgentOutput, AgentError> {
+        self.execute_with_callback(prompt, config, None).await
+    }
+
+    /// Execute a task with the given prompt and optional output callback for streaming
+    async fn execute_with_callback(
+        &self,
+        prompt: &str,
+        config: &AgentConfig,
+        on_output: Option<OutputCallback>,
+    ) -> Result<AgentOutput, AgentError>;
 
     /// Check if the agent CLI is available on the system
     async fn is_available(&self) -> bool;
