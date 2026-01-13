@@ -2,7 +2,7 @@
 
 An actor-critic harness for coding agents.
 
-Codeloops orchestrates coding agents (Claude Code, OpenCode) in an actor-critic feedback loop. The **actor** executes coding tasks while the **critic** evaluates the work via git diff and stdout/stderr logs, continuing iterations until the task is complete.
+Codeloops orchestrates coding agents (Claude Code, OpenCode, Cursor) in an actor-critic feedback loop. The **actor** executes coding tasks while the **critic** evaluates the work via git diff and stdout/stderr logs, continuing iterations until the task is complete.
 
 ## The Problem
 
@@ -73,12 +73,12 @@ After using all the coding agents in the world. Having any sort of ui or tui end
                                 │
            ┌────────────────────┴────────────────────┐
            ▼                                         ▼
-┌─────────────────────┐                 ┌─────────────────────────┐
-│       ACTOR         │                 │        CRITIC           │
-│  (claude/opencode)  │────────────────▶│   (claude/opencode)     │
-│  Executes task      │   git diff +    │   Evaluates work        │
-│                     │   stdout/stderr │   Decides: done/continue│
-└─────────────────────┘                 └─────────────────────────┘
+┌───────────────────────────┐                 ┌───────────────────────────────┐
+│          ACTOR            │                 │           CRITIC              │
+│  (claude/opencode/cursor) │────────────────▶│   (claude/opencode/cursor)    │
+│  Executes task            │   git diff +    │   Evaluates work              │
+│                           │   stdout/stderr │   Decides: done/continue      │
+└───────────────────────────┘                 └───────────────────────────────┘
                                                      │
                                         ┌────────────┴────────────┐
                                         ▼                         ▼
