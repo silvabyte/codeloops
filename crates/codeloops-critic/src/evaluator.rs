@@ -3,6 +3,16 @@ use tracing::{debug, info};
 
 use crate::{CriticDecision, CriticPrompts, DecisionParseError};
 
+/// Inputs required to evaluate the critic decision.
+#[derive(Clone, Copy)]
+pub struct CriticEvaluationInput<'a> {
+    pub original_task: &'a str,
+    pub actor_stdout: &'a str,
+    pub actor_stderr: &'a str,
+    pub git_diff: &'a str,
+    pub iteration: usize,
+}
+
 /// Evaluator that runs the critic agent
 pub struct CriticEvaluator<'a> {
     agent: &'a dyn Agent,
@@ -16,47 +26,30 @@ impl<'a> CriticEvaluator<'a> {
     /// Evaluate the actor's work with optional streaming output
     pub async fn evaluate(
         &self,
-        original_task: &str,
-        actor_stdout: &str,
-        actor_stderr: &str,
-        git_diff: &str,
-        iteration: usize,
+        input: CriticEvaluationInput<'_>,
         config: &AgentConfig,
     ) -> Result<CriticDecision, EvaluationError> {
-        self.evaluate_with_callback(
-            original_task,
-            actor_stdout,
-            actor_stderr,
-            git_diff,
-            iteration,
-            config,
-            None,
-        )
-        .await
+        self.evaluate_with_callback(input, config, None).await
     }
 
     /// Evaluate the actor's work with optional streaming output callback
     pub async fn evaluate_with_callback(
         &self,
-        original_task: &str,
-        actor_stdout: &str,
-        actor_stderr: &str,
-        git_diff: &str,
-        iteration: usize,
+        input: CriticEvaluationInput<'_>,
         config: &AgentConfig,
         on_output: Option<OutputCallback>,
     ) -> Result<CriticDecision, EvaluationError> {
         let prompt = CriticPrompts::build_evaluation_prompt(
-            original_task,
-            actor_stdout,
-            actor_stderr,
-            git_diff,
-            iteration,
+            input.original_task,
+            input.actor_stdout,
+            input.actor_stderr,
+            input.git_diff,
+            input.iteration,
         );
 
         debug!(
             prompt_len = prompt.len(),
-            iteration = iteration,
+            iteration = input.iteration,
             "Running critic evaluation"
         );
 

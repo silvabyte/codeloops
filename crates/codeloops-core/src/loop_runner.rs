@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tracing::{debug, info, warn};
 
 use codeloops_agent::{Agent, AgentConfig, OutputCallback, OutputType};
-use codeloops_critic::{CriticDecision, CriticEvaluator};
+use codeloops_critic::{CriticDecision, CriticEvaluationInput, CriticEvaluator};
 use codeloops_git::DiffCapture;
 use codeloops_logging::{AgentRole, LogEvent, Logger, StreamType};
 
@@ -178,16 +178,15 @@ impl<'a> LoopRunner<'a> {
 
         let critic_callback = self.create_output_callback(iteration, AgentRole::Critic);
         let evaluator = CriticEvaluator::new(self.critic);
+        let evaluation_input = CriticEvaluationInput {
+            original_task: &context.prompt,
+            actor_stdout: &actor_output.stdout,
+            actor_stderr: &actor_output.stderr,
+            git_diff: &git_diff,
+            iteration,
+        };
         let decision = evaluator
-            .evaluate_with_callback(
-                &context.prompt,
-                &actor_output.stdout,
-                &actor_output.stderr,
-                &git_diff,
-                iteration,
-                config,
-                Some(critic_callback),
-            )
+            .evaluate_with_callback(evaluation_input, config, Some(critic_callback))
             .await?;
 
         self.logger.log(&LogEvent::CriticCompleted {
