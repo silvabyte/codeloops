@@ -103,7 +103,10 @@ impl Logger {
     fn log_pretty(&self, event: &LogEvent) {
         let mut stderr = std::io::stderr();
         match event {
-            LogEvent::LoopStarted { prompt, working_dir } => {
+            LogEvent::LoopStarted {
+                prompt,
+                working_dir,
+            } => {
                 let _ = writeln!(stderr, "=== Codeloops Started ===");
                 let _ = writeln!(
                     stderr,
@@ -167,12 +170,7 @@ impl Logger {
                 );
             }
             LogEvent::ErrorEncountered { iteration, error } => {
-                let _ = writeln!(
-                    stderr,
-                    "[ERROR] Iteration {}: {}",
-                    iteration + 1,
-                    error
-                );
+                let _ = writeln!(stderr, "[ERROR] Iteration {}: {}", iteration + 1, error);
             }
             _ => {
                 let _ = writeln!(stderr, "{:?}", event);

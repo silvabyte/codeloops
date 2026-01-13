@@ -211,7 +211,11 @@ The task has been completed successfully.
 
         let decision = CriticDecision::parse(output).unwrap();
         assert!(decision.is_done());
-        if let CriticDecision::Done { summary, confidence } = decision {
+        if let CriticDecision::Done {
+            summary,
+            confidence,
+        } = decision
+        {
             assert_eq!(summary, "Implemented the feature");
             assert!((confidence - 0.95).abs() < 0.001);
         }

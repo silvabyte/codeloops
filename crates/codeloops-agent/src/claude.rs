@@ -59,7 +59,7 @@ impl Agent for ClaudeCodeAgent {
         );
 
         let mut args = vec![
-            "--print",                       // Non-interactive mode, output only
+            "--print",                        // Non-interactive mode, output only
             "--dangerously-skip-permissions", // Skip permission prompts
         ];
 

@@ -189,7 +189,10 @@ impl<'a> LoopRunner<'a> {
 
         // Process decision
         match decision {
-            CriticDecision::Done { summary, confidence } => {
+            CriticDecision::Done {
+                summary,
+                confidence,
+            } => {
                 self.logger.log(&LogEvent::LoopCompleted {
                     iterations: iteration + 1,
                     summary: summary.clone(),

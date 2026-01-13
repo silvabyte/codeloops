@@ -1,14 +1,14 @@
-mod traits;
-mod output;
 mod claude;
 mod opencode;
+mod output;
 mod spawner;
+mod traits;
 
-pub use traits::{Agent, AgentConfig, AgentError, AgentType};
-pub use output::AgentOutput;
 pub use claude::ClaudeCodeAgent;
 pub use opencode::OpenCodeAgent;
+pub use output::AgentOutput;
 pub use spawner::ProcessSpawner;
+pub use traits::{Agent, AgentConfig, AgentError, AgentType};
 
 /// Create an agent by type
 pub fn create_agent(agent_type: AgentType) -> Box<dyn Agent> {
