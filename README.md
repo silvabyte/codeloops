@@ -4,15 +4,15 @@ An actor-critic harness for coding agents.
 
 Codeloops orchestrates coding agents (Claude Code, OpenCode) in an actor-critic feedback loop. The **actor** executes coding tasks while the **critic** evaluates the work via git diff and stdout/stderr logs, continuing iterations until the task is complete.
 
-## Why?
+## The Problem
 
-Current coding agents lack a fundamental feedback mechanism: they execute tasks but don't systematically verify their own work. Codeloops implements an actor-critic system where:
+Current coding agents lack a fundamental feedback mechanism: they execute tasks but cannot systematically verify their own work, despite all the extension points provided(plugins, skills, agent files, .rules, etc). Codeloops implements an actor-critic system where:
 
 1. **Actor**: Executes the coding task (writes code, runs commands)
 2. **Critic**: Reviews the actor's output and git changes
 3. **Loop**: Continues with feedback until the critic approves
 
-This creates a self-correcting loop that dramatically improves task completion quality.
+This creates a self-correcting loop that DRAMATICALLY improves task completion quality.
 
 ## Installation
 
@@ -22,7 +22,8 @@ git clone https://github.com/matsilva/codeloops
 cd codeloops
 cargo build --release
 
-# Binary is at ./target/release/codeloops
+# Binary is at ./target/release/codeloops - I like to symlink this to my user bin.
+
 ```
 
 ## Usage
@@ -51,6 +52,8 @@ codeloops --json-output --prompt "task description"
 # Dry run to see configuration
 codeloops --dry-run --prompt "test"
 ```
+
+After using all the coding agents in the world. Having any sort of ui or tui ends up being... overly complex and ultimitly restrictive. Why not just a prompt.md file? It's so much simpler, easier... all the things...
 
 ## How It Works
 
