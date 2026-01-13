@@ -5,3 +5,4 @@ Cargo.lock
 .DS_Store
 
 prompt*.md
+a.out
