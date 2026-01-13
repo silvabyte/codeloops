@@ -78,7 +78,9 @@ impl Agent for ClaudeCodeAgent {
             args.push(&model_arg);
         }
 
-        // Add the prompt as the final argument
+        // Add -- to signal end of options, then the prompt as positional argument
+        // This prevents prompts starting with '-' from being interpreted as options
+        args.push("--");
         args.push(prompt);
 
         ProcessSpawner::spawn_with_callback(&self.binary_path, &args, config, on_output).await
