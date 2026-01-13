@@ -76,6 +76,7 @@ struct Cli {
 enum AgentChoice {
     Claude,
     Opencode,
+    Cursor,
 }
 
 impl From<AgentChoice> for AgentType {
@@ -83,6 +84,7 @@ impl From<AgentChoice> for AgentType {
         match choice {
             AgentChoice::Claude => AgentType::ClaudeCode,
             AgentChoice::Opencode => AgentType::OpenCode,
+            AgentChoice::Cursor => AgentType::Cursor,
         }
     }
 }

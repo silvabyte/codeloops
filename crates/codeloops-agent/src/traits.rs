@@ -77,6 +77,7 @@ impl AgentConfig {
 pub enum AgentType {
     ClaudeCode,
     OpenCode,
+    Cursor,
 }
 
 impl std::fmt::Display for AgentType {
@@ -84,6 +85,7 @@ impl std::fmt::Display for AgentType {
         match self {
             AgentType::ClaudeCode => write!(f, "claude-code"),
             AgentType::OpenCode => write!(f, "opencode"),
+            AgentType::Cursor => write!(f, "cursor"),
         }
     }
 }
@@ -95,6 +97,7 @@ impl std::str::FromStr for AgentType {
         match s.to_lowercase().as_str() {
             "claude" | "claude-code" | "claudecode" => Ok(AgentType::ClaudeCode),
             "opencode" | "open-code" => Ok(AgentType::OpenCode),
+            "cursor" => Ok(AgentType::Cursor),
             _ => Err(format!("Unknown agent type: {}", s)),
         }
     }
