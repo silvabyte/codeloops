@@ -35,9 +35,9 @@ struct Cli {
     #[arg(short = 'd', long)]
     working_dir: Option<PathBuf>,
 
-    /// Agent to use for both actor and critic
-    #[arg(short, long, value_enum, default_value = "claude")]
-    agent: AgentChoice,
+    /// Agent to use for both actor and critic (overrides config file)
+    #[arg(short, long, value_enum)]
+    agent: Option<AgentChoice>,
 
     /// Agent to use specifically for the actor role
     #[arg(long, value_enum)]
@@ -161,23 +161,26 @@ async fn main() -> Result<()> {
     // Determine actor agent: CLI --actor-agent > CLI --agent > config [actor].agent > config agent > default
     let actor_agent = cli
         .actor_agent
+        .or(cli.agent) // CLI --agent overrides config
         .or_else(|| {
             project_config
                 .as_ref()
                 .and_then(|c| c.actor_agent())
                 .and_then(parse_agent_choice)
         })
-        .unwrap_or(cli.agent);
+        .unwrap_or(AgentChoice::Claude);
 
+    // Determine critic agent: CLI --critic-agent > CLI --agent > config [critic].agent > config agent > default
     let critic_agent = cli
         .critic_agent
+        .or(cli.agent) // CLI --agent overrides config
         .or_else(|| {
             project_config
                 .as_ref()
                 .and_then(|c| c.critic_agent())
                 .and_then(parse_agent_choice)
         })
-        .unwrap_or(cli.agent);
+        .unwrap_or(AgentChoice::Claude);
 
     let actor_type: AgentType = actor_agent.into();
     let critic_type: AgentType = critic_agent.into();
