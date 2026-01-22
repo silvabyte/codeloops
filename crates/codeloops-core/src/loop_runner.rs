@@ -20,6 +20,8 @@ pub struct LoopRunner<'a> {
     diff_capture: DiffCapture,
     logger: Arc<Logger>,
     interrupted: Arc<AtomicBool>,
+    actor_model: Option<String>,
+    critic_model: Option<String>,
 }
 
 impl<'a> LoopRunner<'a> {
@@ -28,6 +30,8 @@ impl<'a> LoopRunner<'a> {
         critic: &'a dyn Agent,
         diff_capture: DiffCapture,
         logger: Arc<Logger>,
+        actor_model: Option<String>,
+        critic_model: Option<String>,
     ) -> Self {
         Self {
             actor,
@@ -35,6 +39,8 @@ impl<'a> LoopRunner<'a> {
             diff_capture,
             logger,
             interrupted: Arc::new(AtomicBool::new(false)),
+            actor_model,
+            critic_model,
         }
     }
 
@@ -67,7 +73,16 @@ impl<'a> LoopRunner<'a> {
             working_dir: context.working_dir.clone(),
         });
 
-        let config = AgentConfig::new(context.working_dir.clone());
+        // Create separate configs for actor and critic
+        let mut actor_config = AgentConfig::new(context.working_dir.clone());
+        if let Some(ref model) = self.actor_model {
+            actor_config = actor_config.with_model(model.clone());
+        }
+
+        let mut critic_config = AgentConfig::new(context.working_dir.clone());
+        if let Some(ref model) = self.critic_model {
+            critic_config = critic_config.with_model(model.clone());
+        }
 
         loop {
             // Check for interruption
@@ -95,7 +110,10 @@ impl<'a> LoopRunner<'a> {
             }
 
             // Run one iteration
-            match self.run_iteration(&mut context, &config).await {
+            match self
+                .run_iteration(&mut context, &actor_config, &critic_config)
+                .await
+            {
                 Ok(Some(outcome)) => return Ok(outcome),
                 Ok(None) => {
                     // Continue to next iteration
@@ -120,7 +138,8 @@ impl<'a> LoopRunner<'a> {
     async fn run_iteration(
         &self,
         context: &mut LoopContext,
-        config: &AgentConfig,
+        actor_config: &AgentConfig,
+        critic_config: &AgentConfig,
     ) -> Result<Option<LoopOutcome>, LoopError> {
         let iteration = context.iteration;
 
@@ -137,7 +156,7 @@ impl<'a> LoopRunner<'a> {
         let actor_callback = self.create_output_callback(iteration, AgentRole::Actor);
         let actor_output = self
             .actor
-            .execute_with_callback(&actor_prompt, config, Some(actor_callback))
+            .execute_with_callback(&actor_prompt, actor_config, Some(actor_callback))
             .await?;
 
         self.logger.log(&LogEvent::ActorCompleted {
@@ -186,7 +205,7 @@ impl<'a> LoopRunner<'a> {
             iteration,
         };
         let decision = evaluator
-            .evaluate_with_callback(evaluation_input, config, Some(critic_callback))
+            .evaluate_with_callback(evaluation_input, critic_config, Some(critic_callback))
             .await?;
 
         self.logger.log(&LogEvent::CriticCompleted {

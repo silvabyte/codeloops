@@ -1,3 +1,5 @@
+mod config;
+
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -10,6 +12,8 @@ use codeloops_agent::{create_agent, AgentType};
 use codeloops_core::{LoopContext, LoopOutcome, LoopRunner};
 use codeloops_git::DiffCapture;
 use codeloops_logging::{LogFormat, Logger};
+
+use config::ProjectConfig;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -106,6 +110,16 @@ impl From<LogFormatChoice> for LogFormat {
     }
 }
 
+/// Parse agent string from config file to AgentChoice
+fn parse_agent_choice(s: &str) -> Option<AgentChoice> {
+    match s.to_lowercase().as_str() {
+        "claude" | "claude-code" => Some(AgentChoice::Claude),
+        "opencode" | "open-code" => Some(AgentChoice::Opencode),
+        "cursor" => Some(AgentChoice::Cursor),
+        _ => None,
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -121,6 +135,18 @@ async fn main() -> Result<()> {
         .clone()
         .unwrap_or_else(|| std::env::current_dir().expect("Failed to get current directory"));
 
+    // Load project config (hard error if file exists but is invalid)
+    let project_config =
+        ProjectConfig::load(&working_dir).context("Failed to load project configuration")?;
+
+    if project_config.is_some() {
+        eprintln!(
+            "{} Loaded config from {}",
+            "->".dimmed(),
+            working_dir.join(config::CONFIG_FILE_NAME).display()
+        );
+    }
+
     // Get prompt
     let prompt = get_prompt(&cli, &working_dir)?;
 
@@ -132,9 +158,44 @@ async fn main() -> Result<()> {
         Logger::new(log_format)
     };
 
-    // Determine agent types
-    let actor_type: AgentType = cli.actor_agent.unwrap_or(cli.agent).into();
-    let critic_type: AgentType = cli.critic_agent.unwrap_or(cli.agent).into();
+    // Determine actor agent: CLI --actor-agent > CLI --agent > config [actor].agent > config agent > default
+    let actor_agent = cli
+        .actor_agent
+        .or_else(|| {
+            project_config
+                .as_ref()
+                .and_then(|c| c.actor_agent())
+                .and_then(parse_agent_choice)
+        })
+        .unwrap_or(cli.agent);
+
+    let critic_agent = cli
+        .critic_agent
+        .or_else(|| {
+            project_config
+                .as_ref()
+                .and_then(|c| c.critic_agent())
+                .and_then(parse_agent_choice)
+        })
+        .unwrap_or(cli.agent);
+
+    let actor_type: AgentType = actor_agent.into();
+    let critic_type: AgentType = critic_agent.into();
+
+    // Determine models: CLI --model > config [role].model > config model > None
+    let actor_model = cli.model.clone().or_else(|| {
+        project_config
+            .as_ref()
+            .and_then(|c| c.actor_model())
+            .map(String::from)
+    });
+
+    let critic_model = cli.model.clone().or_else(|| {
+        project_config
+            .as_ref()
+            .and_then(|c| c.critic_model())
+            .map(String::from)
+    });
 
     if cli.dry_run {
         println!("{}", "=== Dry Run ===".bright_blue().bold());
@@ -149,7 +210,13 @@ async fn main() -> Result<()> {
         );
         println!("{}  {}", "Dir:".dimmed(), working_dir.display());
         println!("{}  {}", "Actor:".dimmed(), actor_type);
+        if let Some(ref model) = actor_model {
+            println!("{}  {}", "Actor model:".dimmed(), model);
+        }
         println!("{}  {}", "Critic:".dimmed(), critic_type);
+        if let Some(ref model) = critic_model {
+            println!("{}  {}", "Critic model:".dimmed(), model);
+        }
         println!(
             "{}  {}",
             "Max iterations:".dimmed(),
@@ -190,7 +257,14 @@ async fn main() -> Result<()> {
     // Create loop runner
     let diff_capture = DiffCapture::new();
     let logger = Arc::new(logger);
-    let runner = LoopRunner::new(actor.as_ref(), critic.as_ref(), diff_capture, logger);
+    let runner = LoopRunner::new(
+        actor.as_ref(),
+        critic.as_ref(),
+        diff_capture,
+        logger,
+        actor_model,
+        critic_model,
+    );
 
     // Handle Ctrl+C gracefully
     let interrupt_handle = runner.interrupt_handle();
