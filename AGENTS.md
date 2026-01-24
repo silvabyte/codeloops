@@ -11,12 +11,14 @@ This project automates AI-assisted coding with built-in verification:
 
 ### Architecture
 
-- **codeloops** - CLI binary interface
+- **codeloops** - CLI binary, API server (axum), and `ui` command
 - **codeloops-core** - Loop orchestration logic
 - **codeloops-agent** - Agent abstraction layer
 - **codeloops-critic** - Critic evaluation and decision parsing
 - **codeloops-git** - Git diff capture
-- **codeloops-logging** - Structured logging
+- **codeloops-logging** - Structured logging and JSONL session writer
+- **codeloops-sessions** - Session reading/parsing/store/watcher (shared by CLI and API)
+- **ui/** - Web UI (React + Vite + Tailwind CSS). Run `codeloops ui --dev` for development
 
 ## Issue Tracking with bd (beads)
 
@@ -120,4 +122,25 @@ cargo test
 
 ```bash
 cargo run -- --help
+cargo run -- sessions list
+cargo run -- ui --dev
 ```
+
+### Frontend Development
+
+```bash
+cd ui
+bun install
+bun dev          # Vite dev server with HMR
+bun run build    # Production build
+```
+
+### Workspace Dependencies
+
+Key additions for the session viewer:
+- `axum` 0.8 - API server
+- `tower-http` 0.6 - CORS middleware
+- `tokio-stream` 0.1 - SSE streaming
+- `notify` 7 - File system watching
+- `dialoguer` 0.11 - Interactive CLI picker
+- `open` 5 - Browser opening

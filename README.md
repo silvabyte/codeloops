@@ -97,7 +97,50 @@ After using all the coding agents in the world. Having any sort of ui or tui end
    - `CONTINUE`: Provide feedback, run another iteration
    - `ERROR`: Provide recovery suggestion, continue
 
+## Session Viewer
+
+Codeloops persists every session as a JSONL file. You can browse, filter, and inspect sessions using the built-in CLI or web UI.
+
+### CLI Session Commands
+
+```bash
+# List all sessions
+codeloops sessions list
+
+# Filter by outcome
+codeloops sessions list --outcome success
+
+# Search prompt text
+codeloops sessions list --search "auth bug"
+
+# Show detailed session info (interactive picker if no ID given)
+codeloops sessions show
+
+# Show cumulative diff from a session
+codeloops sessions diff <session-id>
+
+# Aggregate statistics
+codeloops sessions stats
+```
+
+### Web UI
+
+```bash
+# Start the web UI (opens browser automatically)
+codeloops ui
+
+# Development mode (uses Vite dev server with HMR)
+codeloops ui --dev
+
+# Custom ports
+codeloops ui --api-port 4000 --ui-port 4001
+```
+
+The web UI provides a dashboard with session list, filters, statistics charts, iteration timelines, critic feedback trails, and syntax-highlighted diffs.
+
 ## CLI Options
+
+### Run (default subcommand)
 
 | Option | Description |
 |--------|-------------|
@@ -112,6 +155,23 @@ After using all the coding agents in the world. Having any sort of ui or tui end
 | `-m, --model <MODEL>` | Model to use (if agent supports it) |
 | `--json-output` | Output final result as JSON |
 | `--dry-run` | Show configuration without executing |
+
+### Sessions
+
+| Subcommand | Description |
+|------------|-------------|
+| `sessions list` | List sessions with optional filters |
+| `sessions show [ID]` | Show session detail (interactive picker if omitted) |
+| `sessions diff [ID]` | Show cumulative git diff |
+| `sessions stats` | Aggregate statistics |
+
+### UI
+
+| Option | Description |
+|--------|-------------|
+| `--dev` | Development mode (Vite HMR) |
+| `--api-port <PORT>` | API server port (default: 3100) |
+| `--ui-port <PORT>` | UI server port (default: 3101) |
 
 ## Supported Agents
 
@@ -128,12 +188,15 @@ Agents must be installed and available in your PATH.
 ```
 codeloops/
 ├── crates/
-│   ├── codeloops/           # CLI binary
+│   ├── codeloops/           # CLI binary + API server
 │   ├── codeloops-core/      # Loop orchestration
 │   ├── codeloops-agent/     # Agent abstraction layer
 │   ├── codeloops-critic/    # Critic evaluation & decision parsing
 │   ├── codeloops-git/       # Git diff capture
-│   └── codeloops-logging/   # Structured logging
+│   ├── codeloops-logging/   # Structured logging + session writer
+│   └── codeloops-sessions/  # Session reading, parsing, store, watcher
+├── ui/                      # Web UI (React + Vite + Tailwind)
+└── docs/                    # Design documents
 ```
 
 ## Adding New Agents

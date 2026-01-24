@@ -15,6 +15,7 @@ codeloops-agent.workspace = true
 codeloops-critic.workspace = true
 codeloops-git.workspace = true
 codeloops-logging.workspace = true
+codeloops-sessions.workspace = true
 
 tokio.workspace = true
 clap.workspace = true
@@ -25,3 +26,9 @@ anyhow.workspace = true
 dirs.workspace = true
 ctrlc.workspace = true
 colored.workspace = true
+chrono.workspace = true
+dialoguer.workspace = true
+axum.workspace = true
+tower-http.workspace = true
+tokio-stream.workspace = true
+open.workspace = true

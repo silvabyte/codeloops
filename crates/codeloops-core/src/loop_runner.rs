@@ -104,11 +104,8 @@ impl<'a> LoopRunner<'a> {
             if self.interrupted.load(Ordering::SeqCst) {
                 info!("Loop interrupted by user");
                 let duration = context.total_duration();
-                let outcome = LoopOutcome::interrupted(
-                    context.iteration,
-                    context.history,
-                    duration,
-                );
+                let outcome =
+                    LoopOutcome::interrupted(context.iteration, context.history, duration);
                 self.write_session_end(&outcome);
                 return Ok(outcome);
             }

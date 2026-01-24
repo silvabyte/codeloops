@@ -7,6 +7,7 @@ members = [
     "crates/codeloops-critic",
     "crates/codeloops-git",
     "crates/codeloops-logging",
+    "crates/codeloops-sessions",
 ]
 
 [workspace.package]
@@ -51,9 +52,24 @@ chrono = { version = "0.4", features = ["serde"] }
 sha2 = "0.10"
 hex = "0.4"
 
+# Web server
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+
+# File watching
+notify = "7"
+
+# Interactive CLI
+dialoguer = { version = "0.11", features = ["fuzzy-select"] }
+
+# Browser opening
+open = "5"
+
 # Internal crates
 codeloops-core = { path = "crates/codeloops-core" }
 codeloops-agent = { path = "crates/codeloops-agent" }
 codeloops-critic = { path = "crates/codeloops-critic" }
 codeloops-git = { path = "crates/codeloops-git" }
 codeloops-logging = { path = "crates/codeloops-logging" }
+codeloops-sessions = { path = "crates/codeloops-sessions" }
