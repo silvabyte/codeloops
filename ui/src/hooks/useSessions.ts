@@ -7,10 +7,16 @@ export function useSessions(filter?: SessionFilter) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const outcome = filter?.outcome
+  const after = filter?.after
+  const before = filter?.before
+  const search = filter?.search
+  const project = filter?.project
+
   const load = useCallback(async () => {
     try {
       setLoading(true)
-      const data = await fetchSessions(filter)
+      const data = await fetchSessions({ outcome, after, before, search, project })
       setSessions(data)
       setError(null)
     } catch (e) {
@@ -18,7 +24,7 @@ export function useSessions(filter?: SessionFilter) {
     } finally {
       setLoading(false)
     }
-  }, [filter?.outcome, filter?.after, filter?.before, filter?.search, filter?.project])
+  }, [outcome, after, before, search, project])
 
   useEffect(() => { load() }, [load])
 

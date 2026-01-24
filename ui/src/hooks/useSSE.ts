@@ -4,7 +4,10 @@ import type { SessionEvent } from '@/api/types'
 
 export function useSessionEvents(onEvent: (event: SessionEvent) => void) {
   const onEventRef = useRef(onEvent)
-  onEventRef.current = onEvent
+
+  useEffect(() => {
+    onEventRef.current = onEvent
+  })
 
   useEffect(() => {
     const source = new EventSource(getSSEUrl())

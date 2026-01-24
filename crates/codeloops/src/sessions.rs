@@ -170,7 +170,7 @@ fn resolve_session_id(store: &SessionStore, id: Option<String>) -> Result<String
                 .to_string();
             let duration = s
                 .duration_secs
-                .map(|d| format_duration(d))
+                .map(format_duration)
                 .unwrap_or_else(|| "...".to_string());
             let prompt = if s.prompt_preview.len() > 60 {
                 format!("{}...", &s.prompt_preview[..60])
@@ -215,7 +215,7 @@ fn print_sessions_table(summaries: &[codeloops_sessions::SessionSummary]) {
         };
         let duration = s
             .duration_secs
-            .map(|d| format_duration(d))
+            .map(format_duration)
             .unwrap_or_else(|| "...".to_string());
         let prompt = if s.prompt_preview.len() > 50 {
             format!("{}...", &s.prompt_preview[..50])
@@ -288,7 +288,6 @@ fn print_session_detail(session: &codeloops_sessions::Session) {
             "{}",
             format!("--- Iterations ({}) ---", session.iterations.len())
                 .dimmed()
-                .to_string()
         );
         for iter in &session.iterations {
             println!();
