@@ -23,10 +23,10 @@ pub async fn handle_ui_command(dev: bool, api_port: u16, ui_port: u16) -> Result
     eprintln!("API server running on http://localhost:{}", api_port);
 
     // Start the frontend
-    let ui_handle = if dev {
-        Some(start_dev_server(ui_port, api_port).await?)
+    let mut ui_child = if dev {
+        start_dev_server(ui_port, api_port).await?
     } else {
-        Some(start_prod_server(ui_port).await?)
+        start_prod_server(ui_port).await?
     };
 
     // Open browser
@@ -40,12 +40,28 @@ pub async fn handle_ui_command(dev: bool, api_port: u16, ui_port: u16) -> Result
         .with_graceful_shutdown(shutdown_signal())
         .await;
 
-    // Cleanup child process
-    if let Some(mut child) = ui_handle {
-        let _ = child.kill().await;
-    }
+    // Cleanup child process — send SIGTERM first, then SIGKILL after timeout
+    kill_child(&mut ui_child).await;
 
     result.context("API server error")
+}
+
+async fn kill_child(child: &mut tokio::process::Child) {
+    // Start kill (sends SIGKILL on unix)
+    let _ = child.start_kill();
+
+    // Wait for it to actually exit, with a timeout
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(3),
+        child.wait(),
+    )
+    .await
+    {
+        Ok(_) => {}
+        Err(_) => {
+            eprintln!("Warning: UI process did not exit in time");
+        }
+    }
 }
 
 async fn start_dev_server(
@@ -56,17 +72,19 @@ async fn start_dev_server(
 
     eprintln!("Starting dev server on http://localhost:{}", ui_port);
 
-    let child = tokio::process::Command::new("bun")
-        .args(["run", "dev", "--port", &ui_port.to_string()])
+    let mut cmd = tokio::process::Command::new("bun");
+    cmd.args(["run", "dev", "--port", &ui_port.to_string()])
         .env("VITE_API_URL", format!("http://localhost:{}", api_port))
         .current_dir(&ui_dir)
-        .spawn()
-        .with_context(|| {
-            format!(
-                "Failed to start bun dev server. Make sure 'bun' is installed and {} exists.",
-                ui_dir.display()
-            )
-        })?;
+        .kill_on_drop(true)
+        .process_group(0);  // New process group — Ctrl+C won't propagate
+
+    let child = cmd.spawn().with_context(|| {
+        format!(
+            "Failed to start bun dev server. Make sure 'bun' is installed and {} exists.",
+            ui_dir.display()
+        )
+    })?;
 
     Ok(child)
 }
@@ -76,9 +94,12 @@ async fn start_prod_server(ui_port: u16) -> Result<tokio::process::Child> {
 
     eprintln!("Starting UI server on http://localhost:{}", ui_port);
 
-    let child = tokio::process::Command::new(&ui_binary)
-        .env("PORT", ui_port.to_string())
-        .spawn()
+    let mut cmd = tokio::process::Command::new(&ui_binary);
+    cmd.env("PORT", ui_port.to_string())
+        .kill_on_drop(true)
+        .process_group(0);  // New process group — Ctrl+C won't propagate
+
+    let child = cmd.spawn()
         .with_context(|| format!("Failed to start UI binary: {}", ui_binary.display()))?;
 
     Ok(child)
@@ -127,6 +148,19 @@ fn find_ui_binary() -> Result<std::path::PathBuf> {
     if let Ok(exe) = std::env::current_exe() {
         if let Some(parent) = exe.parent() {
             let candidate = parent.join("codeloops-ui");
+            if candidate.exists() {
+                return Ok(candidate);
+            }
+        }
+
+        // Development: binary is in target/debug or target/release,
+        // codeloops-ui is in ui/ at the workspace root
+        if let Some(workspace_root) = exe
+            .parent()                    // target/debug
+            .and_then(|p| p.parent())    // target
+            .and_then(|p| p.parent())    // workspace root
+        {
+            let candidate = workspace_root.join("ui").join("codeloops-ui");
             if candidate.exists() {
                 return Ok(candidate);
             }

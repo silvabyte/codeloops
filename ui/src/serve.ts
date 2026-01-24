@@ -1,8 +1,11 @@
 import { serve } from "bun";
-import { join } from "path";
+import { join, dirname } from "path";
 
 const PORT = parseInt(process.env.PORT || "3101");
-const DIST = join(import.meta.dir, "../dist");
+// When compiled with `bun build --compile`, import.meta.dir points to a virtual
+// filesystem (/$bunfs/). Use the real binary location to find dist/ alongside it.
+const BIN_DIR = dirname(process.execPath);
+const DIST = join(BIN_DIR, "dist");
 
 serve({
   port: PORT,
