@@ -6,7 +6,7 @@ use tracing::{debug, info, warn};
 use codeloops_agent::{Agent, AgentConfig, OutputCallback, OutputType};
 use codeloops_critic::{CriticDecision, CriticEvaluationInput, CriticEvaluator};
 use codeloops_git::DiffCapture;
-use codeloops_logging::{AgentRole, LogEvent, Logger, StreamType};
+use codeloops_logging::{AgentRole, LogEvent, Logger, SessionWriter, StreamType};
 
 use crate::context::IterationRecord;
 use crate::error::LoopError;
@@ -19,6 +19,7 @@ pub struct LoopRunner<'a> {
     critic: &'a dyn Agent,
     diff_capture: DiffCapture,
     logger: Arc<Logger>,
+    session_writer: Option<Arc<SessionWriter>>,
     interrupted: Arc<AtomicBool>,
     actor_model: Option<String>,
     critic_model: Option<String>,
@@ -30,6 +31,7 @@ impl<'a> LoopRunner<'a> {
         critic: &'a dyn Agent,
         diff_capture: DiffCapture,
         logger: Arc<Logger>,
+        session_writer: Option<Arc<SessionWriter>>,
         actor_model: Option<String>,
         critic_model: Option<String>,
     ) -> Self {
@@ -38,6 +40,7 @@ impl<'a> LoopRunner<'a> {
             critic,
             diff_capture,
             logger,
+            session_writer,
             interrupted: Arc::new(AtomicBool::new(false)),
             actor_model,
             critic_model,
@@ -73,6 +76,18 @@ impl<'a> LoopRunner<'a> {
             working_dir: context.working_dir.clone(),
         });
 
+        if let Some(ref sw) = self.session_writer {
+            sw.write_start(
+                &context.prompt,
+                &context.working_dir,
+                self.actor.name(),
+                self.critic.name(),
+                self.actor_model.as_deref(),
+                self.critic_model.as_deref(),
+                context.max_iterations,
+            );
+        }
+
         // Create separate configs for actor and critic
         let mut actor_config = AgentConfig::new(context.working_dir.clone());
         if let Some(ref model) = self.actor_model {
@@ -89,11 +104,13 @@ impl<'a> LoopRunner<'a> {
             if self.interrupted.load(Ordering::SeqCst) {
                 info!("Loop interrupted by user");
                 let duration = context.total_duration();
-                return Ok(LoopOutcome::interrupted(
+                let outcome = LoopOutcome::interrupted(
                     context.iteration,
                     context.history,
                     duration,
-                ));
+                );
+                self.write_session_end(&outcome);
+                return Ok(outcome);
             }
 
             // Check iteration limit
@@ -102,11 +119,13 @@ impl<'a> LoopRunner<'a> {
                     iterations: context.iteration,
                 });
                 let duration = context.total_duration();
-                return Ok(LoopOutcome::max_iterations_reached(
+                let outcome = LoopOutcome::max_iterations_reached(
                     context.iteration,
                     context.history,
                     duration,
-                ));
+                );
+                self.write_session_end(&outcome);
+                return Ok(outcome);
             }
 
             // Run one iteration
@@ -114,7 +133,10 @@ impl<'a> LoopRunner<'a> {
                 .run_iteration(&mut context, &actor_config, &critic_config)
                 .await
             {
-                Ok(Some(outcome)) => return Ok(outcome),
+                Ok(Some(outcome)) => {
+                    self.write_session_end(&outcome);
+                    return Ok(outcome);
+                }
                 Ok(None) => {
                     // Continue to next iteration
                     context.increment_iteration();
@@ -122,12 +144,14 @@ impl<'a> LoopRunner<'a> {
                 Err(e) => {
                     warn!(error = %e, "Error during iteration");
                     let duration = context.total_duration();
-                    return Ok(LoopOutcome::failed(
+                    let outcome = LoopOutcome::failed(
                         context.iteration + 1,
                         e.to_string(),
                         context.history,
                         duration,
-                    ));
+                    );
+                    self.write_session_end(&outcome);
+                    return Ok(outcome);
                 }
             }
         }
@@ -226,7 +250,34 @@ impl<'a> LoopRunner<'a> {
             critic_decision: decision.short_description(),
             timestamp: Utc::now(),
         };
-        context.push_record(record);
+        context.push_record(record.clone());
+
+        // Write to session log
+        if let Some(ref sw) = self.session_writer {
+            let fb = match &decision {
+                CriticDecision::Continue { feedback, .. } => Some(feedback.clone()),
+                CriticDecision::Error {
+                    error_description,
+                    recovery_suggestion,
+                } => Some(format!(
+                    "Error encountered: {}\n\nRecovery suggestion: {}",
+                    error_description, recovery_suggestion
+                )),
+                CriticDecision::Done { .. } => None,
+            };
+            sw.write_iteration(
+                record.iteration_number,
+                &record.actor_output,
+                &record.actor_stderr,
+                record.actor_exit_code,
+                record.actor_duration_secs,
+                &record.git_diff,
+                record.git_files_changed,
+                &record.critic_decision,
+                fb.as_deref(),
+                record.timestamp,
+            );
+        }
 
         // Process decision
         match decision {
@@ -277,6 +328,62 @@ impl<'a> LoopRunner<'a> {
                 context.set_feedback(feedback);
                 Ok(None)
             }
+        }
+    }
+
+    /// Write the session end line to the JSONL session log.
+    fn write_session_end(&self, outcome: &LoopOutcome) {
+        if let Some(ref sw) = self.session_writer {
+            let (outcome_str, iterations, summary, confidence, duration_secs) = match outcome {
+                LoopOutcome::Success {
+                    iterations,
+                    summary,
+                    confidence,
+                    total_duration_secs,
+                    ..
+                } => (
+                    "success",
+                    *iterations,
+                    Some(summary.as_str()),
+                    Some(*confidence),
+                    *total_duration_secs,
+                ),
+                LoopOutcome::MaxIterationsReached {
+                    iterations,
+                    total_duration_secs,
+                    ..
+                } => (
+                    "max_iterations_reached",
+                    *iterations,
+                    None,
+                    None,
+                    *total_duration_secs,
+                ),
+                LoopOutcome::UserInterrupted {
+                    iterations,
+                    total_duration_secs,
+                    ..
+                } => (
+                    "user_interrupted",
+                    *iterations,
+                    None,
+                    None,
+                    *total_duration_secs,
+                ),
+                LoopOutcome::Failed {
+                    iterations,
+                    error,
+                    total_duration_secs,
+                    ..
+                } => (
+                    "failed",
+                    *iterations,
+                    Some(error.as_str()),
+                    None,
+                    *total_duration_secs,
+                ),
+            };
+            sw.write_end(outcome_str, iterations, summary, confidence, duration_secs);
         }
     }
 }

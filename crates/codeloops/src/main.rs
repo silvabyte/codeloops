@@ -11,7 +11,7 @@ use colored::Colorize;
 use codeloops_agent::{create_agent, AgentType};
 use codeloops_core::{LoopContext, LoopOutcome, LoopRunner};
 use codeloops_git::DiffCapture;
-use codeloops_logging::{LogFormat, Logger};
+use codeloops_logging::{LogFormat, Logger, SessionWriter};
 
 use config::ProjectConfig;
 
@@ -251,6 +251,19 @@ async fn main() -> Result<()> {
         );
     }
 
+    // Create session writer (always-on, warn on failure)
+    let session_writer = match SessionWriter::new(&prompt) {
+        Ok(sw) => Some(Arc::new(sw)),
+        Err(e) => {
+            eprintln!(
+                "{} Failed to create session writer: {}",
+                "⚠".bright_yellow(),
+                e
+            );
+            None
+        }
+    };
+
     // Create loop context
     let mut context = LoopContext::new(prompt, working_dir.clone());
     if let Some(max) = cli.max_iterations {
@@ -265,6 +278,7 @@ async fn main() -> Result<()> {
         critic.as_ref(),
         diff_capture,
         logger,
+        session_writer.clone(),
         actor_model,
         critic_model,
     );
@@ -282,6 +296,15 @@ async fn main() -> Result<()> {
 
     // Run the loop
     let outcome = runner.run(context).await?;
+
+    // Print session log path
+    if let Some(ref sw) = session_writer {
+        eprintln!(
+            "{} Session log: {}",
+            "->".dimmed(),
+            sw.path().display()
+        );
+    }
 
     // Output result
     if cli.json_output {

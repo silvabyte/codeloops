@@ -13,3 +13,6 @@ tracing-subscriber.workspace = true
 tracing-appender.workspace = true
 chrono.workspace = true
 colored.workspace = true
+dirs.workspace = true
+sha2.workspace = true
+hex.workspace = true
