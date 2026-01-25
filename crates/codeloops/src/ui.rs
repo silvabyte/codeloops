@@ -7,6 +7,8 @@ use codeloops_sessions::{SessionStore, SessionWatcher};
 use crate::api;
 
 pub async fn handle_ui_command(dev: bool, api_port: u16, ui_port: u16) -> Result<()> {
+    use colored::Colorize;
+
     let store = Arc::new(SessionStore::new()?);
     let watcher = Arc::new(SessionWatcher::new().context("Failed to start session watcher")?);
 
@@ -18,14 +20,22 @@ pub async fn handle_ui_command(dev: bool, api_port: u16, ui_port: u16) -> Result
         .await
         .with_context(|| format!("Failed to bind API server to {}", api_addr))?;
 
-    eprintln!("API server running on http://localhost:{}", api_port);
-
     // Start the frontend
     let mut ui_child = if dev {
         start_dev_server(ui_port, api_port).await?
     } else {
         start_prod_server(ui_port).await?
     };
+
+    // Print clean startup message
+    eprintln!();
+    eprintln!(
+        "  {} {}",
+        "->".bright_green(),
+        format!("Open http://localhost:{}", ui_port).bold()
+    );
+    eprintln!("  {} Press {} to stop", "->".dimmed(), "Ctrl+C".bold());
+    eprintln!();
 
     // Open browser
     let ui_url = format!("http://localhost:{}", ui_port);

@@ -1,5 +1,6 @@
 mod api;
 mod config;
+mod init;
 mod sessions;
 mod ui;
 
@@ -16,7 +17,7 @@ use codeloops_core::{LoopContext, LoopOutcome, LoopRunner};
 use codeloops_git::DiffCapture;
 use codeloops_logging::{LogFormat, Logger, SessionWriter};
 
-use config::ProjectConfig;
+use config::{GlobalConfig, ProjectConfig};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -159,6 +160,9 @@ enum Commands {
         #[arg(long, default_value = "3101")]
         ui_port: u16,
     },
+
+    /// Set up codeloops with interactive configuration
+    Init,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -209,7 +213,23 @@ fn parse_agent_choice(s: &str) -> Option<AgentChoice> {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
+    // First-run hint (non-blocking) for commands that benefit from config
+    if init::is_first_run() {
+        let should_hint = matches!(
+            &cli.command,
+            None | Some(Commands::Run { .. }) | Some(Commands::Sessions { .. })
+        );
+        if should_hint {
+            eprintln!(
+                "{} First time? Run {} to set up your defaults.\n",
+                "->".dimmed(),
+                "codeloops init".bright_cyan()
+            );
+        }
+    }
+
     match cli.command {
+        Some(Commands::Init) => init::handle_init().await,
         Some(Commands::Sessions { action }) => sessions::handle_sessions_command(action).await,
         Some(Commands::Ui {
             dev,
@@ -298,6 +318,9 @@ async fn run_loop(args: RunArgs) -> Result<()> {
         .clone()
         .unwrap_or_else(|| std::env::current_dir().expect("Failed to get current directory"));
 
+    // Load global config (hard error if file exists but is invalid)
+    let global_config = GlobalConfig::load().context("Failed to load global configuration")?;
+
     // Load project config (hard error if file exists but is invalid)
     let project_config =
         ProjectConfig::load(&working_dir).context("Failed to load project configuration")?;
@@ -322,6 +345,7 @@ async fn run_loop(args: RunArgs) -> Result<()> {
     };
 
     // Determine actor agent
+    // Precedence: CLI flags > project config > global config > default (Claude)
     let actor_agent = args
         .actor_agent
         .or(args.agent)
@@ -331,14 +355,27 @@ async fn run_loop(args: RunArgs) -> Result<()> {
                 .and_then(|c| c.actor_agent())
                 .and_then(parse_agent_choice)
         })
+        .or_else(|| {
+            global_config
+                .as_ref()
+                .and_then(|c| c.actor_agent())
+                .and_then(parse_agent_choice)
+        })
         .unwrap_or(AgentChoice::Claude);
 
     // Determine critic agent
+    // Precedence: CLI flags > project config > global config > default (Claude)
     let critic_agent = args
         .critic_agent
         .or(args.agent)
         .or_else(|| {
             project_config
+                .as_ref()
+                .and_then(|c| c.critic_agent())
+                .and_then(parse_agent_choice)
+        })
+        .or_else(|| {
+            global_config
                 .as_ref()
                 .and_then(|c| c.critic_agent())
                 .and_then(parse_agent_choice)
@@ -349,19 +386,38 @@ async fn run_loop(args: RunArgs) -> Result<()> {
     let critic_type: AgentType = critic_agent.into();
 
     // Determine models
-    let actor_model = args.model.clone().or_else(|| {
-        project_config
-            .as_ref()
-            .and_then(|c| c.actor_model())
-            .map(String::from)
-    });
+    // Precedence: CLI flags > project config > global config > None
+    let actor_model = args
+        .model
+        .clone()
+        .or_else(|| {
+            project_config
+                .as_ref()
+                .and_then(|c| c.actor_model())
+                .map(String::from)
+        })
+        .or_else(|| {
+            global_config
+                .as_ref()
+                .and_then(|c| c.actor_model())
+                .map(String::from)
+        });
 
-    let critic_model = args.model.clone().or_else(|| {
-        project_config
-            .as_ref()
-            .and_then(|c| c.critic_model())
-            .map(String::from)
-    });
+    let critic_model = args
+        .model
+        .clone()
+        .or_else(|| {
+            project_config
+                .as_ref()
+                .and_then(|c| c.critic_model())
+                .map(String::from)
+        })
+        .or_else(|| {
+            global_config
+                .as_ref()
+                .and_then(|c| c.critic_model())
+                .map(String::from)
+        });
 
     if args.dry_run {
         println!("{}", "=== Dry Run ===".bright_blue().bold());
@@ -403,13 +459,19 @@ async fn run_loop(args: RunArgs) -> Result<()> {
     // Verify agents are available
     if !actor.is_available().await {
         anyhow::bail!(
-            "Actor agent '{}' is not available. Make sure it's installed and in PATH.",
+            "Agent '{}' is not available.\n\n  \
+             Install it or choose a different agent:\n    \
+             codeloops --agent opencode\n\n  \
+             Available agents: claude, opencode, cursor",
             actor.name()
         );
     }
     if !critic.is_available().await {
         anyhow::bail!(
-            "Critic agent '{}' is not available. Make sure it's installed and in PATH.",
+            "Agent '{}' is not available.\n\n  \
+             Install it or choose a different agent:\n    \
+             codeloops --critic-agent opencode\n\n  \
+             Available agents: claude, opencode, cursor",
             critic.name()
         );
     }
@@ -460,17 +522,27 @@ async fn run_loop(args: RunArgs) -> Result<()> {
     // Run the loop
     let outcome = runner.run(context).await?;
 
-    // Print session log path
-    if let Some(ref sw) = session_writer {
-        eprintln!("{} Session log: {}", "->".dimmed(), sw.path().display());
-    }
-
     // Output result
     if args.json_output {
         let json = serde_json::to_string_pretty(&outcome)?;
         println!("{}", json);
     } else {
         print_outcome(&outcome);
+    }
+
+    // Print session log path and hints
+    if let Some(ref sw) = session_writer {
+        eprintln!("{} Session log: {}", "->".dimmed(), sw.path().display());
+
+        // Extract the session ID from the path and show helpful commands
+        if let Some(stem) = sw.path().file_stem().and_then(|s| s.to_str()) {
+            eprintln!();
+            eprintln!(
+                "  View this session: {}",
+                format!("codeloops sessions show {}", stem).bright_cyan()
+            );
+            eprintln!("  Browse all sessions: {}", "codeloops ui".bright_cyan());
+        }
     }
 
     // Exit with appropriate code
@@ -494,8 +566,11 @@ fn get_prompt(prompt: &Option<String>, prompt_file: &Path, working_dir: &Path) -
         Ok(content.trim().to_string())
     } else {
         anyhow::bail!(
-            "No prompt provided. Use --prompt or create a {} file",
-            prompt_file.display()
+            "No prompt provided.\n\n  \
+             Create a prompt.md in your project directory:\n    \
+             echo \"Your task description\" > prompt.md\n\n  \
+             Or pass it directly:\n    \
+             codeloops --prompt \"Fix the auth bug in login.rs\""
         )
     }
 }

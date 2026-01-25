@@ -75,7 +75,15 @@ pub async fn handle_sessions_command(action: SessionsAction) -> Result<()> {
             if json {
                 println!("{}", serde_json::to_string_pretty(&summaries)?);
             } else if summaries.is_empty() {
-                println!("{}", "No sessions found.".dimmed());
+                eprintln!("{}", "No sessions found.".dimmed());
+                eprintln!();
+                eprintln!("  Run your first loop to create a session:");
+                eprintln!("    {}", "codeloops --prompt \"Your task\"".bright_cyan());
+                eprintln!();
+                eprintln!(
+                    "  Sessions are saved to {}",
+                    "~/.local/share/codeloops/sessions/".dimmed()
+                );
             } else {
                 print_sessions_table(&summaries);
             }
