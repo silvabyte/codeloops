@@ -210,12 +210,12 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Some(Commands::Sessions { action }) => {
-            sessions::handle_sessions_command(action).await
-        }
-        Some(Commands::Ui { dev, api_port, ui_port }) => {
-            ui::handle_ui_command(dev, api_port, ui_port).await
-        }
+        Some(Commands::Sessions { action }) => sessions::handle_sessions_command(action).await,
+        Some(Commands::Ui {
+            dev,
+            api_port,
+            ui_port,
+        }) => ui::handle_ui_command(dev, api_port, ui_port).await,
         Some(Commands::Run {
             prompt,
             prompt_file,

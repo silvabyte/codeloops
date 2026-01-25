@@ -8,9 +8,7 @@ use crate::api;
 
 pub async fn handle_ui_command(dev: bool, api_port: u16, ui_port: u16) -> Result<()> {
     let store = Arc::new(SessionStore::new()?);
-    let watcher = Arc::new(
-        SessionWatcher::new().context("Failed to start session watcher")?,
-    );
+    let watcher = Arc::new(SessionWatcher::new().context("Failed to start session watcher")?);
 
     let router = api::create_router(store, watcher);
 
@@ -51,12 +49,7 @@ async fn kill_child(child: &mut tokio::process::Child) {
     let _ = child.start_kill();
 
     // Wait for it to actually exit, with a timeout
-    match tokio::time::timeout(
-        std::time::Duration::from_secs(3),
-        child.wait(),
-    )
-    .await
-    {
+    match tokio::time::timeout(std::time::Duration::from_secs(3), child.wait()).await {
         Ok(_) => {}
         Err(_) => {
             eprintln!("Warning: UI process did not exit in time");
@@ -64,10 +57,7 @@ async fn kill_child(child: &mut tokio::process::Child) {
     }
 }
 
-async fn start_dev_server(
-    ui_port: u16,
-    api_port: u16,
-) -> Result<tokio::process::Child> {
+async fn start_dev_server(ui_port: u16, api_port: u16) -> Result<tokio::process::Child> {
     let ui_dir = find_ui_dir()?;
 
     eprintln!("Starting dev server on http://localhost:{}", ui_port);
@@ -77,7 +67,7 @@ async fn start_dev_server(
         .env("VITE_API_URL", format!("http://localhost:{}", api_port))
         .current_dir(&ui_dir)
         .kill_on_drop(true)
-        .process_group(0);  // New process group — Ctrl+C won't propagate
+        .process_group(0); // New process group — Ctrl+C won't propagate
 
     let child = cmd.spawn().with_context(|| {
         format!(
@@ -97,9 +87,10 @@ async fn start_prod_server(ui_port: u16) -> Result<tokio::process::Child> {
     let mut cmd = tokio::process::Command::new(&ui_binary);
     cmd.env("PORT", ui_port.to_string())
         .kill_on_drop(true)
-        .process_group(0);  // New process group — Ctrl+C won't propagate
+        .process_group(0); // New process group — Ctrl+C won't propagate
 
-    let child = cmd.spawn()
+    let child = cmd
+        .spawn()
         .with_context(|| format!("Failed to start UI binary: {}", ui_binary.display()))?;
 
     Ok(child)
@@ -119,9 +110,10 @@ fn find_ui_dir() -> Result<std::path::PathBuf> {
         // Development: binary is in target/debug or target/release
         // ui/ is at the workspace root
         if let Some(workspace_root) = exe
-            .parent()                    // target/debug
-            .and_then(|p| p.parent())    // target
-            .and_then(|p| p.parent())    // workspace root
+            .parent() // target/debug
+            .and_then(|p| p.parent()) // target
+            .and_then(|p| p.parent())
+        // workspace root
         {
             let ui_dir = workspace_root.join("ui");
             if ui_dir.exists() {
@@ -156,9 +148,10 @@ fn find_ui_binary() -> Result<std::path::PathBuf> {
         // Development: binary is in target/debug or target/release,
         // codeloops-ui is in ui/ at the workspace root
         if let Some(workspace_root) = exe
-            .parent()                    // target/debug
-            .and_then(|p| p.parent())    // target
-            .and_then(|p| p.parent())    // workspace root
+            .parent() // target/debug
+            .and_then(|p| p.parent()) // target
+            .and_then(|p| p.parent())
+        // workspace root
         {
             let candidate = workspace_root.join("ui").join("codeloops-ui");
             if candidate.exists() {

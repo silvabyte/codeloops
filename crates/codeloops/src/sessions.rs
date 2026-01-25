@@ -163,11 +163,7 @@ fn resolve_session_id(store: &SessionStore, id: Option<String>) -> Result<String
         .iter()
         .map(|s| {
             let ts = s.timestamp.format("%Y-%m-%d %H:%M");
-            let outcome = s
-                .outcome
-                .as_deref()
-                .unwrap_or("active")
-                .to_string();
+            let outcome = s.outcome.as_deref().unwrap_or("active").to_string();
             let duration = s
                 .duration_secs
                 .map(format_duration)
@@ -286,8 +282,7 @@ fn print_session_detail(session: &codeloops_sessions::Session) {
         println!();
         println!(
             "{}",
-            format!("--- Iterations ({}) ---", session.iterations.len())
-                .dimmed()
+            format!("--- Iterations ({}) ---", session.iterations.len()).dimmed()
         );
         for iter in &session.iterations {
             println!();

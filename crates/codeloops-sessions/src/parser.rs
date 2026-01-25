@@ -14,7 +14,8 @@ pub fn parse_session(path: &Path) -> Result<Session> {
         .unwrap_or("unknown")
         .to_string();
 
-    let file = File::open(path).with_context(|| format!("Failed to open session file: {:?}", path))?;
+    let file =
+        File::open(path).with_context(|| format!("Failed to open session file: {:?}", path))?;
     let reader = BufReader::new(file);
 
     let mut start: Option<SessionStart> = None;
@@ -27,8 +28,12 @@ pub fn parse_session(path: &Path) -> Result<Session> {
             continue;
         }
 
-        let session_line: SessionLine = serde_json::from_str(&line)
-            .with_context(|| format!("Failed to parse session line: {}", &line[..line.len().min(100)]))?;
+        let session_line: SessionLine = serde_json::from_str(&line).with_context(|| {
+            format!(
+                "Failed to parse session line: {}",
+                &line[..line.len().min(100)]
+            )
+        })?;
 
         match session_line {
             SessionLine::SessionStart(s) => start = Some(s),
@@ -56,7 +61,8 @@ pub fn parse_session_summary(path: &Path) -> Result<SessionSummary> {
         .unwrap_or("unknown")
         .to_string();
 
-    let mut file = File::open(path).with_context(|| format!("Failed to open session file: {:?}", path))?;
+    let mut file =
+        File::open(path).with_context(|| format!("Failed to open session file: {:?}", path))?;
 
     // Read first line for session_start
     let mut first_line = String::new();
@@ -86,7 +92,12 @@ pub fn parse_session_summary(path: &Path) -> Result<SessionSummary> {
             Ok(SessionLine::Iteration(i)) => {
                 // Session still active — count iterations by counting lines minus 1 (the start line)
                 let line_count = count_lines(path)?;
-                (None, line_count.saturating_sub(1), Some(i.actor_duration_secs), None)
+                (
+                    None,
+                    line_count.saturating_sub(1),
+                    Some(i.actor_duration_secs),
+                    None,
+                )
             }
             _ => (None, 0, None, None),
         }

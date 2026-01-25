@@ -13,8 +13,7 @@ pub struct SessionStore {
 impl SessionStore {
     /// Create a new SessionStore using the default sessions directory.
     pub fn new() -> Result<Self> {
-        let data_dir = dirs::data_dir()
-            .with_context(|| "Could not determine data directory")?;
+        let data_dir = dirs::data_dir().with_context(|| "Could not determine data directory")?;
         let sessions_dir = data_dir.join("codeloops").join("sessions");
         Ok(Self { sessions_dir })
     }
@@ -107,8 +106,8 @@ impl SessionStore {
             .count();
         let success_rate = success_count as f64 / total_sessions as f64;
 
-        let avg_iterations = summaries.iter().map(|s| s.iterations as f64).sum::<f64>()
-            / total_sessions as f64;
+        let avg_iterations =
+            summaries.iter().map(|s| s.iterations as f64).sum::<f64>() / total_sessions as f64;
 
         let durations: Vec<f64> = summaries.iter().filter_map(|s| s.duration_secs).collect();
         let avg_duration_secs = if durations.is_empty() {
@@ -118,7 +117,8 @@ impl SessionStore {
         };
 
         // Sessions over time (group by date)
-        let mut day_counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+        let mut day_counts: std::collections::BTreeMap<String, usize> =
+            std::collections::BTreeMap::new();
         for s in &summaries {
             let date = s.timestamp.format("%Y-%m-%d").to_string();
             *day_counts.entry(date).or_insert(0) += 1;
@@ -190,7 +190,11 @@ impl SessionStore {
 
         if let Some(ref search) = filter.search {
             let search_lower = search.to_lowercase();
-            if !summary.prompt_preview.to_lowercase().contains(&search_lower) {
+            if !summary
+                .prompt_preview
+                .to_lowercase()
+                .contains(&search_lower)
+            {
                 return false;
             }
         }

@@ -25,8 +25,7 @@ pub struct SessionWatcher {
 impl SessionWatcher {
     /// Create a new watcher on the default sessions directory.
     pub fn new() -> Result<Self> {
-        let data_dir = dirs::data_dir()
-            .with_context(|| "Could not determine data directory")?;
+        let data_dir = dirs::data_dir().with_context(|| "Could not determine data directory")?;
         let sessions_dir = data_dir.join("codeloops").join("sessions");
 
         // Ensure the directory exists before watching

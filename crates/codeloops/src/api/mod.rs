@@ -4,8 +4,8 @@ mod stats;
 
 use std::sync::Arc;
 
-use axum::Router;
 use axum::routing::get;
+use axum::Router;
 use tower_http::cors::CorsLayer;
 
 use codeloops_sessions::{SessionStore, SessionWatcher};

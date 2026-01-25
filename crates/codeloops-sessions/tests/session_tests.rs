@@ -2,9 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use chrono::{TimeZone, Utc};
-use codeloops_sessions::{
-    parse_session, parse_session_summary, SessionFilter, SessionStore,
-};
+use codeloops_sessions::{parse_session, parse_session_summary, SessionFilter, SessionStore};
 use tempfile::TempDir;
 
 /// Helper: create a temp directory with session JSONL files.
@@ -16,11 +14,7 @@ fn create_test_sessions_dir() -> TempDir {
 {"type":"iteration","iteration_number":1,"actor_output":"fixed auth","actor_stderr":"","actor_exit_code":0,"actor_duration_secs":12.5,"git_diff":"diff --git a/auth.rs\n+fixed","git_files_changed":1,"critic_decision":"CONTINUE","feedback":"needs more tests","timestamp":"2026-01-20T10:01:00Z"}
 {"type":"iteration","iteration_number":2,"actor_output":"added tests","actor_stderr":"","actor_exit_code":0,"actor_duration_secs":8.3,"git_diff":"diff --git a/auth_test.rs\n+test","git_files_changed":1,"critic_decision":"DONE","feedback":null,"timestamp":"2026-01-20T10:02:00Z"}
 {"type":"session_end","outcome":"success","iterations":2,"summary":"Fixed auth bug and added tests","confidence":0.95,"duration_secs":120.0,"timestamp":"2026-01-20T10:02:30Z"}"#;
-    fs::write(
-        dir.path().join("20260120_100000_abc123.jsonl"),
-        session1,
-    )
-    .unwrap();
+    fs::write(dir.path().join("20260120_100000_abc123.jsonl"), session1).unwrap();
 
     // Session 2: failed with 3 iterations
     let session2 = r#"{"type":"session_start","timestamp":"2026-01-21T14:00:00Z","prompt":"refactor database connection pooling","working_dir":"/home/user/project-beta","actor_agent":"claude","critic_agent":"gpt4","actor_model":"opus","critic_model":null,"max_iterations":5}
@@ -28,30 +22,18 @@ fn create_test_sessions_dir() -> TempDir {
 {"type":"iteration","iteration_number":2,"actor_output":"more changes","actor_stderr":"warning: unused var","actor_exit_code":0,"actor_duration_secs":10.0,"git_diff":"diff --git a/pool.rs","git_files_changed":1,"critic_decision":"CONTINUE","feedback":"still issues","timestamp":"2026-01-21T14:02:00Z"}
 {"type":"iteration","iteration_number":3,"actor_output":"final attempt","actor_stderr":"error: compile failed","actor_exit_code":1,"actor_duration_secs":5.0,"git_diff":"","git_files_changed":0,"critic_decision":"FAIL","feedback":"compilation errors","timestamp":"2026-01-21T14:03:00Z"}
 {"type":"session_end","outcome":"failed","iterations":3,"summary":null,"confidence":0.2,"duration_secs":180.0,"timestamp":"2026-01-21T14:03:30Z"}"#;
-    fs::write(
-        dir.path().join("20260121_140000_def456.jsonl"),
-        session2,
-    )
-    .unwrap();
+    fs::write(dir.path().join("20260121_140000_def456.jsonl"), session2).unwrap();
 
     // Session 3: active (no session_end)
     let session3 = r#"{"type":"session_start","timestamp":"2026-01-22T09:00:00Z","prompt":"add user metrics dashboard","working_dir":"/home/user/project-alpha","actor_agent":"claude","critic_agent":"claude","actor_model":"sonnet","critic_model":"sonnet","max_iterations":10}
 {"type":"iteration","iteration_number":1,"actor_output":"scaffolded dashboard","actor_stderr":"","actor_exit_code":0,"actor_duration_secs":20.0,"git_diff":"diff --git a/dashboard.tsx","git_files_changed":3,"critic_decision":"CONTINUE","feedback":"good start, add charts","timestamp":"2026-01-22T09:01:00Z"}"#;
-    fs::write(
-        dir.path().join("20260122_090000_ghi789.jsonl"),
-        session3,
-    )
-    .unwrap();
+    fs::write(dir.path().join("20260122_090000_ghi789.jsonl"), session3).unwrap();
 
     // Session 4: success, same project as session 1 (project-alpha)
     let session4 = r#"{"type":"session_start","timestamp":"2026-01-23T16:00:00Z","prompt":"add documentation for the API endpoints","working_dir":"/home/user/project-alpha","actor_agent":"claude","critic_agent":"claude","actor_model":"haiku","critic_model":"haiku","max_iterations":3}
 {"type":"iteration","iteration_number":1,"actor_output":"wrote docs","actor_stderr":"","actor_exit_code":0,"actor_duration_secs":30.0,"git_diff":"diff --git a/docs/api.md","git_files_changed":1,"critic_decision":"DONE","feedback":null,"timestamp":"2026-01-23T16:01:00Z"}
 {"type":"session_end","outcome":"success","iterations":1,"summary":"Added API docs","confidence":0.9,"duration_secs":60.0,"timestamp":"2026-01-23T16:01:30Z"}"#;
-    fs::write(
-        dir.path().join("20260123_160000_jkl012.jsonl"),
-        session4,
-    )
-    .unwrap();
+    fs::write(dir.path().join("20260123_160000_jkl012.jsonl"), session4).unwrap();
 
     dir
 }
@@ -202,7 +184,9 @@ fn test_store_filter_by_outcome() {
     let summaries = store.list(&filter).unwrap();
 
     assert_eq!(summaries.len(), 2);
-    assert!(summaries.iter().all(|s| s.outcome.as_deref() == Some("success")));
+    assert!(summaries
+        .iter()
+        .all(|s| s.outcome.as_deref() == Some("success")));
 
     let filter = SessionFilter {
         outcome: Some("failed".to_string()),
@@ -402,7 +386,7 @@ fn test_stats_by_project() {
         .find(|p| p.project == "project-alpha")
         .unwrap();
     assert_eq!(alpha.total, 3); // sessions 1, 3, 4
-    // 2 successes out of 3 (session 3 is active)
+                                // 2 successes out of 3 (session 3 is active)
     assert!((alpha.success_rate - 2.0 / 3.0).abs() < 0.01);
 
     let beta = stats
@@ -422,7 +406,7 @@ fn test_stats_sessions_over_time() {
     let stats = store.stats(&SessionFilter::default()).unwrap();
 
     assert_eq!(stats.sessions_over_time.len(), 4); // 4 different days
-    // DayCounts are sorted by date (BTreeMap)
+                                                   // DayCounts are sorted by date (BTreeMap)
     assert_eq!(stats.sessions_over_time[0].date, "2026-01-20");
     assert_eq!(stats.sessions_over_time[0].count, 1);
 }
