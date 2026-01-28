@@ -766,85 +766,130 @@ body {
 }
 
 /* --------------------------------------------------------------------------
-   CODE SECTION
+   GET STARTED SECTION
    -------------------------------------------------------------------------- */
-.code-section {
+.get-started {
   padding: 6rem 0;
-  background: var(--bg-surface);
-  border-top: 1px solid var(--border-subtle);
-  border-bottom: 1px solid var(--border-subtle);
 }
 
-.code-blocks {
+.get-started-layout {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-  gap: 1.5rem;
-}
-
-.code-block {
-  background: var(--bg-deep);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-}
-
-.code-header {
-  display: flex;
+  grid-template-columns: 1fr 1.3fr;
+  gap: 4rem;
   align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 1rem;
-  background: linear-gradient(90deg, var(--amber) 0%, var(--cyan) 100%);
 }
 
-.code-title {
+.get-started-headline {
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: clamp(1.75rem, 4vw, 2.25rem);
   font-weight: 600;
-  color: var(--bg-deep);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  margin-bottom: 1rem;
 }
 
-.copy-btn {
+.get-started-lead {
+  font-size: 1.1rem;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  margin-bottom: 2rem;
+}
+
+.get-started-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.step-number {
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  background: rgba(0, 0, 0, 0.2);
-  border: none;
-  border-radius: 4px;
-  color: var(--bg-deep);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.copy-btn:hover {
-  background: rgba(0, 0, 0, 0.3);
-}
-
-.copy-btn.copied {
-  background: rgba(0, 0, 0, 0.4);
-}
-
-.code-block pre {
-  padding: 1.5rem;
-  margin: 0;
-  overflow-x: auto;
-}
-
-.code-block code {
+  background: var(--amber-glow);
+  border: 1px solid var(--amber-dim);
+  border-radius: 50%;
   font-family: var(--font-mono);
-  font-size: 0.875rem;
-  line-height: 1.7;
-  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--amber);
+  flex-shrink: 0;
 }
 
-.code-block .comment {
+.step-content h4 {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.15rem;
+}
+
+.step-content p {
+  font-size: 0.85rem;
   color: var(--text-muted);
 }
 
-.code-block .string {
+.get-started-links {
+  
+}
+
+.text-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--cyan);
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.text-link:hover {
+  color: var(--text-primary);
+}
+
+.text-link svg {
+  transition: transform 0.2s ease;
+}
+
+.text-link:hover svg {
+  transform: translate(2px, -2px);
+}
+
+.get-started-terminal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+.get-started-terminal .terminal-body {
+  padding: 1.5rem;
+}
+
+.get-started-terminal .terminal-line {
+  margin-bottom: 0.25rem;
+}
+
+.get-started-terminal .terminal-line.comment {
+  margin-top: 1rem;
+}
+
+.get-started-terminal .terminal-line.comment:first-child {
+  margin-top: 0;
+}
+
+.get-started-terminal .string {
   color: var(--amber-bright);
 }
 
@@ -1222,6 +1267,11 @@ body {
     min-width: auto;
     width: 100%;
   }
+  
+  .get-started-layout {
+    grid-template-columns: 1fr;
+    gap: 2.5rem;
+  }
 }
 
 @media (max-width: 600px) {
@@ -1233,6 +1283,20 @@ body {
   .bento-medium,
   .bento-small {
     grid-column: span 1;
+  }
+  
+  .get-started-layout {
+    grid-template-columns: 1fr;
+    gap: 2.5rem;
+  }
+  
+  .get-started-terminal {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  
+  .get-started-terminal .terminal-body {
+    font-size: 0.75rem;
   }
 }
 

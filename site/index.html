@@ -321,52 +321,92 @@
       </div>
     </section>
 
-    <!-- Code Example Section -->
-    <section class="code-section" id="install">
+    <!-- Get Started Section -->
+    <section class="get-started" id="install">
       <div class="container">
-        <div class="section-header">
-          <span class="section-tag">Get Started</span>
-          <h2>Up and running in seconds</h2>
-        </div>
-        
-        <div class="code-blocks">
-          <div class="code-block">
-            <div class="code-header">
-              <span class="code-title">Install</span>
-              <button class="copy-btn" data-copy="install">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2"/>
-                  <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-                </svg>
-              </button>
+        <div class="get-started-layout">
+          <div class="get-started-content">
+            <span class="section-tag">Get Started</span>
+            <h2 class="get-started-headline">Three commands to your first loop</h2>
+            <p class="get-started-lead">Clone, build, run. No config files, no setup wizard, no account required.</p>
+            
+            <div class="get-started-steps">
+              <div class="step">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                  <h4>Clone & build</h4>
+                  <p>Requires Rust toolchain</p>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                  <h4>Write a prompt</h4>
+                  <p>Plain text in prompt.md</p>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                  <h4>Run codeloops</h4>
+                  <p>Watch the loop work</p>
+                </div>
+              </div>
             </div>
-            <pre><code id="install-code"><span class="comment"># Clone and build</span>
-git clone https://github.com/silvabyte/codeloops
-cd codeloops
-cargo build --release
-
-<span class="comment"># Binary at ./target/release/codeloops</span></code></pre>
+            
+            <div class="get-started-links">
+              <a href="https://silvabyte.github.io/codeloops/getting-started/installation.html" target="_blank" class="text-link">
+                Full installation guide
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M7 17L17 7M17 7H7M17 7V17"/>
+                </svg>
+              </a>
+            </div>
           </div>
-
-          <div class="code-block">
-            <div class="code-header">
-              <span class="code-title">Usage</span>
-              <button class="copy-btn" data-copy="usage">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2"/>
-                  <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-                </svg>
-              </button>
+          
+          <div class="get-started-terminal">
+            <div class="terminal-header">
+              <span class="terminal-dot"></span>
+              <span class="terminal-dot"></span>
+              <span class="terminal-dot"></span>
+              <span class="terminal-title">quickstart</span>
             </div>
-            <pre><code id="usage-code"><span class="comment"># Inline prompt</span>
-codeloops --prompt <span class="string">"fix the auth bug in login.rs"</span>
-
-<span class="comment"># From prompt.md file</span>
-echo <span class="string">"implement user registration"</span> > prompt.md
-codeloops
-
-<span class="comment"># Mix agents: Claude acts, OpenCode critiques</span>
-codeloops --actor-agent claude --critic-agent opencode</code></pre>
+            <div class="terminal-body">
+              <div class="terminal-line comment"># Install</div>
+              <div class="terminal-line">
+                <span class="terminal-prompt">$</span>
+                <span class="terminal-cmd">git clone https://github.com/silvabyte/codeloops</span>
+              </div>
+              <div class="terminal-line">
+                <span class="terminal-prompt">$</span>
+                <span class="terminal-cmd">cd codeloops && cargo build --release</span>
+              </div>
+              <div class="terminal-line output dim">
+                Compiling codeloops v0.5.1
+              </div>
+              <div class="terminal-line output dim">
+                <span class="terminal-success">Finished</span> release target in 42.3s
+              </div>
+              <div class="terminal-line comment"># Create a prompt</div>
+              <div class="terminal-line">
+                <span class="terminal-prompt">$</span>
+                <span class="terminal-cmd">echo <span class="string">"add input validation to user signup"</span> > prompt.md</span>
+              </div>
+              <div class="terminal-line comment"># Run the loop</div>
+              <div class="terminal-line">
+                <span class="terminal-prompt">$</span>
+                <span class="terminal-cmd">./target/release/codeloops</span>
+              </div>
+              <div class="terminal-line output">
+                <span class="terminal-actor">actor</span> executing task...
+              </div>
+              <div class="terminal-line output">
+                <span class="terminal-critic">critic</span> evaluating...
+              </div>
+              <div class="terminal-line output success-line">
+                <span class="terminal-success">✓</span> Session complete
+              </div>
+            </div>
           </div>
         </div>
       </div>
