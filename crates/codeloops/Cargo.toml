@@ -28,7 +28,12 @@ ctrlc.workspace = true
 colored.workspace = true
 chrono.workspace = true
 dialoguer.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true
 axum.workspace = true
 tower-http.workspace = true
 tokio-stream.workspace = true
 open.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

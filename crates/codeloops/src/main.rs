@@ -1,6 +1,7 @@
 mod api;
 mod config;
 mod init;
+mod prompt;
 mod sessions;
 mod ui;
 
@@ -163,6 +164,29 @@ enum Commands {
 
     /// Set up codeloops with interactive configuration
     Init,
+
+    /// Interactively generate a prompt.md file with AI assistance
+    Prompt {
+        /// Output file path (default: ./prompt.md)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Working directory for project scanning (default: current directory)
+        #[arg(short = 'd', long)]
+        working_dir: Option<PathBuf>,
+
+        /// Agent to use for the interview
+        #[arg(short, long, value_enum)]
+        agent: Option<AgentChoice>,
+
+        /// Model to use (if agent supports it)
+        #[arg(short, long)]
+        model: Option<String>,
+
+        /// Resume a previous interview session
+        #[arg(long)]
+        resume: Option<PathBuf>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -236,6 +260,22 @@ async fn main() -> Result<()> {
             api_port,
             ui_port,
         }) => ui::handle_ui_command(dev, api_port, ui_port).await,
+        Some(Commands::Prompt {
+            output,
+            working_dir,
+            agent,
+            model,
+            resume,
+        }) => {
+            prompt::handle_prompt_command(prompt::PromptArgs {
+                output,
+                working_dir,
+                agent: agent.map(Into::into),
+                model,
+                resume,
+            })
+            .await
+        }
         Some(Commands::Run {
             prompt,
             prompt_file,

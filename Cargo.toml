@@ -63,8 +63,15 @@ notify = "7"
 # Interactive CLI
 dialoguer = { version = "0.11", features = ["fuzzy-select"] }
 
+# TUI
+ratatui = "0.29"
+crossterm = "0.28"
+
 # Browser opening
 open = "5"
+
+# Testing
+tempfile = "3"
 
 # Internal crates
 codeloops-core = { path = "crates/codeloops-core" }
