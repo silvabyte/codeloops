@@ -375,72 +375,93 @@ codeloops --actor-agent claude --critic-agent opencode</code></pre>
     <!-- Features Section -->
     <section class="features">
       <div class="container">
-        <div class="feature-grid">
-          <div class="feature-card">
-            <div class="feature-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
-                <path d="M21 3v5h-5"/>
-              </svg>
+        <div class="section-header">
+          <span class="section-tag">Features</span>
+          <h2>Everything you need</h2>
+        </div>
+        <div class="bento-grid">
+          <!-- Large card: Mix agents -->
+          <div class="bento-card bento-large">
+            <div class="bento-content">
+              <h3>Mix and match agents</h3>
+              <p>Use different agents for actor and critic roles. Claude writes code, OpenCode reviews. Or any combination.</p>
             </div>
-            <h3>Self-correcting</h3>
-            <p>Automatic feedback loop catches and fixes mistakes</p>
-          </div>
-          <div class="feature-card">
-            <div class="feature-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M3 3v18h18"/>
-                <path d="M18 17V9"/>
-                <path d="M13 17V5"/>
-                <path d="M8 17v-3"/>
-              </svg>
+            <div class="bento-visual agents-visual">
+              <div class="agent-pill">
+                <span class="agent-dot claude"></span>
+                claude
+              </div>
+              <div class="agent-connector">
+                <svg viewBox="0 0 40 20"><path d="M0 10h40" stroke="currentColor" stroke-width="1" stroke-dasharray="4 4"/></svg>
+              </div>
+              <div class="agent-pill">
+                <span class="agent-dot opencode"></span>
+                opencode
+              </div>
+              <div class="agent-connector">
+                <svg viewBox="0 0 40 20"><path d="M0 10h40" stroke="currentColor" stroke-width="1" stroke-dasharray="4 4"/></svg>
+              </div>
+              <div class="agent-pill">
+                <span class="agent-dot cursor"></span>
+                cursor
+              </div>
             </div>
-            <h3>Full observability</h3>
-            <p>Every iteration logged to JSONL for review</p>
           </div>
-          <div class="feature-card">
-            <div class="feature-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="18" cy="18" r="3"/>
-                <circle cx="6" cy="6" r="3"/>
-                <path d="M6 21V9a9 9 0 0 0 9 9"/>
-              </svg>
-            </div>
-            <h3>Mix agents</h3>
-            <p>Claude + OpenCode + Cursor in any combination</p>
-          </div>
-          <div class="feature-card">
-            <div class="feature-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="2" y="3" width="20" height="14" rx="2"/>
-                <path d="M8 21h8"/>
-                <path d="M12 17v4"/>
-              </svg>
-            </div>
-            <h3>Web UI</h3>
-            <p>Browse sessions, view diffs, track iterations</p>
-          </div>
-          <div class="feature-card">
-            <div class="feature-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          
+          <!-- Small card: prompt.md -->
+          <div class="bento-card bento-small">
+            <div class="bento-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                 <path d="M14 2v6h6"/>
-                <path d="M16 13H8"/>
-                <path d="M16 17H8"/>
-                <path d="M10 9H8"/>
               </svg>
             </div>
             <h3>prompt.md</h3>
-            <p>Simple file-based interface. No config bloat.</p>
+            <p>No config files. Just write a prompt and run.</p>
           </div>
-          <div class="feature-card">
-            <div class="feature-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          
+          <!-- Small card: Fast -->
+          <div class="bento-card bento-small">
+            <div class="bento-icon rust">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
               </svg>
             </div>
-            <h3>Fast</h3>
-            <p>Written in Rust. Minimal overhead.</p>
+            <h3>Rust-powered</h3>
+            <p>Fast startup. Minimal memory. No runtime.</p>
+          </div>
+          
+          <!-- Medium card: Observability -->
+          <div class="bento-card bento-medium">
+            <div class="bento-content">
+              <h3>Full session history</h3>
+              <p>Every iteration logged to JSONL. Review what happened, debug issues, analyze patterns.</p>
+            </div>
+            <div class="bento-visual session-visual">
+              <code class="session-snippet">
+<span class="json-key">"iteration"</span>: <span class="json-num">3</span>,
+<span class="json-key">"decision"</span>: <span class="json-str">"DONE"</span>,
+<span class="json-key">"feedback"</span>: <span class="json-str">"All requirements met"</span>
+              </code>
+            </div>
+          </div>
+          
+          <!-- Medium card: Web UI -->
+          <div class="bento-card bento-medium">
+            <div class="bento-content">
+              <h3>Built-in Web UI</h3>
+              <p>Browse sessions, view diffs, track iterations. One command: <code>codeloops ui</code></p>
+            </div>
+            <div class="bento-visual ui-visual">
+              <div class="ui-mockup">
+                <div class="ui-sidebar"></div>
+                <div class="ui-main">
+                  <div class="ui-line"></div>
+                  <div class="ui-line short"></div>
+                  <div class="ui-line"></div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
