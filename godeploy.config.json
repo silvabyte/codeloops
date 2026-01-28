@@ -1,0 +1,10 @@
+{
+  "apps": [
+    {
+      "name": "CodeLoopsSite",
+      "source_dir": "site/dist",
+      "description": "CodeLoops home page",
+      "enabled": true
+    }
+  ]
+}
