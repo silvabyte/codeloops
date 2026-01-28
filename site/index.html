@@ -41,7 +41,6 @@
           <img src="/logo.svg" alt="Codeloops" />
         </div>
         <div class="hero-badge">
-          <span class="badge-dot"></span>
           Open Source Actor-Critic System
         </div>
         <h1 class="hero-title">
@@ -169,43 +168,59 @@
     <!-- Problem Section -->
     <section class="problem">
       <div class="container">
-        <div class="section-header">
-          <span class="section-tag">The Problem</span>
-          <h2>AI agents can't verify their own work</h2>
-        </div>
-        <div class="problem-grid">
-          <div class="problem-card">
-            <div class="problem-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M15 9l-6 6"/>
-                <path d="M9 9l6 6"/>
-              </svg>
-            </div>
-            <h3>Incomplete implementations</h3>
-            <p>Edge cases missed, requirements partially fulfilled</p>
+        <div class="problem-layout">
+          <div class="problem-content">
+            <span class="section-tag">The Problem</span>
+            <h2 class="problem-headline">You've seen this before</h2>
+            <p class="problem-lead">The agent says "Done!" — but it's not done. Half the requirements are missing. Tests don't pass. You fix it manually, run again, and repeat.</p>
+            <p class="problem-emphasis">You've become the feedback loop.</p>
           </div>
-          <div class="problem-card">
-            <div class="problem-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M15 9l-6 6"/>
-                <path d="M9 9l6 6"/>
-              </svg>
+          <div class="problem-terminal">
+            <div class="terminal-header">
+              <span class="terminal-dot"></span>
+              <span class="terminal-dot"></span>
+              <span class="terminal-dot"></span>
+              <span class="terminal-title">agent output</span>
             </div>
-            <h3>No self-correction</h3>
-            <p>Mistakes persist without human review</p>
-          </div>
-          <div class="problem-card">
-            <div class="problem-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="M15 9l-6 6"/>
-                <path d="M9 9l6 6"/>
-              </svg>
+            <div class="terminal-body">
+              <div class="terminal-line">
+                <span class="terminal-prompt">$</span>
+                <span class="terminal-cmd">claude "add user authentication"</span>
+              </div>
+              <div class="terminal-line output">
+                <span class="terminal-success">✓</span> Task completed successfully!
+              </div>
+              <div class="terminal-line">
+                <span class="terminal-prompt">$</span>
+                <span class="terminal-cmd">npm test</span>
+              </div>
+              <div class="terminal-line output error">
+                <span class="terminal-error">✗</span> 12 tests failed
+              </div>
+              <div class="terminal-line output error indent">
+                auth.test.js: "password hashing not implemented"
+              </div>
+              <div class="terminal-line output error indent">
+                session.test.js: "logout handler undefined"
+              </div>
+              <div class="terminal-line">
+                <span class="terminal-prompt">$</span>
+                <span class="terminal-cmd">claude "you forgot password hashing"</span>
+              </div>
+              <div class="terminal-line output">
+                <span class="terminal-success">✓</span> Task completed successfully!
+              </div>
+              <div class="terminal-line">
+                <span class="terminal-prompt">$</span>
+                <span class="terminal-cmd">npm test</span>
+              </div>
+              <div class="terminal-line output error">
+                <span class="terminal-error">✗</span> 8 tests failed
+              </div>
+              <div class="terminal-line comment">
+                # repeat forever...
+              </div>
             </div>
-            <h3>Manual verification</h3>
-            <p>You become the feedback loop</p>
           </div>
         </div>
       </div>
@@ -214,30 +229,93 @@
     <!-- Solution Section -->
     <section class="solution">
       <div class="container">
-        <div class="section-header">
-          <span class="section-tag">The Solution</span>
-          <h2>Actor-critic feedback loop</h2>
-        </div>
-        <div class="solution-grid">
-          <div class="solution-card">
-            <div class="solution-number">01</div>
-            <h3>Actor executes</h3>
-            <p>Your coding agent (Claude Code, OpenCode, Cursor) runs the task</p>
+        <div class="solution-layout">
+          <div class="solution-terminal">
+            <div class="terminal-header">
+              <span class="terminal-dot"></span>
+              <span class="terminal-dot"></span>
+              <span class="terminal-dot"></span>
+              <span class="terminal-title">codeloops</span>
+            </div>
+            <div class="terminal-body">
+              <div class="terminal-line">
+                <span class="terminal-prompt">$</span>
+                <span class="terminal-cmd">codeloops --prompt "add user authentication"</span>
+              </div>
+              <div class="terminal-line output dim">
+                <span class="iteration-badge">iteration 1</span>
+              </div>
+              <div class="terminal-line output">
+                <span class="terminal-actor">actor</span> executing task...
+              </div>
+              <div class="terminal-line output">
+                <span class="terminal-actor">actor</span> <span class="terminal-success">✓</span> completed
+              </div>
+              <div class="terminal-line output">
+                <span class="terminal-critic">critic</span> reviewing git diff...
+              </div>
+              <div class="terminal-line output">
+                <span class="terminal-critic">critic</span> <span class="terminal-warning">CONTINUE</span> — missing password hashing
+              </div>
+              <div class="terminal-line output dim">
+                <span class="iteration-badge">iteration 2</span>
+              </div>
+              <div class="terminal-line output">
+                <span class="terminal-actor">actor</span> applying feedback...
+              </div>
+              <div class="terminal-line output">
+                <span class="terminal-actor">actor</span> <span class="terminal-success">✓</span> completed
+              </div>
+              <div class="terminal-line output">
+                <span class="terminal-critic">critic</span> reviewing git diff...
+              </div>
+              <div class="terminal-line output">
+                <span class="terminal-critic">critic</span> <span class="terminal-warning">CONTINUE</span> — logout handler missing
+              </div>
+              <div class="terminal-line output dim">
+                <span class="iteration-badge">iteration 3</span>
+              </div>
+              <div class="terminal-line output">
+                <span class="terminal-actor">actor</span> applying feedback...
+              </div>
+              <div class="terminal-line output">
+                <span class="terminal-actor">actor</span> <span class="terminal-success">✓</span> completed
+              </div>
+              <div class="terminal-line output">
+                <span class="terminal-critic">critic</span> reviewing git diff...
+              </div>
+              <div class="terminal-line output success-line">
+                <span class="terminal-critic">critic</span> <span class="terminal-done">DONE</span> — all requirements met
+              </div>
+              <div class="terminal-line output">
+                <span class="terminal-success">✓</span> Session complete in 3 iterations
+              </div>
+            </div>
           </div>
-          <div class="solution-card">
-            <div class="solution-number">02</div>
-            <h3>Git captures changes</h3>
-            <p>All file modifications tracked via git diff</p>
-          </div>
-          <div class="solution-card">
-            <div class="solution-number">03</div>
-            <h3>Critic evaluates</h3>
-            <p>Another agent reviews output against requirements</p>
-          </div>
-          <div class="solution-card">
-            <div class="solution-number">04</div>
-            <h3>Loop continues</h3>
-            <p>Feedback drives iterations until task is complete</p>
+          <div class="solution-content">
+            <span class="section-tag">The Solution</span>
+            <h2 class="solution-headline">Let agents check each other</h2>
+            <p class="solution-lead">Codeloops runs a second agent as a <strong>critic</strong> that reviews every change. If something's missing, it sends feedback. The loop continues until the work is actually done.</p>
+            <ul class="solution-list">
+              <li>
+                <span class="list-icon actor">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                </span>
+                <span><strong>Actor</strong> executes your task</span>
+              </li>
+              <li>
+                <span class="list-icon critic">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </span>
+                <span><strong>Critic</strong> reviews the git diff</span>
+              </li>
+              <li>
+                <span class="list-icon loop">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+                </span>
+                <span><strong>Loop</strong> until requirements are met</span>
+              </li>
+            </ul>
           </div>
         </div>
       </div>
