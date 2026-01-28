@@ -8,7 +8,7 @@ Codeloops works with multiple AI coding agents. This guide covers supported agen
 |-------|-----------|--------|-------------|
 | Claude Code | `claude` | `claude` | Anthropic's Claude-powered coding agent |
 | OpenCode | `opencode` | `opencode` | Multi-model coding agent |
-| Cursor | `cursor` | `cursor` | Cursor IDE's agent CLI |
+| Cursor | `cursor-agent` | `cursor-agent` | Cursor IDE's agent CLI |
 
 ## Agent Details
 
@@ -112,7 +112,7 @@ Use a fast actor with a thorough critic.
 
 **For Cursor users**:
 ```bash
-codeloops --agent cursor
+codeloops --agent cursor-agent
 ```
 Use Cursor if you're already in the Cursor ecosystem.
 
@@ -150,7 +150,7 @@ To fix this:
 Check which agents are available:
 
 ```bash
-which claude opencode cursor
+which claude opencode cursor-agent
 ```
 
 ## Agent Configuration
