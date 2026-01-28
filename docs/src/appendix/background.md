@@ -30,7 +30,7 @@ Ralph Wiggum is a technique popularized by Geoffrey Huntley that implements a si
 
 The brilliance of Ralph Wiggum was showing that the feedback loop belongs **outside** the agent, not inside it. The agent is a black box that takes a prompt and produces output. The orchestration layer—the loop, the evaluation, the decision to continue—lives above it.
 
-This insight unlocked codeloops. In April 2026, the project was revived with a new architecture. Instead of modifying agents, codeloops wraps them. Any agent with a CLI becomes a valid actor or critic. The loop is agent-agnostic because it operates at a higher architectural layer.
+This insight unlocked codeloops. In January 2026, the project was revived with a new architecture. Instead of modifying agents, codeloops wraps them. Any agent with a CLI becomes a valid actor or critic. The loop is agent-agnostic because it operates at a higher architectural layer.
 
 ## How Codeloops Differs
 
