@@ -1,0 +1,19 @@
+[book]
+title = "Codeloops Documentation"
+authors = ["Mat Silva"]
+language = "en"
+src = "src"
+
+[build]
+build-dir = "book"
+create-missing = false
+
+[output.html]
+default-theme = "rust"
+preferred-dark-theme = "coal"
+git-repository-url = "https://github.com/matsilva/codeloops"
+edit-url-template = "https://github.com/matsilva/codeloops/edit/main/docs/{path}"
+
+[output.html.search]
+enable = true
+limit-results = 30

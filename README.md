@@ -2,6 +2,8 @@
 
 An actor-critic harness for coding agents.
 
+[![Documentation](https://img.shields.io/badge/docs-mdbook-blue)](https://matsilva.github.io/codeloops)
+
 Codeloops orchestrates coding agents (Claude Code, OpenCode, Cursor) in an actor-critic feedback loop. The **actor** executes coding tasks while the **critic** evaluates the work via git diff and stdout/stderr logs, continuing iterations until the task is complete.
 
 ## The Problem
@@ -199,8 +201,21 @@ codeloops/
 └── docs/                    # Design documents
 ```
 
+## Documentation
+
+Full documentation is available at [matsilva.github.io/codeloops](https://matsilva.github.io/codeloops)
+
+- [Getting Started](https://matsilva.github.io/codeloops/getting-started/installation.html) - Installation and first session
+- [CLI Reference](https://matsilva.github.io/codeloops/user-guide/cli-reference.html) - Complete command reference
+- [Configuration](https://matsilva.github.io/codeloops/user-guide/configuration.html) - Global and project configuration
+- [Architecture](https://matsilva.github.io/codeloops/architecture/overview.html) - How codeloops works
+- [Contributing](https://matsilva.github.io/codeloops/contributing/development.html) - Development setup
+
 ## Adding New Agents
 
+See the [Adding New Agents](https://matsilva.github.io/codeloops/contributing/adding-agents.html) guide for detailed instructions.
+
+Quick overview:
 1. Implement the `Agent` trait in `codeloops-agent/src/`
 2. Add the variant to `AgentType` enum
 3. Update the CLI's `AgentChoice` enum

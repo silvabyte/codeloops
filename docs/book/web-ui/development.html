@@ -1,0 +1,533 @@
+<!DOCTYPE HTML>
+<html lang="en" class="rust sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Development - Codeloops Documentation</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="../favicon-8114d1fc.png">
+        <link rel="stylesheet" href="../css/variables-8adf115d.css">
+        <link rel="stylesheet" href="../css/general-2459343d.css">
+        <link rel="stylesheet" href="../css/chrome-ae938929.css">
+        <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="../highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="../tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "rust";
+            const default_dark_theme = "coal";
+            window.path_to_searchindex_js = "../searchindex-29d01579.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc-5890de18.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('rust')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Codeloops Documentation</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/matsilva/codeloops" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/matsilva/codeloops/edit/main/docs/src/web-ui/development.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="web-ui-development"><a class="header" href="#web-ui-development">Web UI Development</a></h1>
+<p>This guide covers how to develop and contribute to the codeloops web UI.</p>
+<h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
+<ul>
+<li><a href="https://bun.sh/">Bun</a> (recommended) or Node.js 18+</li>
+<li>Rust toolchain (for the API server)</li>
+</ul>
+<h2 id="development-setup"><a class="header" href="#development-setup">Development Setup</a></h2>
+<h3 id="clone-and-install"><a class="header" href="#clone-and-install">Clone and Install</a></h3>
+<pre><code class="language-bash">git clone https://github.com/matsilva/codeloops
+cd codeloops/ui
+bun install
+</code></pre>
+<h3 id="start-development-servers"><a class="header" href="#start-development-servers">Start Development Servers</a></h3>
+<p>Option 1: Use the integrated dev mode:</p>
+<pre><code class="language-bash">codeloops ui --dev
+</code></pre>
+<p>This starts both the API server and Vite dev server with hot reloading.</p>
+<p>Option 2: Run servers separately:</p>
+<pre><code class="language-bash"># Terminal 1: API server
+cargo run -- ui --dev
+
+# Terminal 2: Vite dev server (if needed separately)
+cd ui &amp;&amp; bun dev
+</code></pre>
+<h3 id="development-urls"><a class="header" href="#development-urls">Development URLs</a></h3>
+<ul>
+<li><strong>UI</strong>: http://localhost:3101</li>
+<li><strong>API</strong>: http://localhost:3100</li>
+</ul>
+<p>In dev mode, the UI proxies API requests to the backend automatically.</p>
+<h2 id="project-structure"><a class="header" href="#project-structure">Project Structure</a></h2>
+<pre><code>ui/
+├── src/
+│   ├── main.tsx              # Application entry point
+│   ├── App.tsx               # Root component with routing
+│   │
+│   ├── api/
+│   │   ├── types.ts          # TypeScript interfaces
+│   │   └── client.ts         # API client functions
+│   │
+│   ├── pages/
+│   │   ├── Dashboard.tsx     # Session list view
+│   │   ├── SessionDetail.tsx # Single session view
+│   │   ├── Stats.tsx         # Statistics page
+│   │   └── NotFound.tsx      # 404 page
+│   │
+│   ├── components/
+│   │   ├── Layout.tsx        # Main layout with sidebar
+│   │   ├── Welcome.tsx       # Empty state component
+│   │   ├── SessionTable.tsx  # Sessions list table
+│   │   ├── SessionFilters.tsx# Filter controls
+│   │   ├── StatsBar.tsx      # Statistics summary
+│   │   ├── IterationTimeline.tsx # Visual timeline
+│   │   ├── CriticTrail.tsx   # Critic feedback display
+│   │   └── DiffViewer.tsx    # Code diff viewer
+│   │
+│   ├── hooks/
+│   │   ├── useSessions.ts    # Fetch sessions list
+│   │   ├── useSession.ts     # Fetch single session
+│   │   ├── useStats.ts       # Fetch statistics
+│   │   └── useSSE.ts         # Server-Sent Events
+│   │
+│   └── lib/
+│       └── utils.ts          # Utility functions
+│
+├── package.json
+├── vite.config.ts            # Vite configuration
+├── tsconfig.json             # TypeScript configuration
+├── tailwind.config.js        # Tailwind CSS configuration
+└── serve.ts                  # Standalone server entry
+</code></pre>
+<h2 id="key-components"><a class="header" href="#key-components">Key Components</a></h2>
+<h3 id="api-client-srcapiclientts"><a class="header" href="#api-client-srcapiclientts">API Client (<code>src/api/client.ts</code>)</a></h3>
+<p>Functions for fetching data from the backend:</p>
+<pre><code class="language-typescript">// Fetch all sessions with optional filters
+export async function fetchSessions(filters?: SessionFilter): Promise&lt;SessionSummary[]&gt;
+
+// Fetch a single session by ID
+export async function fetchSession(id: string): Promise&lt;Session&gt;
+
+// Fetch session diff
+export async function fetchSessionDiff(id: string): Promise&lt;string&gt;
+
+// Fetch statistics
+export async function fetchStats(): Promise&lt;SessionStats&gt;
+</code></pre>
+<h3 id="types-srcapitypests"><a class="header" href="#types-srcapitypests">Types (<code>src/api/types.ts</code>)</a></h3>
+<p>TypeScript interfaces matching the Rust types:</p>
+<pre><code class="language-typescript">interface SessionSummary {
+  id: string
+  timestamp: string
+  prompt_preview: string
+  working_dir: string
+  project: string
+  outcome: string | null
+  iterations: number
+  duration_secs: number | null
+  confidence: number | null
+  actor_agent: string
+  critic_agent: string
+}
+
+interface Session {
+  id: string
+  start: SessionStart
+  iterations: Iteration[]
+  end: SessionEnd | null
+}
+</code></pre>
+<h3 id="hooks"><a class="header" href="#hooks">Hooks</a></h3>
+<p>Custom React hooks for data fetching:</p>
+<pre><code class="language-typescript">// useSessions.ts
+export function useSessions(filters?: SessionFilter) {
+  const [sessions, setSessions] = useState&lt;SessionSummary[]&gt;([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState&lt;Error | null&gt;(null)
+  // ... fetch logic
+  return { sessions, loading, error, refetch }
+}
+</code></pre>
+<h3 id="sse-hook-srchooksusessets"><a class="header" href="#sse-hook-srchooksusessets">SSE Hook (<code>src/hooks/useSSE.ts</code>)</a></h3>
+<p>Handles real-time updates:</p>
+<pre><code class="language-typescript">export function useSSE(onEvent: (event: SessionEvent) =&gt; void) {
+  useEffect(() =&gt; {
+    const eventSource = new EventSource('/api/sessions/live')
+    eventSource.onmessage = (e) =&gt; {
+      const event = JSON.parse(e.data)
+      onEvent(event)
+    }
+    return () =&gt; eventSource.close()
+  }, [onEvent])
+}
+</code></pre>
+<h2 id="adding-a-new-page"><a class="header" href="#adding-a-new-page">Adding a New Page</a></h2>
+<ol>
+<li>Create the page component in <code>src/pages/</code>:</li>
+</ol>
+<pre><code class="language-typescript">// src/pages/MyPage.tsx
+export default function MyPage() {
+  return (
+    &lt;div&gt;
+      &lt;h1&gt;My Page&lt;/h1&gt;
+    &lt;/div&gt;
+  )
+}
+</code></pre>
+<ol start="2">
+<li>Add the route in <code>src/App.tsx</code>:</li>
+</ol>
+<pre><code class="language-typescript">import MyPage from './pages/MyPage'
+
+// In the Routes:
+&lt;Route path="/my-page" element={&lt;MyPage /&gt;} /&gt;
+</code></pre>
+<ol start="3">
+<li>Add navigation in <code>src/components/Layout.tsx</code>:</li>
+</ol>
+<pre><code class="language-typescript">&lt;NavLink to="/my-page"&gt;My Page&lt;/NavLink&gt;
+</code></pre>
+<h2 id="adding-a-new-component"><a class="header" href="#adding-a-new-component">Adding a New Component</a></h2>
+<ol>
+<li>Create the component in <code>src/components/</code>:</li>
+</ol>
+<pre><code class="language-typescript">// src/components/MyComponent.tsx
+interface MyComponentProps {
+  title: string
+  children: React.ReactNode
+}
+
+export function MyComponent({ title, children }: MyComponentProps) {
+  return (
+    &lt;div className="p-4 border rounded"&gt;
+      &lt;h2 className="text-lg font-bold"&gt;{title}&lt;/h2&gt;
+      {children}
+    &lt;/div&gt;
+  )
+}
+</code></pre>
+<ol start="2">
+<li>Import and use it:</li>
+</ol>
+<pre><code class="language-typescript">import { MyComponent } from '../components/MyComponent'
+
+&lt;MyComponent title="Hello"&gt;
+  Content here
+&lt;/MyComponent&gt;
+</code></pre>
+<h2 id="styling"><a class="header" href="#styling">Styling</a></h2>
+<p>The UI uses Tailwind CSS. Add classes directly to elements:</p>
+<pre><code class="language-tsx">&lt;div className="flex items-center gap-4 p-4 bg-gray-100 rounded-lg"&gt;
+  &lt;span className="text-sm text-gray-600"&gt;Label&lt;/span&gt;
+  &lt;button className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"&gt;
+    Click me
+  &lt;/button&gt;
+&lt;/div&gt;
+</code></pre>
+<h2 id="building-for-production"><a class="header" href="#building-for-production">Building for Production</a></h2>
+<pre><code class="language-bash">cd ui
+bun run build
+</code></pre>
+<p>Output goes to <code>ui/dist/</code>.</p>
+<h2 id="creating-a-standalone-binary"><a class="header" href="#creating-a-standalone-binary">Creating a Standalone Binary</a></h2>
+<pre><code class="language-bash">cd ui
+bun run compile
+</code></pre>
+<p>This creates a <code>codeloops-ui</code> binary that serves the UI without needing Bun installed.</p>
+<h2 id="testing"><a class="header" href="#testing">Testing</a></h2>
+<h3 id="type-checking"><a class="header" href="#type-checking">Type Checking</a></h3>
+<pre><code class="language-bash">bun run typecheck
+# or
+npx tsc --noEmit
+</code></pre>
+<h3 id="linting"><a class="header" href="#linting">Linting</a></h3>
+<pre><code class="language-bash">bun run lint
+# or
+npx eslint src/
+</code></pre>
+<h2 id="api-development"><a class="header" href="#api-development">API Development</a></h2>
+<p>The API server is in Rust at <code>crates/codeloops/src/api/</code>. Key files:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>File</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><code>mod.rs</code></td><td>Router setup</td></tr>
+<tr><td><code>sessions.rs</code></td><td>Session endpoints</td></tr>
+<tr><td><code>stats.rs</code></td><td>Statistics endpoint</td></tr>
+<tr><td><code>sse.rs</code></td><td>Server-Sent Events</td></tr>
+</tbody>
+</table>
+</div>
+<p>To add a new API endpoint:</p>
+<ol>
+<li>Add the handler function in the appropriate file</li>
+<li>Add the route in <code>mod.rs</code>:</li>
+</ol>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>.route("/api/my-endpoint", get(my_handler))
+<span class="boring">}</span></code></pre>
+<ol start="3">
+<li>Add the corresponding client function in <code>ui/src/api/client.ts</code></li>
+</ol>
+<h2 id="common-tasks"><a class="header" href="#common-tasks">Common Tasks</a></h2>
+<h3 id="update-api-types"><a class="header" href="#update-api-types">Update API Types</a></h3>
+<p>When Rust types change:</p>
+<ol>
+<li>Update <code>ui/src/api/types.ts</code> to match</li>
+<li>Update any affected components</li>
+</ol>
+<h3 id="add-a-new-filter"><a class="header" href="#add-a-new-filter">Add a New Filter</a></h3>
+<ol>
+<li>Add the filter field to <code>SessionFilter</code> in <code>types.ts</code></li>
+<li>Update <code>SessionFilters.tsx</code> to include the new control</li>
+<li>Update <code>fetchSessions()</code> to send the filter parameter</li>
+<li>Update the Rust API to handle the new filter</li>
+</ol>
+<h3 id="add-a-chart"><a class="header" href="#add-a-chart">Add a Chart</a></h3>
+<ol>
+<li>Add the data field to the appropriate type</li>
+<li>Import from Recharts:</li>
+</ol>
+<pre><code class="language-typescript">import { BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts'
+</code></pre>
+<ol start="3">
+<li>Add the chart component:</li>
+</ol>
+<pre><code class="language-tsx">&lt;BarChart data={data}&gt;
+  &lt;XAxis dataKey="name" /&gt;
+  &lt;YAxis /&gt;
+  &lt;Tooltip /&gt;
+  &lt;Bar dataKey="value" fill="#3b82f6" /&gt;
+&lt;/BarChart&gt;
+</code></pre>
+<h2 id="debugging"><a class="header" href="#debugging">Debugging</a></h2>
+<h3 id="browser-devtools"><a class="header" href="#browser-devtools">Browser DevTools</a></h3>
+<ul>
+<li><strong>Network tab</strong>: Check API requests</li>
+<li><strong>Console</strong>: View errors and logs</li>
+<li><strong>React DevTools</strong>: Inspect component state</li>
+</ul>
+<h3 id="api-debugging"><a class="header" href="#api-debugging">API Debugging</a></h3>
+<pre><code class="language-bash"># Test API endpoints directly
+curl http://localhost:3100/api/sessions
+curl http://localhost:3100/api/stats
+</code></pre>
+<h3 id="sse-debugging"><a class="header" href="#sse-debugging">SSE Debugging</a></h3>
+<p>In browser console:</p>
+<pre><code class="language-javascript">const es = new EventSource('http://localhost:3100/api/sessions/live')
+es.onmessage = (e) =&gt; console.log(JSON.parse(e.data))
+</code></pre>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../web-ui/usage.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="../architecture/overview.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../web-ui/usage.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="../architecture/overview.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr-ef4e11c1.min.js"></script>
+        <script src="../mark-09e88c2c.min.js"></script>
+        <script src="../searcher-c2a407aa.js"></script>
+
+        <script src="../clipboard-1626706a.min.js"></script>
+        <script src="../highlight-abc7f01d.js"></script>
+        <script src="../book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

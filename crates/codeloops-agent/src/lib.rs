@@ -1,3 +1,48 @@
+//! # codeloops-agent
+//!
+//! Agent abstraction layer for the codeloops actor-critic system.
+//!
+//! This crate defines the [`Agent`] trait and provides implementations for
+//! various coding agents (Claude Code, OpenCode, Cursor).
+//!
+//! ## Overview
+//!
+//! The agent abstraction allows codeloops to work with different coding agents
+//! through a unified interface. Each agent can execute prompts and return
+//! structured output including stdout, stderr, and exit code.
+//!
+//! ## Supported Agents
+//!
+//! | Agent | Type | Binary |
+//! |-------|------|--------|
+//! | Claude Code | [`AgentType::ClaudeCode`] | `claude` |
+//! | OpenCode | [`AgentType::OpenCode`] | `opencode` |
+//! | Cursor | [`AgentType::Cursor`] | `cursor` |
+//!
+//! ## Usage
+//!
+//! ```rust,ignore
+//! use codeloops_agent::{create_agent, AgentType, AgentConfig};
+//! use std::path::PathBuf;
+//!
+//! // Create an agent
+//! let agent = create_agent(AgentType::ClaudeCode);
+//!
+//! // Configure the execution context
+//! let config = AgentConfig::new(PathBuf::from("."));
+//!
+//! // Execute a prompt
+//! let output = agent.execute("Fix the bug in main.rs", &config).await?;
+//!
+//! println!("Exit code: {}", output.exit_code);
+//! println!("Output: {}", output.stdout);
+//! ```
+//!
+//! ## Adding New Agents
+//!
+//! To add a new agent, implement the [`Agent`] trait. See the contributing
+//! guide for detailed instructions.
+
 mod claude;
 mod cursor;
 mod opencode;
