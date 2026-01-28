@@ -42,5 +42,6 @@
 
 # Appendix
 
+- [Background & Inspiration](./appendix/background.md)
 - [Best Practices](./appendix/best-practices.md)
 - [FAQ](./appendix/faq.md)
