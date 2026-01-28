@@ -11,7 +11,7 @@ This guide covers how to set up a development environment for contributing to co
 ## Cloning the Repository
 
 ```bash
-git clone https://github.com/matsilva/codeloops
+git clone https://github.com/silvabyte/codeloops
 cd codeloops
 ```
 

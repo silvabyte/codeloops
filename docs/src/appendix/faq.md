@@ -268,5 +268,5 @@ codeloops --max-iterations 3 --json-output > result.json
 ### Where can I get help?
 
 - Documentation: This site
-- Issues: [GitHub Issues](https://github.com/matsilva/codeloops/issues)
-- Discussions: [GitHub Discussions](https://github.com/matsilva/codeloops/discussions)
+- Issues: [GitHub Issues](https://github.com/silvabyte/codeloops/issues)
+- Discussions: [GitHub Discussions](https://github.com/silvabyte/codeloops/discussions)

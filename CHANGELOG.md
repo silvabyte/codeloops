@@ -30,5 +30,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Global and project-level configuration
 - Onboarding UX with `init` command
 
-[Unreleased]: https://github.com/matsilva/codeloops/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/matsilva/codeloops/releases/tag/v0.1.0
+[Unreleased]: https://github.com/silvabyte/codeloops/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/silvabyte/codeloops/releases/tag/v0.1.0

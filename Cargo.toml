@@ -14,7 +14,7 @@ members = [
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/matsilva/codeloops"
+repository = "https://github.com/silvabyte/codeloops"
 
 [workspace.dependencies]
 # Async runtime

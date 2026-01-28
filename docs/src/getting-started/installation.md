@@ -46,7 +46,7 @@ git --version
 Clone the repository and build:
 
 ```bash
-git clone https://github.com/matsilva/codeloops
+git clone https://github.com/silvabyte/codeloops
 cd codeloops
 cargo build --release
 ```

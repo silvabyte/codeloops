@@ -12,7 +12,7 @@ This guide covers how to develop and contribute to the codeloops web UI.
 ### Clone and Install
 
 ```bash
-git clone https://github.com/matsilva/codeloops
+git clone https://github.com/silvabyte/codeloops
 cd codeloops/ui
 bun install
 ```
