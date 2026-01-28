@@ -1,5 +1,9 @@
 # Introduction
 
+<p align="center">
+  <img src="images/logo.png" alt="Codeloops" width="400">
+</p>
+
 Codeloops is a command-line tool that orchestrates an **actor-critic feedback loop** for AI coding agents. It runs your preferred coding agent (Claude Code, OpenCode, or Cursor) as the "actor" to execute tasks, then uses another agent as the "critic" to evaluate the work and provide feedback. This loop continues until the task is complete or a maximum iteration count is reached.
 
 ## The Problem

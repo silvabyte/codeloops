@@ -1,8 +1,14 @@
-# codeloops
+<p align="center">
+  <img src="media/png/codeloops_banner.png" alt="Codeloops" width="600">
+</p>
 
-An actor-critic harness for coding agents.
+<p align="center">
+  <strong>An actor-critic harness for coding agents.</strong>
+</p>
 
-[![Documentation](https://img.shields.io/badge/docs-mdbook-blue)](https://silvabyte.github.io/codeloops)
+<p align="center">
+  <a href="https://silvabyte.github.io/codeloops"><img src="https://img.shields.io/badge/docs-mdbook-blue" alt="Documentation"></a>
+</p>
 
 Codeloops orchestrates coding agents (Claude Code, OpenCode, Cursor) in an actor-critic feedback loop. The **actor** executes coding tasks while the **critic** evaluates the work via git diff and stdout/stderr logs, continuing iterations until the task is complete.
 
