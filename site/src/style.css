@@ -166,20 +166,6 @@ body {
   width: auto;
 }
 
-.hero-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  background: var(--amber-glow);
-  border: 1px solid var(--amber-dim);
-  border-radius: 100px;
-  font-size: 0.8rem;
-  font-weight: 500;
-  color: var(--amber);
-  margin-bottom: 2rem;
-  animation: fadeInUp 0.6s ease;
-}
 
 .badge-dot {
   width: 6px;
