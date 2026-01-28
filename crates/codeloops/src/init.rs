@@ -68,8 +68,8 @@ pub async fn handle_init() -> Result<()> {
             "⚠".bright_yellow()
         );
         eprintln!("  Claude Code: https://docs.anthropic.com/claude-code");
-        eprintln!("  Opencode:    https://github.com/opencode-ai/opencode");
-        eprintln!("  Cursor:      https://cursor.sh");
+        eprintln!("  Opencode:    https://opencode.ai/docs/#install");
+        eprintln!("  Cursor:      https://cursor.com/cli");
         eprintln!();
         eprintln!(
             "After installing, run {} again.",

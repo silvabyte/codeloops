@@ -21,8 +21,8 @@ You need at least one AI coding agent CLI installed:
 | Agent | Installation |
 |-------|--------------|
 | Claude Code | [claude.ai/code](https://claude.ai/code) |
-| OpenCode | [github.com/opencode-ai/opencode](https://github.com/opencode-ai/opencode) |
-| Cursor | Included with [Cursor IDE](https://cursor.sh/) |
+| OpenCode | [opencode.ai/docs](https://opencode.ai/docs/#install) |
+| Cursor | [cursor.com/cli](https://cursor.com/cli) |
 
 The agent binary must be in your PATH. Verify with:
 
@@ -30,7 +30,7 @@ The agent binary must be in your PATH. Verify with:
 # Check which agents are available
 which claude
 which opencode
-which cursor
+which cursor-agent  # or 'agent'
 ```
 
 ### Git

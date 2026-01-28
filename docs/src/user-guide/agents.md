@@ -43,7 +43,7 @@ OpenCode is a multi-model coding agent that supports various LLM backends.
 - Fast execution for straightforward tasks
 - Good for rapid iteration
 
-**Installation**: Visit [github.com/opencode-ai/opencode](https://github.com/opencode-ai/opencode)
+**Installation**: Visit [opencode.ai/docs](https://opencode.ai/docs/#install)
 
 **Verify installation**:
 ```bash
@@ -55,17 +55,17 @@ opencode --version
 
 Cursor's CLI provides access to its coding capabilities outside the IDE.
 
-**Binary**: `cursor`
+**Binary**: `cursor-agent` (or `agent`)
 
 **Strengths**:
 - Integrates with Cursor IDE workflow
 - Familiar for Cursor users
 
-**Installation**: Included with [Cursor IDE](https://cursor.sh/)
+**Installation**: Visit [cursor.com/cli](https://cursor.com/cli)
 
 **Verify installation**:
 ```bash
-which cursor
+which cursor-agent  # or 'agent'
 ```
 
 ## Choosing Agents
