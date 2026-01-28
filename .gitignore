@@ -4,5 +4,7 @@ Cargo.lock
 *.swo
 .DS_Store
 
-prompt*.md
+# Ignore prompt files (but not docs)
+/prompt*.md
+!/docs/
 a.out
