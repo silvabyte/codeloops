@@ -325,6 +325,65 @@ A clear prompt helps the critic make accurate decisions. Vague prompts lead to t
 - Approving incomplete work (didn't know what to check)
 - Continuously requesting changes (unclear when "done")
 
+## Generating Prompts with Agent Commands
+
+You can configure your coding agent to generate `prompt.md` files automatically. This creates a powerful workflow:
+
+1. Use your agent interactively to explore and plan
+2. Run a command that writes the plan to `prompt.md`
+3. Run codeloops with that prompt for structured execution
+
+### Claude Code
+
+Create a command file at `~/.claude/commands/promptmd.md`:
+
+```markdown
+---
+description: Writes plan out to prompt.md file
+---
+
+## Instructions
+
+1. Write out the plan to a prompt.md file in the cwd.
+   a. If prompt.md file exists already, create a backup of it using a timestamp: prompt.timestamp.md
+2. This prompt.md file will be used to implement the plan in another working session.
+3. Ensure it contains detailed tasks to thoroughly implement the plan.
+4. Also always ensure the plan includes adding documentation, tests that actually provide confidence and any other quality assurance checks available in the project/codebase.
+5. Make sure the plan also specifies to commit the changes once finished.
+```
+
+Then use it in Claude Code:
+
+```
+> /promptmd
+```
+
+### OpenCode
+
+Create a command file at `~/.config/opencode/command/promptmd.md` with the same content as above.
+
+Then use it in OpenCode:
+
+```
+> /promptmd
+```
+
+### Workflow Example
+
+```bash
+# 1. Start your agent and explore the task
+opencode
+> Analyze the codebase and figure out how to add user authentication
+
+# 2. Once you have a plan, generate the prompt
+> /promptmd
+
+# 3. Exit and run codeloops
+codeloops
+```
+
+This workflow lets you leverage your agent's interactive exploration for planning, then use codeloops' actor-critic loop for disciplined execution.
+
 ## Tips for Success
 
 1. **Be specific**: File paths, function names, exact requirements
