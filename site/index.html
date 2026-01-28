@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Codeloops — Actor-Critic Harness for Coding Agents</title>
+    <meta name="description" content="Orchestrate coding agents in a self-correcting feedback loop. Actor executes, critic evaluates, loop continues until done." />
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <!-- Navigation -->
+    <nav class="nav">
+      <div class="nav-inner">
+        <a href="/" class="nav-logo">
+          <img src="/icon.svg" alt="Codeloops" class="nav-logo-img" />
+        </a>
+        <div class="nav-links">
+          <a href="https://silvabyte.github.io/codeloops/introduction.html" target="_blank" rel="noopener">Docs</a>
+          <a href="https://github.com/silvabyte/codeloops" target="_blank" rel="noopener" class="nav-github">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+            </svg>
+            GitHub
+          </a>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+      <div class="hero-glow"></div>
+      <div class="container">
+        <div class="hero-logo">
+          <img src="/logo.svg" alt="Codeloops" />
+        </div>
+        <div class="hero-badge">
+          <span class="badge-dot"></span>
+          Open Source Actor-Critic System
+        </div>
+        <h1 class="hero-title">
+          Self-correcting<br/>
+          <span class="highlight">coding agents</span>
+        </h1>
+        <p class="hero-subtitle">
+          Orchestrate AI coding agents in a feedback loop.<br/>
+          Actor executes. Critic evaluates. Loop until done.
+        </p>
+        <div class="hero-actions">
+          <a href="#install" class="btn btn-primary">
+            <span>Get Started</span>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </a>
+          <a href="https://silvabyte.github.io/codeloops/introduction.html" target="_blank" class="btn btn-secondary">
+            Read the Docs
+          </a>
+        </div>
+        
+        <!-- Animated Loop Diagram -->
+        <div class="loop-diagram" aria-label="Actor-Critic feedback loop visualization">
+          <svg class="loop-svg" viewBox="0 0 600 280" fill="none">
+            <!-- Gradient definitions -->
+            <defs>
+              <linearGradient id="pathGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#f59e0b" />
+                <stop offset="100%" stop-color="#06b6d4" />
+              </linearGradient>
+              <linearGradient id="pathGradientReverse" x1="100%" y1="0%" x2="0%" y2="0%">
+                <stop offset="0%" stop-color="#06b6d4" />
+                <stop offset="100%" stop-color="#f59e0b" />
+              </linearGradient>
+              <!-- Glow filter -->
+              <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                <feMerge>
+                  <feMergeNode in="coloredBlur"/>
+                  <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+              </filter>
+            </defs>
+            
+            <!-- Top path: Actor → Critic (git diff + output) -->
+            <path 
+              class="loop-path" 
+              d="M 120 140 C 120 60, 480 60, 480 140" 
+              stroke="#27272a" 
+              stroke-width="2"
+            />
+            <path 
+              class="loop-path-animated path-forward" 
+              d="M 120 140 C 120 60, 480 60, 480 140" 
+              stroke="url(#pathGradient)" 
+              stroke-width="2"
+              stroke-dasharray="8 12"
+              filter="url(#glow)"
+            />
+            
+            <!-- Bottom path: Critic → Actor (feedback) -->
+            <path 
+              class="loop-path" 
+              d="M 480 140 C 480 220, 120 220, 120 140" 
+              stroke="#27272a" 
+              stroke-width="2"
+            />
+            <path 
+              class="loop-path-animated path-backward" 
+              d="M 480 140 C 480 220, 120 220, 120 140" 
+              stroke="url(#pathGradientReverse)" 
+              stroke-width="2"
+              stroke-dasharray="8 12"
+              filter="url(#glow)"
+            />
+            
+            <!-- Path labels -->
+            <text x="300" y="45" text-anchor="middle" class="path-label">git diff + stdout</text>
+            <text x="300" y="255" text-anchor="middle" class="path-label">feedback</text>
+            
+            <!-- Arrow heads -->
+            <polygon class="arrow-head arrow-head-1" points="475,132 485,140 475,148" fill="#06b6d4"/>
+            <polygon class="arrow-head arrow-head-2" points="125,148 115,140 125,132" fill="#f59e0b"/>
+          </svg>
+          
+          <!-- Actor Node -->
+          <div class="loop-node actor">
+            <div class="node-glow"></div>
+            <div class="node-content">
+              <div class="node-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="4 17 10 11 4 5"/>
+                  <line x1="12" y1="19" x2="20" y2="19"/>
+                </svg>
+              </div>
+              <div class="node-label">Actor</div>
+              <div class="node-desc">Executes task</div>
+            </div>
+          </div>
+          
+          <!-- Critic Node -->
+          <div class="loop-node critic">
+            <div class="node-glow"></div>
+            <div class="node-content">
+              <div class="node-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+              </div>
+              <div class="node-label">Critic</div>
+              <div class="node-desc">Evaluates work</div>
+            </div>
+          </div>
+          
+          <!-- Center status -->
+          <div class="loop-status">
+            <span class="status-text">LOOP</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Problem Section -->
+    <section class="problem">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-tag">The Problem</span>
+          <h2>AI agents can't verify their own work</h2>
+        </div>
+        <div class="problem-grid">
+          <div class="problem-card">
+            <div class="problem-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M15 9l-6 6"/>
+                <path d="M9 9l6 6"/>
+              </svg>
+            </div>
+            <h3>Incomplete implementations</h3>
+            <p>Edge cases missed, requirements partially fulfilled</p>
+          </div>
+          <div class="problem-card">
+            <div class="problem-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M15 9l-6 6"/>
+                <path d="M9 9l6 6"/>
+              </svg>
+            </div>
+            <h3>No self-correction</h3>
+            <p>Mistakes persist without human review</p>
+          </div>
+          <div class="problem-card">
+            <div class="problem-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M15 9l-6 6"/>
+                <path d="M9 9l6 6"/>
+              </svg>
+            </div>
+            <h3>Manual verification</h3>
+            <p>You become the feedback loop</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Solution Section -->
+    <section class="solution">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-tag">The Solution</span>
+          <h2>Actor-critic feedback loop</h2>
+        </div>
+        <div class="solution-grid">
+          <div class="solution-card">
+            <div class="solution-number">01</div>
+            <h3>Actor executes</h3>
+            <p>Your coding agent (Claude Code, OpenCode, Cursor) runs the task</p>
+          </div>
+          <div class="solution-card">
+            <div class="solution-number">02</div>
+            <h3>Git captures changes</h3>
+            <p>All file modifications tracked via git diff</p>
+          </div>
+          <div class="solution-card">
+            <div class="solution-number">03</div>
+            <h3>Critic evaluates</h3>
+            <p>Another agent reviews output against requirements</p>
+          </div>
+          <div class="solution-card">
+            <div class="solution-number">04</div>
+            <h3>Loop continues</h3>
+            <p>Feedback drives iterations until task is complete</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Code Example Section -->
+    <section class="code-section" id="install">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-tag">Get Started</span>
+          <h2>Up and running in seconds</h2>
+        </div>
+        
+        <div class="code-blocks">
+          <div class="code-block">
+            <div class="code-header">
+              <span class="code-title">Install</span>
+              <button class="copy-btn" data-copy="install">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2"/>
+                  <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                </svg>
+              </button>
+            </div>
+            <pre><code id="install-code"><span class="comment"># Clone and build</span>
+git clone https://github.com/silvabyte/codeloops
+cd codeloops
+cargo build --release
+
+<span class="comment"># Binary at ./target/release/codeloops</span></code></pre>
+          </div>
+
+          <div class="code-block">
+            <div class="code-header">
+              <span class="code-title">Usage</span>
+              <button class="copy-btn" data-copy="usage">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2"/>
+                  <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                </svg>
+              </button>
+            </div>
+            <pre><code id="usage-code"><span class="comment"># Inline prompt</span>
+codeloops --prompt <span class="string">"fix the auth bug in login.rs"</span>
+
+<span class="comment"># From prompt.md file</span>
+echo <span class="string">"implement user registration"</span> > prompt.md
+codeloops
+
+<span class="comment"># Mix agents: Claude acts, OpenCode critiques</span>
+codeloops --actor-agent claude --critic-agent opencode</code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features">
+      <div class="container">
+        <div class="feature-grid">
+          <div class="feature-card">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
+                <path d="M21 3v5h-5"/>
+              </svg>
+            </div>
+            <h3>Self-correcting</h3>
+            <p>Automatic feedback loop catches and fixes mistakes</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 3v18h18"/>
+                <path d="M18 17V9"/>
+                <path d="M13 17V5"/>
+                <path d="M8 17v-3"/>
+              </svg>
+            </div>
+            <h3>Full observability</h3>
+            <p>Every iteration logged to JSONL for review</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="18" cy="18" r="3"/>
+                <circle cx="6" cy="6" r="3"/>
+                <path d="M6 21V9a9 9 0 0 0 9 9"/>
+              </svg>
+            </div>
+            <h3>Mix agents</h3>
+            <p>Claude + OpenCode + Cursor in any combination</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2"/>
+                <path d="M8 21h8"/>
+                <path d="M12 17v4"/>
+              </svg>
+            </div>
+            <h3>Web UI</h3>
+            <p>Browse sessions, view diffs, track iterations</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <path d="M14 2v6h6"/>
+                <path d="M16 13H8"/>
+                <path d="M16 17H8"/>
+                <path d="M10 9H8"/>
+              </svg>
+            </div>
+            <h3>prompt.md</h3>
+            <p>Simple file-based interface. No config bloat.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+              </svg>
+            </div>
+            <h3>Fast</h3>
+            <p>Written in Rust. Minimal overhead.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta">
+      <div class="container">
+        <div class="cta-content">
+          <h2>Ready to close the loop?</h2>
+          <p>Star on GitHub, read the docs, or just clone and build.</p>
+          <div class="cta-actions">
+            <a href="https://github.com/silvabyte/codeloops" target="_blank" class="btn btn-primary">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+              </svg>
+              Star on GitHub
+            </a>
+            <a href="https://silvabyte.github.io/codeloops/introduction.html" target="_blank" class="btn btn-secondary">
+              Documentation
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="container">
+        <div class="footer-inner">
+        <div class="footer-logo">
+          <img src="/icon.svg" alt="Codeloops" class="footer-logo-img" />
+        </div>
+          <div class="footer-links">
+            <a href="https://silvabyte.github.io/codeloops/introduction.html" target="_blank">Docs</a>
+            <a href="https://github.com/silvabyte/codeloops" target="_blank">GitHub</a>
+            <a href="https://github.com/silvabyte/codeloops/blob/main/LICENSE" target="_blank">MIT License</a>
+          </div>
+        </div>
+      </div>
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
