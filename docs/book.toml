@@ -13,7 +13,7 @@ default-theme = "coal"
 preferred-dark-theme = "coal"
 git-repository-url = "https://github.com/silvabyte/codeloops"
 edit-url-template = "https://github.com/silvabyte/codeloops/edit/main/docs/{path}"
-favicon = "images/favicon.png"
+additional-css = ["src/theme/custom.css"]
 
 [output.html.search]
 enable = true

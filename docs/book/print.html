@@ -1,5 +1,5 @@
 <!DOCTYPE HTML>
-<html lang="en" class="rust sidebar-visible" dir="ltr">
+<html lang="en" class="coal sidebar-visible" dir="ltr">
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
@@ -29,14 +29,15 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
+        <link rel="stylesheet" href="src/theme/custom-52ef0eda.css">
 
 
         <!-- Provide site root and default themes to javascript -->
         <script>
             const path_to_root = "";
-            const default_light_theme = "rust";
+            const default_light_theme = "coal";
             const default_dark_theme = "coal";
-            window.path_to_searchindex_js = "searchindex-29d01579.js";
+            window.path_to_searchindex_js = "searchindex-e5ba35e3.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-5890de18.js"></script>
@@ -77,7 +78,7 @@
             try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
             if (theme === null || theme === undefined) { theme = default_theme; }
             const html = document.documentElement;
-            html.classList.remove('rust')
+            html.classList.remove('coal')
             html.classList.add(theme);
             html.classList.add("js");
         </script>
@@ -144,7 +145,7 @@
                         <a href="print.html" title="Print this book" aria-label="Print this book">
                             <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
                         </a>
-                        <a href="https://github.com/matsilva/codeloops" title="Git repository" aria-label="Git repository">
+                        <a href="https://github.com/silvabyte/codeloops" title="Git repository" aria-label="Git repository">
                             <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
                         </a>
 
@@ -179,6 +180,10 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
+<p align="center">
+  <img src="images/logo.png" alt="Codeloops" width="400">
+</p>
+
 <p>Codeloops is a command-line tool that orchestrates an <strong>actor-critic feedback loop</strong> for AI coding agents. It runs your preferred coding agent (Claude Code, OpenCode, or Cursor) as the “actor” to execute tasks, then uses another agent as the “critic” to evaluate the work and provide feedback. This loop continues until the task is complete or a maximum iteration count is reached.</p>
 <h2 id="the-problem"><a class="header" href="#the-problem">The Problem</a></h2>
 <p>AI coding agents are powerful, but they lack a built-in mechanism for self-correction. When an agent makes a mistake or produces incomplete work, it has no way to know unless a human reviews the output. This leads to:</p>
@@ -241,8 +246,8 @@
 </thead>
 <tbody>
 <tr><td>Claude Code</td><td><a href="https://claude.ai/code">claude.ai/code</a></td></tr>
-<tr><td>OpenCode</td><td><a href="https://github.com/opencode-ai/opencode">github.com/opencode-ai/opencode</a></td></tr>
-<tr><td>Cursor</td><td>Included with <a href="https://cursor.sh/">Cursor IDE</a></td></tr>
+<tr><td>OpenCode</td><td><a href="https://opencode.ai/docs/#install">opencode.ai/docs</a></td></tr>
+<tr><td>Cursor</td><td><a href="https://cursor.com/cli">cursor.com/cli</a></td></tr>
 </tbody>
 </table>
 </div>
@@ -250,7 +255,7 @@
 <pre><code class="language-bash"># Check which agents are available
 which claude
 which opencode
-which cursor
+which cursor-agent  # or 'agent'
 </code></pre>
 <h3 id="git"><a class="header" href="#git">Git</a></h3>
 <p>Git is required for capturing diffs between iterations:</p>
@@ -258,7 +263,7 @@ which cursor
 </code></pre>
 <h2 id="building-from-source"><a class="header" href="#building-from-source">Building from Source</a></h2>
 <p>Clone the repository and build:</p>
-<pre><code class="language-bash">git clone https://github.com/matsilva/codeloops
+<pre><code class="language-bash">git clone https://github.com/silvabyte/codeloops
 cd codeloops
 cargo build --release
 </code></pre>
@@ -1018,7 +1023,7 @@ EOF
 <tbody>
 <tr><td>Claude Code</td><td><code>claude</code></td><td><code>claude</code></td><td>Anthropic’s Claude-powered coding agent</td></tr>
 <tr><td>OpenCode</td><td><code>opencode</code></td><td><code>opencode</code></td><td>Multi-model coding agent</td></tr>
-<tr><td>Cursor</td><td><code>cursor</code></td><td><code>cursor</code></td><td>Cursor IDE’s agent CLI</td></tr>
+<tr><td>Cursor</td><td><code>cursor-agent</code></td><td><code>cursor-agent</code></td><td>Cursor IDE’s agent CLI</td></tr>
 </tbody>
 </table>
 </div>
@@ -1047,22 +1052,22 @@ claude --version
 <li>Fast execution for straightforward tasks</li>
 <li>Good for rapid iteration</li>
 </ul>
-<p><strong>Installation</strong>: Visit <a href="https://github.com/opencode-ai/opencode">github.com/opencode-ai/opencode</a></p>
+<p><strong>Installation</strong>: Visit <a href="https://opencode.ai/docs/#install">opencode.ai/docs</a></p>
 <p><strong>Verify installation</strong>:</p>
 <pre><code class="language-bash">which opencode
 opencode --version
 </code></pre>
 <h3 id="cursor"><a class="header" href="#cursor">Cursor</a></h3>
 <p>Cursor’s CLI provides access to its coding capabilities outside the IDE.</p>
-<p><strong>Binary</strong>: <code>cursor</code></p>
+<p><strong>Binary</strong>: <code>cursor-agent</code> (or <code>agent</code>)</p>
 <p><strong>Strengths</strong>:</p>
 <ul>
 <li>Integrates with Cursor IDE workflow</li>
 <li>Familiar for Cursor users</li>
 </ul>
-<p><strong>Installation</strong>: Included with <a href="https://cursor.sh/">Cursor IDE</a></p>
+<p><strong>Installation</strong>: Visit <a href="https://cursor.com/cli">cursor.com/cli</a></p>
 <p><strong>Verify installation</strong>:</p>
-<pre><code class="language-bash">which cursor
+<pre><code class="language-bash">which cursor-agent  # or 'agent'
 </code></pre>
 <h2 id="choosing-agents"><a class="header" href="#choosing-agents">Choosing Agents</a></h2>
 <h3 id="same-agent-for-both-roles"><a class="header" href="#same-agent-for-both-roles">Same Agent for Both Roles</a></h3>
@@ -1095,7 +1100,7 @@ opencode --version
 </code></pre>
 <p>Use a fast actor with a thorough critic.</p>
 <p><strong>For Cursor users</strong>:</p>
-<pre><code class="language-bash">codeloops --agent cursor
+<pre><code class="language-bash">codeloops --agent cursor-agent
 </code></pre>
 <p>Use Cursor if you’re already in the Cursor ecosystem.</p>
 <h2 id="model-selection"><a class="header" href="#model-selection">Model Selection</a></h2>
@@ -1123,7 +1128,7 @@ codeloops --agent claude --model opus
 </ol>
 <h3 id="checking-all-agents"><a class="header" href="#checking-all-agents">Checking All Agents</a></h3>
 <p>Check which agents are available:</p>
-<pre><code class="language-bash">which claude opencode cursor
+<pre><code class="language-bash">which claude opencode cursor-agent
 </code></pre>
 <h2 id="agent-configuration"><a class="header" href="#agent-configuration">Agent Configuration</a></h2>
 <h3 id="in-global-config"><a class="header" href="#in-global-config">In Global Config</a></h3>
@@ -1408,6 +1413,48 @@ codeloops --prompt-file prompt-2.md
 <li>Approving incomplete work (didn’t know what to check)</li>
 <li>Continuously requesting changes (unclear when “done”)</li>
 </ul>
+<h2 id="generating-prompts-with-agent-commands"><a class="header" href="#generating-prompts-with-agent-commands">Generating Prompts with Agent Commands</a></h2>
+<p>You can configure your coding agent to generate <code>prompt.md</code> files automatically. This creates a powerful workflow:</p>
+<ol>
+<li>Use your agent interactively to explore and plan</li>
+<li>Run a command that writes the plan to <code>prompt.md</code></li>
+<li>Run codeloops with that prompt for structured execution</li>
+</ol>
+<h3 id="claude-code-1"><a class="header" href="#claude-code-1">Claude Code</a></h3>
+<p>Create a command file at <code>~/.claude/commands/promptmd.md</code>:</p>
+<pre><code class="language-markdown">---
+description: Writes plan out to prompt.md file
+---
+
+## Instructions
+
+1. Write out the plan to a prompt.md file in the cwd.
+   a. If prompt.md file exists already, create a backup of it using a timestamp: prompt.timestamp.md
+2. This prompt.md file will be used to implement the plan in another working session.
+3. Ensure it contains detailed tasks to thoroughly implement the plan.
+4. Also always ensure the plan includes adding documentation, tests that actually provide confidence and any other quality assurance checks available in the project/codebase.
+5. Make sure the plan also specifies to commit the changes once finished.
+</code></pre>
+<p>Then use it in Claude Code:</p>
+<pre><code>&gt; /promptmd
+</code></pre>
+<h3 id="opencode-1"><a class="header" href="#opencode-1">OpenCode</a></h3>
+<p>Create a command file at <code>~/.config/opencode/command/promptmd.md</code> with the same content as above.</p>
+<p>Then use it in OpenCode:</p>
+<pre><code>&gt; /promptmd
+</code></pre>
+<h3 id="workflow-example"><a class="header" href="#workflow-example">Workflow Example</a></h3>
+<pre><code class="language-bash"># 1. Start your agent and explore the task
+opencode
+&gt; Analyze the codebase and figure out how to add user authentication
+
+# 2. Once you have a plan, generate the prompt
+&gt; /promptmd
+
+# 3. Exit and run codeloops
+codeloops
+</code></pre>
+<p>This workflow lets you leverage your agent’s interactive exploration for planning, then use codeloops’ actor-critic loop for disciplined execution.</p>
 <h2 id="tips-for-success-1"><a class="header" href="#tips-for-success-1">Tips for Success</a></h2>
 <ol>
 <li><strong>Be specific</strong>: File paths, function names, exact requirements</li>
@@ -1998,7 +2045,7 @@ export CODELOOPS_UI_DIR=/path/to/ui/dist
 </ul>
 <h2 id="development-setup"><a class="header" href="#development-setup">Development Setup</a></h2>
 <h3 id="clone-and-install"><a class="header" href="#clone-and-install">Clone and Install</a></h3>
-<pre><code class="language-bash">git clone https://github.com/matsilva/codeloops
+<pre><code class="language-bash">git clone https://github.com/silvabyte/codeloops
 cd codeloops/ui
 bun install
 </code></pre>
@@ -4690,7 +4737,7 @@ curl http://localhost:3100/api/sessions/2025-01-27T15-30-45Z_a3f2c1/diff
 <li>Git</li>
 </ul>
 <h2 id="cloning-the-repository"><a class="header" href="#cloning-the-repository">Cloning the Repository</a></h2>
-<pre><code class="language-bash">git clone https://github.com/matsilva/codeloops
+<pre><code class="language-bash">git clone https://github.com/silvabyte/codeloops
 cd codeloops
 </code></pre>
 <h2 id="building"><a class="header" href="#building">Building</a></h2>
@@ -5322,7 +5369,133 @@ cmd.arg("--prompt-file").arg(&amp;prompt_file);
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="best-practices-1"><a class="header" href="#best-practices-1">Best Practices</a></h1>
-<p>This guide covers best practices for getting the most out of codeloops.</p>
+<p>This guide covers best practices for getting the most out of codeloops, based on patterns observed across real sessions.</p>
+<h2 id="the-planning-workflow"><a class="header" href="#the-planning-workflow">The Planning Workflow</a></h2>
+<p>The most successful codeloops sessions follow a two-phase workflow:</p>
+<h3 id="phase-1-interactive-exploration"><a class="header" href="#phase-1-interactive-exploration">Phase 1: Interactive Exploration</a></h3>
+<p>Use your coding agent interactively to explore and plan:</p>
+<pre><code class="language-bash"># Start your agent
+opencode  # or claude
+
+# Explore the problem
+&gt; Analyze the authentication flow and identify where rate limiting should be added
+
+# Generate a detailed prompt
+&gt; /promptmd
+</code></pre>
+<h3 id="phase-2-disciplined-execution"><a class="header" href="#phase-2-disciplined-execution">Phase 2: Disciplined Execution</a></h3>
+<p>Run codeloops with the generated prompt:</p>
+<pre><code class="language-bash">codeloops
+</code></pre>
+<p>This workflow leverages your agent’s interactive capabilities for exploration, then uses codeloops’ actor-critic loop for structured, self-correcting execution.</p>
+<h2 id="what-makes-prompts-succeed-in-one-iteration"><a class="header" href="#what-makes-prompts-succeed-in-one-iteration">What Makes Prompts Succeed in One Iteration</a></h2>
+<p>Analysis of successful single-iteration sessions reveals these patterns:</p>
+<h3 id="include-root-cause-analysis-for-bugs"><a class="header" href="#include-root-cause-analysis-for-bugs">Include Root Cause Analysis (for bugs)</a></h3>
+<p>Don’t just describe symptoms—explain why it’s happening:</p>
+<p><strong>Good:</strong></p>
+<pre><code class="language-markdown">## Problem
+The daemon logs spam this error every ~6 seconds:
+`Telegram poll error: Ctrl-C signal handler already registered`
+
+## Root Cause
+The daemon registers a `ctrlc::set_handler` at `crates/butler/src/commands/daemon.rs:79`.
+Then it calls `telegram::poll()` which also calls `ctrlc::set_handler()` at line 40.
+The `ctrlc` crate only allows one global handler—the second registration fails.
+
+## Fix
+Skip the ctrlc registration in `poll()` when called with `once: true`.
+
+## Files
+- `crates/butler/src/commands/telegram.rs` — lines 38-42
+- `crates/butler/src/commands/daemon.rs` — lines 79-81, 91
+</code></pre>
+<h3 id="provide-exact-file-paths-and-line-numbers"><a class="header" href="#provide-exact-file-paths-and-line-numbers">Provide Exact File Paths and Line Numbers</a></h3>
+<p>Specificity eliminates guesswork:</p>
+<p><strong>Good:</strong></p>
+<pre><code class="language-markdown">In `run.rs`, guard against empty output before sending to Telegram:
+
+File: `crates/butler/src/commands/run.rs` — lines 100-103
+
+Change:
+```rust
+OutputTarget::Telegram =&gt; {
+    let msg = output_result.stdout.trim();
+    if msg.is_empty() {
+        eprintln!("Warning: playbook produced no output");
+    } else {
+        tg.send_message(msg).await?;
+    }
+}
+</code></pre>
+<pre><code>
+### Include Schema Definitions for Data Changes
+
+When adding database tables or data structures, include the full schema:
+
+**Good:**
+```markdown
+## Database Schema
+
+```sql
+CREATE TABLE tasks (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    trigger_at TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX idx_tasks_status_trigger ON tasks(status, trigger_at);
+</code></pre>
+<pre><code>
+### Structure Complex Tasks in Phases
+
+Break large features into numbered, dependent tasks:
+
+**Good:**
+```markdown
+## Phase 1: Foundation Setup
+
+### Task 1.1: Create the database module
+Location: `crates/butler-db/`
+- Implement `open_db()` with WAL mode
+- Add migration helpers
+
+### Task 1.2: Add state helpers
+- Implement `get_state(conn, table, key)`
+- Implement `set_state(conn, table, key, value)`
+
+## Phase 2: Migration
+
+### Task 2.1: Migrate telegram state
+- Replace JSON file reads with database queries
+- Update `crates/butler/src/commands/telegram.rs`
+</code></pre>
+<h2 id="what-causes-multiple-iterations"><a class="header" href="#what-causes-multiple-iterations">What Causes Multiple Iterations</a></h2>
+<p>Sessions that require 2-3 iterations typically have these gaps:</p>
+<h3 id="missing-edge-cases"><a class="header" href="#missing-edge-cases">Missing Edge Cases</a></h3>
+<p>The critic catches issues the prompt didn’t mention:</p>
+<ul>
+<li>Double initialization of global state</li>
+<li>Empty output handling</li>
+<li>Error propagation paths</li>
+<li>Clippy warnings in new code</li>
+</ul>
+<p><strong>Prevention:</strong> Include a “Validation Checklist” in your prompt:</p>
+<pre><code class="language-markdown">## Validation Checklist
+- [ ] No clippy warnings in modified files
+- [ ] Error cases return appropriate error types
+- [ ] Empty/null inputs are handled
+- [ ] New code has test coverage
+</code></pre>
+<h3 id="ambiguous-done-criteria-1"><a class="header" href="#ambiguous-done-criteria-1">Ambiguous “Done” Criteria</a></h3>
+<p>When the critic can’t determine if requirements are met, it requests more changes.</p>
+<p><strong>Prevention:</strong> Use explicit acceptance criteria with checkboxes:</p>
+<pre><code class="language-markdown">## Acceptance Criteria
+- [ ] `bun scripts/generate-route-config.ts --check` returns exit code 0 when in sync
+- [ ] `bun scripts/generate-route-config.ts --check` returns exit code 1 when out of sync
+- [ ] Pre-commit hook fails with clear error message when route config is stale
+- [ ] All existing tests pass
+</code></pre>
 <h2 id="writing-effective-prompts"><a class="header" href="#writing-effective-prompts">Writing Effective Prompts</a></h2>
 <h3 id="be-specific"><a class="header" href="#be-specific">Be Specific</a></h3>
 <p>Vague prompts lead to vague results:</p>
@@ -5511,19 +5684,46 @@ log_format = "json"
 <h2 id="common-pitfalls"><a class="header" href="#common-pitfalls">Common Pitfalls</a></h2>
 <h3 id="ambiguous-requirements"><a class="header" href="#ambiguous-requirements">Ambiguous Requirements</a></h3>
 <p><strong>Problem:</strong> Critic keeps requesting changes because requirements are unclear.</p>
-<p><strong>Solution:</strong> Add explicit acceptance criteria to your prompt.</p>
+<p><strong>Solution:</strong> Add explicit acceptance criteria to your prompt. Use checkboxes that the critic can verify.</p>
 <h3 id="too-many-unrelated-changes"><a class="header" href="#too-many-unrelated-changes">Too Many Unrelated Changes</a></h3>
 <p><strong>Problem:</strong> Actor makes changes beyond what was asked.</p>
 <p><strong>Solution:</strong> Be specific about scope in the prompt. Add “Do not modify other files” if needed.</p>
 <h3 id="ignoring-feedback"><a class="header" href="#ignoring-feedback">Ignoring Feedback</a></h3>
 <p><strong>Problem:</strong> Re-running the same prompt hoping for different results.</p>
-<p><strong>Solution:</strong> Read the critic’s feedback and adjust your prompt or approach.</p>
+<p><strong>Solution:</strong> Read the critic’s feedback and adjust your prompt or approach. The critic often catches legitimate issues like:</p>
+<ul>
+<li>Double initialization of global state</li>
+<li>Missing error handling</li>
+<li>Clippy warnings</li>
+</ul>
 <h3 id="overly-broad-tasks"><a class="header" href="#overly-broad-tasks">Overly Broad Tasks</a></h3>
 <p><strong>Problem:</strong> Task never completes because scope is too large.</p>
-<p><strong>Solution:</strong> Break into smaller, manageable tasks.</p>
+<p><strong>Solution:</strong> Break into smaller, manageable tasks. Use the <code>/promptmd</code> workflow to plan interactively, then execute each phase with codeloops.</p>
 <h3 id="missing-context-1"><a class="header" href="#missing-context-1">Missing Context</a></h3>
 <p><strong>Problem:</strong> Actor can’t find the right files or uses wrong patterns.</p>
-<p><strong>Solution:</strong> Include file paths and reference existing code patterns.</p>
+<p><strong>Solution:</strong> Include file paths and line numbers. Reference existing code patterns by showing examples from the codebase.</p>
+<h3 id="describing-symptoms-instead-of-causes"><a class="header" href="#describing-symptoms-instead-of-causes">Describing Symptoms Instead of Causes</a></h3>
+<p><strong>Problem:</strong> Bug fix prompts describe what’s wrong but not why.</p>
+<p><strong>Solution:</strong> Include root cause analysis. Explain <em>why</em> the bug happens, not just <em>what</em> happens. This dramatically reduces iterations.</p>
+<p><strong>Bad:</strong></p>
+<pre><code class="language-markdown">The daemon crashes on startup.
+</code></pre>
+<p><strong>Good:</strong></p>
+<pre><code class="language-markdown">The daemon crashes on startup because tracing-subscriber is initialized twice:
+1. `main.rs:10` calls `tracing_subscriber::fmt().init()`
+2. `daemon.rs:66` calls it again, which panics
+
+Fix: Use `try_init()` instead of `init()` in main.rs.
+</code></pre>
+<h3 id="not-including-quality-assurance-steps"><a class="header" href="#not-including-quality-assurance-steps">Not Including Quality Assurance Steps</a></h3>
+<p><strong>Problem:</strong> Prompt completes but leaves behind clippy warnings, failing tests, or missing documentation.</p>
+<p><strong>Solution:</strong> Always include QA requirements in your prompt:</p>
+<pre><code class="language-markdown">## Quality Requirements
+- Run `cargo clippy` and fix all warnings in modified files
+- Ensure all existing tests pass
+- Add tests for new functionality
+- Update relevant documentation
+</code></pre>
 <h2 id="security-considerations"><a class="header" href="#security-considerations">Security Considerations</a></h2>
 <h3 id="review-changes"><a class="header" href="#review-changes">Review Changes</a></h3>
 <p>Always review the git diff before committing:</p>
@@ -5730,8 +5930,8 @@ codeloops
 <h3 id="where-can-i-get-help"><a class="header" href="#where-can-i-get-help">Where can I get help?</a></h3>
 <ul>
 <li>Documentation: This site</li>
-<li>Issues: <a href="https://github.com/matsilva/codeloops/issues">GitHub Issues</a></li>
-<li>Discussions: <a href="https://github.com/matsilva/codeloops/discussions">GitHub Discussions</a></li>
+<li>Issues: <a href="https://github.com/silvabyte/codeloops/issues">GitHub Issues</a></li>
+<li>Discussions: <a href="https://github.com/silvabyte/codeloops/discussions">GitHub Discussions</a></li>
 </ul>
 
                     </main>

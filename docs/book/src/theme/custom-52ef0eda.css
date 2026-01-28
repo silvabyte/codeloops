@@ -1,0 +1,622 @@
+/* ==========================================================================
+   CODELOOPS DOCS — "Amber Circuit" Theme
+   A warm, technical aesthetic for developer documentation
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   FONTS — Geist & Geist Mono from Vercel
+   -------------------------------------------------------------------------- */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+
+/* --------------------------------------------------------------------------
+   CSS VARIABLES — Amber Circuit Palette
+   -------------------------------------------------------------------------- */
+:root {
+    /* Core colors */
+    --cl-bg-deep: #09090b;
+    --cl-bg-surface: #0f0f11;
+    --cl-bg-elevated: #18181b;
+    --cl-bg-hover: #27272a;
+    
+    /* Text hierarchy */
+    --cl-text-primary: #fafaf9;
+    --cl-text-secondary: #a1a1aa;
+    --cl-text-muted: #71717a;
+    
+    /* Accent colors */
+    --cl-amber: #f59e0b;
+    --cl-amber-dim: #b45309;
+    --cl-amber-glow: rgba(245, 158, 11, 0.15);
+    --cl-amber-bright: #fbbf24;
+    
+    --cl-cyan: #06b6d4;
+    --cl-cyan-dim: #0891b2;
+    
+    /* Semantic */
+    --cl-border: #27272a;
+    --cl-border-subtle: #1f1f23;
+    
+    /* Gradients */
+    --cl-gradient-amber: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    --cl-gradient-surface: linear-gradient(180deg, #18181b 0%, #09090b 100%);
+    --cl-gradient-glow: radial-gradient(ellipse at top, rgba(245, 158, 11, 0.08) 0%, transparent 50%);
+    
+    /* Typography */
+    --cl-font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
+    --cl-font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    
+    /* Spacing */
+    --cl-radius: 8px;
+    --cl-radius-lg: 12px;
+}
+
+/* --------------------------------------------------------------------------
+   THEME OVERRIDES — Coal Theme (default dark)
+   -------------------------------------------------------------------------- */
+.coal {
+    --bg: var(--cl-bg-deep);
+    --fg: var(--cl-text-primary);
+    
+    --sidebar-bg: var(--cl-bg-surface);
+    --sidebar-fg: var(--cl-text-secondary);
+    --sidebar-non-existant: var(--cl-text-muted);
+    --sidebar-active: var(--cl-amber);
+    --sidebar-spacer: var(--cl-border);
+    
+    --scrollbar: var(--cl-text-muted);
+    
+    --icons: var(--cl-text-muted);
+    --icons-hover: var(--cl-amber);
+    
+    --links: var(--cl-cyan);
+    
+    --inline-code-color: var(--cl-amber-bright);
+    
+    --theme-popup-bg: var(--cl-bg-elevated);
+    --theme-popup-border: var(--cl-border);
+    --theme-hover: var(--cl-bg-hover);
+    
+    --quote-bg: var(--cl-bg-elevated);
+    --quote-border: var(--cl-amber-dim);
+    
+    --table-border-color: var(--cl-border);
+    --table-header-bg: var(--cl-bg-elevated);
+    --table-alternate-bg: var(--cl-bg-surface);
+    
+    --searchbar-border-color: var(--cl-border);
+    --searchbar-bg: var(--cl-bg-elevated);
+    --searchbar-fg: var(--cl-text-primary);
+    --searchbar-shadow-color: transparent;
+    --searchresults-header-fg: var(--cl-text-muted);
+    --searchresults-border-color: var(--cl-border);
+    --searchresults-li-bg: var(--cl-bg-surface);
+    --search-mark-bg: var(--cl-amber-dim);
+}
+
+/* Also apply to Ayu and Navy for consistency */
+.ayu, .navy {
+    --bg: var(--cl-bg-deep);
+    --fg: var(--cl-text-primary);
+    --sidebar-bg: var(--cl-bg-surface);
+    --sidebar-fg: var(--cl-text-secondary);
+    --sidebar-active: var(--cl-amber);
+    --links: var(--cl-cyan);
+    --inline-code-color: var(--cl-amber-bright);
+}
+
+/* --------------------------------------------------------------------------
+   BASE STYLES
+   -------------------------------------------------------------------------- */
+html {
+    scroll-behavior: smooth;
+    font-size: 16px;
+}
+
+body {
+    font-family: var(--cl-font-sans);
+    font-size: 1rem;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Main content area */
+.content main {
+    font-size: 1.0625rem; /* 17px - slightly larger for readability */
+    line-height: 1.7;
+}
+
+/* Subtle ambient glow at top */
+.coal #mdbook-page-wrapper::before,
+.ayu #mdbook-page-wrapper::before,
+.navy #mdbook-page-wrapper::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 400px;
+    background: var(--cl-gradient-glow);
+    pointer-events: none;
+    z-index: -1;
+}
+
+/* --------------------------------------------------------------------------
+   TYPOGRAPHY
+   -------------------------------------------------------------------------- */
+.content main h1,
+.content main h2,
+.content main h3,
+.content main h4,
+.content main h5,
+.content main h6 {
+    font-family: var(--cl-font-mono);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--cl-text-primary);
+}
+
+.content main h1 {
+    font-size: 2.5rem;
+    margin-top: 0;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--cl-border);
+    position: relative;
+}
+
+/* Amber accent line under h1 */
+.coal .content main h1::after,
+.ayu .content main h1::after,
+.navy .content main h1::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    width: 80px;
+    height: 2px;
+    background: var(--cl-gradient-amber);
+    border-radius: 1px;
+}
+
+.content main h2 {
+    font-size: 1.75rem;
+    margin-top: 2.5rem;
+}
+
+.content main h3 {
+    font-size: 1.25rem;
+    margin-top: 2rem;
+}
+
+.content main p {
+    font-size: 1.0625rem;
+    line-height: 1.75;
+    color: var(--cl-text-secondary);
+    margin-bottom: 1.25rem;
+}
+
+.content main strong {
+    color: var(--cl-text-primary);
+    font-weight: 600;
+}
+
+/* Links with animated underline */
+.content main a {
+    color: var(--cl-cyan);
+    text-decoration: none;
+    position: relative;
+    transition: color 0.2s ease;
+}
+
+.content main a::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    width: 0;
+    height: 1px;
+    background: var(--cl-cyan);
+    transition: width 0.2s ease;
+}
+
+.content main a:hover {
+    color: var(--cl-cyan);
+}
+
+.content main a:hover::after {
+    width: 100%;
+}
+
+/* --------------------------------------------------------------------------
+   SIDEBAR
+   -------------------------------------------------------------------------- */
+.sidebar {
+    font-family: var(--cl-font-sans);
+    border-right: 1px solid var(--cl-border-subtle);
+}
+
+/* Sidebar header with gradient */
+.sidebar .sidebar-scrollbox {
+    padding-top: 1rem;
+}
+
+.sidebar ol.chapter {
+    padding-left: 0;
+}
+
+.sidebar ol.chapter li.chapter-item {
+    margin: 0;
+}
+
+.sidebar ol.chapter li.chapter-item a {
+    padding: 0.5rem 1.25rem;
+    font-size: 0.9rem;
+    font-weight: 450;
+    color: var(--cl-text-secondary);
+    border-radius: 0;
+    display: block;
+    transition: all 0.15s ease;
+    border-left: 2px solid transparent;
+}
+
+.sidebar ol.chapter li.chapter-item a:hover {
+    color: var(--cl-text-primary);
+    background: var(--cl-amber-glow);
+    border-left-color: var(--cl-amber-dim);
+}
+
+/* Active sidebar item with glow */
+.sidebar ol.chapter li.chapter-item.expanded > a,
+.sidebar ol.chapter li.chapter-item a.active {
+    color: var(--cl-amber);
+    background: var(--cl-amber-glow);
+    border-left-color: var(--cl-amber);
+    font-weight: 500;
+}
+
+/* Section headers */
+.sidebar .chapter li.part-title {
+    font-family: var(--cl-font-mono);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--cl-text-muted);
+    padding: 1.5rem 1.25rem 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.sidebar .chapter li.part-title:first-child {
+    margin-top: 0;
+    padding-top: 0.5rem;
+}
+
+/* --------------------------------------------------------------------------
+   MENU BAR
+   -------------------------------------------------------------------------- */
+#mdbook-menu-bar {
+    background: var(--cl-bg-surface);
+    border-bottom: 1px solid var(--cl-border-subtle);
+}
+
+#mdbook-menu-bar .menu-title {
+    font-family: var(--cl-font-mono);
+    font-weight: 600;
+    font-size: 0.95rem;
+    letter-spacing: -0.01em;
+    color: var(--cl-text-primary);
+}
+
+#mdbook-menu-bar .icon-button {
+    transition: all 0.15s ease;
+    border-radius: var(--cl-radius);
+}
+
+#mdbook-menu-bar .icon-button:hover {
+    background: var(--cl-amber-glow);
+    color: var(--cl-amber);
+}
+
+/* --------------------------------------------------------------------------
+   CODE BLOCKS — Premium styling
+   -------------------------------------------------------------------------- */
+.content main pre {
+    font-family: var(--cl-font-mono);
+    font-size: 0.875rem;
+    line-height: 1.6;
+    background: var(--cl-bg-surface);
+    border: 1px solid var(--cl-border);
+    border-radius: var(--cl-radius-lg);
+    padding: 1.25rem;
+    position: relative;
+    overflow-x: auto;
+}
+
+/* Gradient top border accent */
+.coal .content main pre::before,
+.ayu .content main pre::before,
+.navy .content main pre::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--cl-amber) 0%, var(--cl-cyan) 100%);
+    border-radius: var(--cl-radius-lg) var(--cl-radius-lg) 0 0;
+    opacity: 0.7;
+}
+
+.content main pre code {
+    font-family: inherit;
+    background: transparent;
+    padding: 0;
+    font-size: inherit;
+}
+
+/* Inline code */
+.content main code {
+    font-family: var(--cl-font-mono);
+    font-size: 0.875em;
+    background: var(--cl-bg-elevated);
+    color: var(--cl-amber-bright);
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    border: 1px solid var(--cl-border-subtle);
+}
+
+/* Copy button styling */
+.content main pre .buttons {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.content main pre:hover .buttons {
+    opacity: 1;
+}
+
+.content main pre .buttons button {
+    background: var(--cl-bg-elevated);
+    border: 1px solid var(--cl-border);
+    border-radius: var(--cl-radius);
+    padding: 0.35rem 0.5rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.content main pre .buttons button:hover {
+    background: var(--cl-amber-glow);
+    border-color: var(--cl-amber-dim);
+}
+
+/* --------------------------------------------------------------------------
+   LISTS
+   -------------------------------------------------------------------------- */
+.content main ul,
+.content main ol {
+    padding-left: 1.5rem;
+}
+
+.content main li {
+    font-size: 1.0625rem;
+    margin: 0.5rem 0;
+    line-height: 1.7;
+    color: var(--cl-text-secondary);
+}
+
+.content main li::marker {
+    color: var(--cl-amber);
+}
+
+/* --------------------------------------------------------------------------
+   BLOCKQUOTES
+   -------------------------------------------------------------------------- */
+.content main blockquote {
+    border-left: 3px solid var(--cl-amber);
+    background: var(--cl-bg-elevated);
+    padding: 1rem 1.25rem;
+    margin: 1.5rem 0;
+    border-radius: 0 var(--cl-radius) var(--cl-radius) 0;
+}
+
+.content main blockquote p {
+    margin: 0;
+    color: var(--cl-text-secondary);
+}
+
+/* --------------------------------------------------------------------------
+   TABLES
+   -------------------------------------------------------------------------- */
+.content main table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.5rem 0;
+    font-size: 0.9rem;
+}
+
+.content main table th {
+    font-family: var(--cl-font-mono);
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--cl-text-muted);
+    background: var(--cl-bg-elevated);
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--cl-border);
+}
+
+.content main table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--cl-border-subtle);
+    color: var(--cl-text-secondary);
+}
+
+.content main table tr:hover td {
+    background: var(--cl-bg-surface);
+}
+
+/* --------------------------------------------------------------------------
+   NAVIGATION ARROWS
+   -------------------------------------------------------------------------- */
+.nav-chapters {
+    font-family: var(--cl-font-mono);
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.nav-chapters:hover {
+    color: var(--cl-amber);
+}
+
+/* --------------------------------------------------------------------------
+   SEARCH
+   -------------------------------------------------------------------------- */
+#mdbook-searchbar {
+    font-family: var(--cl-font-sans);
+    border-radius: var(--cl-radius);
+    border: 1px solid var(--cl-border);
+    background: var(--cl-bg-elevated);
+    transition: all 0.15s ease;
+}
+
+#mdbook-searchbar:focus {
+    border-color: var(--cl-amber-dim);
+    box-shadow: 0 0 0 3px var(--cl-amber-glow);
+    outline: none;
+}
+
+#mdbook-searchresults-outer {
+    border-radius: var(--cl-radius-lg);
+    border: 1px solid var(--cl-border);
+}
+
+#mdbook-searchresults li {
+    border-radius: var(--cl-radius);
+    margin: 0.25rem;
+}
+
+#mdbook-searchresults li:hover {
+    background: var(--cl-amber-glow);
+}
+
+/* --------------------------------------------------------------------------
+   SCROLLBAR — Custom styling
+   -------------------------------------------------------------------------- */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--cl-bg-deep);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--cl-bg-hover);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--cl-text-muted);
+}
+
+/* Firefox */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--cl-bg-hover) var(--cl-bg-deep);
+}
+
+/* --------------------------------------------------------------------------
+   THEME POPUP
+   -------------------------------------------------------------------------- */
+.theme-popup {
+    border-radius: var(--cl-radius-lg);
+    border: 1px solid var(--cl-border);
+    overflow: hidden;
+}
+
+.theme-popup button {
+    font-family: var(--cl-font-sans);
+    padding: 0.5rem 1rem;
+    transition: all 0.15s ease;
+}
+
+.theme-popup button:hover {
+    background: var(--cl-amber-glow);
+    color: var(--cl-amber);
+}
+
+/* --------------------------------------------------------------------------
+   SELECTION
+   -------------------------------------------------------------------------- */
+::selection {
+    background: var(--cl-amber-dim);
+    color: var(--cl-text-primary);
+}
+
+/* --------------------------------------------------------------------------
+   MOBILE RESPONSIVENESS
+   -------------------------------------------------------------------------- */
+@media (max-width: 768px) {
+    .content main h1 {
+        font-size: 2rem;
+    }
+    
+    .content main h2 {
+        font-size: 1.5rem;
+    }
+    
+    .content main pre {
+        border-radius: var(--cl-radius);
+        padding: 1rem;
+        font-size: 0.8rem;
+    }
+    
+    .sidebar ol.chapter li.chapter-item a {
+        padding: 0.6rem 1rem;
+    }
+}
+
+/* --------------------------------------------------------------------------
+   PRINT STYLES
+   -------------------------------------------------------------------------- */
+@media print {
+    .coal .content main pre::before,
+    .ayu .content main pre::before,
+    .navy .content main pre::before {
+        display: none;
+    }
+    
+    .coal .content main h1::after,
+    .ayu .content main h1::after,
+    .navy .content main h1::after {
+        display: none;
+    }
+}
+
+/* --------------------------------------------------------------------------
+   SPECIAL ELEMENTS — ASCII Diagram Enhancement
+   -------------------------------------------------------------------------- */
+.content main pre code:not([class*="language-"]) {
+    color: var(--cl-text-muted);
+}
+
+/* Make ASCII diagrams more prominent */
+.content main pre:has(code:not([class*="language-"])) {
+    background: transparent;
+    border: 1px dashed var(--cl-border);
+}
+
+.coal .content main pre:has(code:not([class*="language-"]))::before,
+.ayu .content main pre:has(code:not([class*="language-"]))::before,
+.navy .content main pre:has(code:not([class*="language-"]))::before {
+    display: none;
+}

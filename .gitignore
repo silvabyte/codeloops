@@ -8,3 +8,4 @@ Cargo.lock
 /prompt*.md
 !/docs/
 a.out
+ui/codeloops-ui
