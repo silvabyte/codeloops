@@ -184,3 +184,396 @@ fn parse_agent_type(s: &str) -> Option<AgentType> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod integration_tests {
+    //! Integration tests for the prompt generator using mock agent responses.
+    //!
+    //! These tests verify the full interview flow without requiring an actual
+    //! coding agent by simulating agent responses.
+
+    use super::protocol::*;
+    use super::scanner::{KeyFile, ProjectContext, ProjectType};
+    use super::session::{InterviewSession, PromptDraft};
+    use std::path::PathBuf;
+
+    /// Create a mock project context for testing
+    fn mock_project_context() -> ProjectContext {
+        ProjectContext {
+            project_type: ProjectType::Rust,
+            languages: vec!["Rust".to_string()],
+            frameworks: vec!["Tokio".to_string(), "Serde".to_string()],
+            key_files: vec![
+                KeyFile {
+                    path: "Cargo.toml".to_string(),
+                    description: "Rust manifest".to_string(),
+                },
+                KeyFile {
+                    path: "src/main.rs".to_string(),
+                    description: "Application entry point".to_string(),
+                },
+            ],
+            directory_structure: vec!["src/".to_string(), "tests/".to_string()],
+            project_name: Some("test-project".to_string()),
+            project_description: Some("A test project for integration tests".to_string()),
+        }
+    }
+
+    /// Simulate a sequence of agent messages representing a typical interview
+    fn mock_interview_sequence() -> Vec<AgentMessage> {
+        vec![
+            // First question: ask about the goal
+            AgentMessage::Question {
+                text: "What is the main goal of this feature or task?".to_string(),
+                context: Some("Understanding the primary objective helps define the scope and success criteria.".to_string()),
+                input_type: InputType::Text,
+                options: vec![],
+                section: Some("goal".to_string()),
+            },
+            // Update title based on response
+            AgentMessage::DraftUpdate {
+                section: "title".to_string(),
+                content: "Add User Authentication".to_string(),
+                append: false,
+            },
+            // Update goal
+            AgentMessage::DraftUpdate {
+                section: "goal".to_string(),
+                content: "Implement secure user authentication with JWT tokens.".to_string(),
+                append: false,
+            },
+            // Ask about auth method (select)
+            AgentMessage::Question {
+                text: "What authentication method should be used?".to_string(),
+                context: None,
+                input_type: InputType::Select,
+                options: vec![
+                    SelectOption {
+                        value: "jwt".to_string(),
+                        label: "JWT Tokens".to_string(),
+                        description: Some("Stateless authentication with JSON Web Tokens".to_string()),
+                    },
+                    SelectOption {
+                        value: "session".to_string(),
+                        label: "Session-based".to_string(),
+                        description: Some("Server-side sessions with cookies".to_string()),
+                    },
+                ],
+                section: Some("requirements".to_string()),
+            },
+            // Update requirements based on selection
+            AgentMessage::DraftUpdate {
+                section: "requirements".to_string(),
+                content: "- Implement JWT-based authentication".to_string(),
+                append: false,
+            },
+            // Ask about features (multi-select)
+            AgentMessage::Question {
+                text: "Which features should be included?".to_string(),
+                context: None,
+                input_type: InputType::MultiSelect,
+                options: vec![
+                    SelectOption {
+                        value: "login".to_string(),
+                        label: "Login".to_string(),
+                        description: None,
+                    },
+                    SelectOption {
+                        value: "register".to_string(),
+                        label: "Registration".to_string(),
+                        description: None,
+                    },
+                    SelectOption {
+                        value: "reset".to_string(),
+                        label: "Password Reset".to_string(),
+                        description: None,
+                    },
+                ],
+                section: Some("requirements".to_string()),
+            },
+            // Update requirements with multiple items
+            AgentMessage::DraftUpdate {
+                section: "requirements".to_string(),
+                content: "- Support user login with email/password".to_string(),
+                append: true,
+            },
+            AgentMessage::DraftUpdate {
+                section: "requirements".to_string(),
+                content: "- Support user registration".to_string(),
+                append: true,
+            },
+            AgentMessage::DraftUpdate {
+                section: "requirements".to_string(),
+                content: "- Support password reset via email".to_string(),
+                append: true,
+            },
+            // Ask confirmation
+            AgentMessage::Question {
+                text: "Should refresh tokens be supported?".to_string(),
+                context: Some("Refresh tokens allow users to stay logged in longer without re-entering credentials.".to_string()),
+                input_type: InputType::Confirm,
+                options: vec![],
+                section: Some("requirements".to_string()),
+            },
+            // Add constraint
+            AgentMessage::DraftUpdate {
+                section: "constraints".to_string(),
+                content: "- Must use existing database schema".to_string(),
+                append: false,
+            },
+            // Add acceptance criteria
+            AgentMessage::DraftUpdate {
+                section: "acceptance_criteria".to_string(),
+                content: "Users can register with email and password".to_string(),
+                append: false,
+            },
+            AgentMessage::DraftUpdate {
+                section: "acceptance_criteria".to_string(),
+                content: "Users can log in and receive a valid JWT".to_string(),
+                append: true,
+            },
+            AgentMessage::DraftUpdate {
+                section: "acceptance_criteria".to_string(),
+                content: "Invalid credentials are rejected with appropriate error".to_string(),
+                append: true,
+            },
+            // Complete the interview
+            AgentMessage::DraftComplete {
+                summary: "Created comprehensive prompt for user authentication feature with JWT, registration, login, and password reset.".to_string(),
+            },
+        ]
+    }
+
+    /// Simulate user responses for the mock interview
+    fn mock_user_responses() -> Vec<UserResponse> {
+        vec![
+            UserResponse::text("I want to add user authentication to my application"),
+            UserResponse::selection("jwt"),
+            UserResponse::multi_selection(vec![
+                "login".to_string(),
+                "register".to_string(),
+                "reset".to_string(),
+            ]),
+            UserResponse::confirm(true),
+        ]
+    }
+
+    #[test]
+    fn test_full_interview_flow() {
+        // Create a session
+        let context = mock_project_context();
+        let mut session = InterviewSession::new(context, PathBuf::from("test-prompt.md"));
+
+        let agent_messages = mock_interview_sequence();
+        let user_responses = mock_user_responses();
+        let mut response_idx = 0;
+
+        // Process each agent message
+        for msg in agent_messages {
+            // Add agent message to history
+            session.add_agent_message(msg.clone());
+
+            match &msg {
+                AgentMessage::Question { .. } | AgentMessage::Clarification { .. } => {
+                    // Simulate user response
+                    if response_idx < user_responses.len() {
+                        session.add_user_response(user_responses[response_idx].clone());
+                        response_idx += 1;
+                    }
+                }
+                AgentMessage::DraftUpdate {
+                    section,
+                    content,
+                    append,
+                } => {
+                    // Apply draft update
+                    session.apply_draft_update(section, content, *append);
+                }
+                AgentMessage::DraftComplete { .. } => {
+                    session.mark_complete();
+                }
+                _ => {}
+            }
+        }
+
+        // Verify session state
+        assert!(session.is_complete);
+        assert!(!session.history.is_empty());
+
+        // Verify draft content
+        let draft = &session.draft;
+        assert_eq!(draft.title, Some("Add User Authentication".to_string()));
+        assert_eq!(
+            draft.goal,
+            Some("Implement secure user authentication with JWT tokens.".to_string())
+        );
+        assert_eq!(draft.requirements.len(), 4);
+        assert_eq!(draft.constraints.len(), 1);
+        assert_eq!(draft.acceptance_criteria.len(), 3);
+
+        // Verify markdown generation
+        let markdown = draft.to_markdown();
+        assert!(markdown.contains("# Add User Authentication"));
+        assert!(markdown.contains("## Goal"));
+        assert!(markdown.contains("## Requirements"));
+        assert!(markdown.contains("JWT-based authentication"));
+        assert!(markdown.contains("## Acceptance Criteria"));
+        assert!(markdown.contains("- [ ] Users can register"));
+    }
+
+    #[test]
+    fn test_session_save_and_load() {
+        let context = mock_project_context();
+        let mut session = InterviewSession::new(context, PathBuf::from("test-prompt.md"));
+
+        // Add some messages
+        session.add_agent_message(AgentMessage::Question {
+            text: "What is your goal?".to_string(),
+            context: None,
+            input_type: InputType::Text,
+            options: vec![],
+            section: Some("goal".to_string()),
+        });
+        session.add_user_response(UserResponse::text("Build an API"));
+        session.apply_draft_update("title", "Build API", false);
+
+        // Serialize and deserialize
+        let json = serde_json::to_string(&session).expect("Failed to serialize");
+        let loaded: InterviewSession = serde_json::from_str(&json).expect("Failed to deserialize");
+
+        // Verify state preserved
+        assert_eq!(loaded.id, session.id);
+        assert_eq!(loaded.history.len(), session.history.len());
+        assert_eq!(loaded.draft.title, Some("Build API".to_string()));
+        assert!(!loaded.is_complete);
+    }
+
+    #[test]
+    fn test_draft_incremental_updates() {
+        let mut draft = PromptDraft::new();
+
+        // Test replace mode
+        draft.update_section("requirements", "First requirement", false);
+        assert_eq!(draft.requirements.len(), 1);
+
+        // Test append mode
+        draft.update_section("requirements", "Second requirement", true);
+        assert_eq!(draft.requirements.len(), 2);
+
+        // Test replace mode replaces
+        draft.update_section("requirements", "Only requirement", false);
+        assert_eq!(draft.requirements.len(), 1);
+        assert_eq!(draft.requirements[0], "Only requirement");
+    }
+
+    #[test]
+    fn test_user_answer_conversion() {
+        assert_eq!(
+            UserAnswer::Text("hello".to_string()).to_prompt_string(),
+            "hello"
+        );
+        assert_eq!(
+            UserAnswer::Selection("option1".to_string()).to_prompt_string(),
+            "option1"
+        );
+        assert_eq!(
+            UserAnswer::MultiSelection(vec!["a".to_string(), "b".to_string()]).to_prompt_string(),
+            "a, b"
+        );
+        assert_eq!(UserAnswer::Confirm(true).to_prompt_string(), "yes");
+        assert_eq!(UserAnswer::Confirm(false).to_prompt_string(), "no");
+    }
+
+    #[test]
+    fn test_history_for_prompt() {
+        let context = mock_project_context();
+        let mut session = InterviewSession::new(context, PathBuf::from("test.md"));
+
+        session.add_agent_message(AgentMessage::Question {
+            text: "What is your goal?".to_string(),
+            context: None,
+            input_type: InputType::Text,
+            options: vec![],
+            section: None,
+        });
+        session.add_user_response(UserResponse::text("Build an API"));
+        session.add_agent_message(AgentMessage::DraftUpdate {
+            section: "goal".to_string(),
+            content: "Build a REST API".to_string(),
+            append: false,
+        });
+
+        let history = session.history_for_prompt();
+        assert!(history.contains("Assistant: What is your goal?"));
+        assert!(history.contains("User: Build an API"));
+        assert!(history.contains("updating draft section 'goal'"));
+    }
+
+    #[test]
+    fn test_protocol_json_roundtrip() {
+        // Test Question with select options
+        let msg = AgentMessage::Question {
+            text: "Choose one".to_string(),
+            context: Some("Context here".to_string()),
+            input_type: InputType::Select,
+            options: vec![
+                SelectOption {
+                    value: "a".to_string(),
+                    label: "Option A".to_string(),
+                    description: Some("Description A".to_string()),
+                },
+                SelectOption {
+                    value: "b".to_string(),
+                    label: "Option B".to_string(),
+                    description: None,
+                },
+            ],
+            section: Some("requirements".to_string()),
+        };
+
+        let json = serde_json::to_string(&msg).expect("Failed to serialize");
+        let parsed: AgentMessage = serde_json::from_str(&json).expect("Failed to deserialize");
+
+        match parsed {
+            AgentMessage::Question {
+                text,
+                options,
+                input_type,
+                ..
+            } => {
+                assert_eq!(text, "Choose one");
+                assert_eq!(options.len(), 2);
+                assert!(matches!(input_type, InputType::Select));
+            }
+            _ => panic!("Expected Question variant"),
+        }
+    }
+
+    #[test]
+    fn test_completion_percentage() {
+        let mut draft = PromptDraft::new();
+
+        // Empty draft should be 0%
+        assert_eq!(draft.completion_percentage(), 0);
+
+        // Adding title should increase
+        draft.title = Some("Title".to_string());
+        let pct1 = draft.completion_percentage();
+        assert!(pct1 > 0);
+
+        // Adding goal should increase more
+        draft.goal = Some("Goal".to_string());
+        let pct2 = draft.completion_percentage();
+        assert!(pct2 > pct1);
+
+        // Full draft should be high
+        draft.context = Some("Context".to_string());
+        draft.requirements.push("Req 1".to_string());
+        draft.requirements.push("Req 2".to_string());
+        draft.constraints.push("Constraint".to_string());
+        draft.acceptance_criteria.push("Criteria".to_string());
+
+        let final_pct = draft.completion_percentage();
+        assert!(final_pct >= 90);
+    }
+}
