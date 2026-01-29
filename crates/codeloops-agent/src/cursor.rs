@@ -15,7 +15,7 @@ pub struct CursorAgent {
 impl CursorAgent {
     pub fn new() -> Self {
         Self {
-            binary_path: PathBuf::from("cursor"),
+            binary_path: PathBuf::from("cursor-agent"),
         }
     }
 
@@ -45,9 +45,9 @@ impl Agent for CursorAgent {
     }
 
     async fn is_available(&self) -> bool {
-        // Check if the cursor CLI agent subcommand is available
+        // Check if cursor-agent CLI is available
         Command::new(&self.binary_path)
-            .args(["agent", "--help"])
+            .arg("--help")
             .output()
             .await
             .map(|o| o.status.success())
@@ -66,9 +66,9 @@ impl Agent for CursorAgent {
             "Executing agent"
         );
 
-        // Build args for cursor agent CLI
-        // Usage: cursor agent -p "prompt" --model "model" --output-format text
-        let mut args = vec!["agent", "-p", prompt];
+        // Build args for cursor-agent CLI
+        // Usage: cursor-agent -p "prompt" --model "model" --output-format text
+        let mut args = vec!["-p", prompt];
 
         // Add model if specified (default to opus-4.5-thinking per requirements)
         let model_arg;

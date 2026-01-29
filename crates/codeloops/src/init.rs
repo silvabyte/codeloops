@@ -69,7 +69,7 @@ pub async fn handle_init() -> Result<()> {
         );
         eprintln!("  Claude Code: https://docs.anthropic.com/claude-code");
         eprintln!("  Opencode:    https://opencode.ai/docs/#install");
-        eprintln!("  Cursor:      https://cursor.com/cli");
+        eprintln!("  Cursor:      https://docs.cursor.com/agent/cli");
         eprintln!();
         eprintln!(
             "After installing, run {} again.",
