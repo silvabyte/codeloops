@@ -62,6 +62,8 @@ pub enum InputState {
     ConfirmInput {
         selected: bool, // true = yes
     },
+    /// Editor mode - displays prompt to launch editor
+    EditorPending,
     /// Waiting for agent response
     WaitingForAgent { message: String },
 }
@@ -360,6 +362,27 @@ impl RenderState {
                 let input = ConfirmInput::new(*selected).focused(self.focus == Focus::Question);
                 frame.render_widget(input, interview_layout.input);
             }
+            InputState::EditorPending => {
+                // Show editor launch prompt
+                let editor_prompt = Paragraph::new(vec![
+                    Line::from(Span::styled(
+                        "Press Enter to open editor",
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
+                    )),
+                    Line::from(Span::styled(
+                        "(or Esc to cancel)",
+                        Style::default().fg(Color::DarkGray),
+                    )),
+                ])
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(Color::Cyan)),
+                );
+                frame.render_widget(editor_prompt, interview_layout.input);
+            }
             InputState::WaitingForAgent { .. } => {
                 // Show disabled input
                 let placeholder = Paragraph::new(Span::styled(
@@ -518,11 +541,15 @@ impl App {
                     if self.current_question.is_some() {
                         let q = self.current_question.as_ref().unwrap();
                         match q.input_type {
-                            InputType::Text | InputType::Editor => {
+                            InputType::Text => {
                                 self.input_state = InputState::TextInput {
                                     value: String::new(),
                                     cursor: 0,
                                 };
+                            }
+                            InputType::Editor => {
+                                // Set pending state and launch editor
+                                self.input_state = InputState::EditorPending;
                             }
                             InputType::Select => {
                                 self.input_state = InputState::SelectInput {
@@ -543,6 +570,22 @@ impl App {
                             }
                         }
                     }
+                }
+            }
+            InputState::EditorPending => {
+                if key.code == KeyCode::Enter {
+                    // Launch external editor
+                    let content = self.launch_external_editor().await?;
+                    if !content.is_empty() {
+                        let response = UserResponse::text(content);
+                        self.submit_response(response).await?;
+                    } else {
+                        // User cancelled or empty content
+                        self.input_state = InputState::EditorPending;
+                        self.status_message = Some("Editor returned empty content".to_string());
+                    }
+                } else if key.code == KeyCode::Esc {
+                    self.input_state = InputState::Idle;
                 }
             }
             InputState::TextInput { value, cursor } => {
@@ -866,11 +909,14 @@ impl App {
 
                 // Set up appropriate input state
                 match input_type {
-                    InputType::Text | InputType::Editor => {
+                    InputType::Text => {
                         self.input_state = InputState::TextInput {
                             value: String::new(),
                             cursor: 0,
                         };
+                    }
+                    InputType::Editor => {
+                        self.input_state = InputState::EditorPending;
                     }
                     InputType::Select => {
                         self.input_state = InputState::SelectInput {
@@ -923,11 +969,14 @@ impl App {
                 });
 
                 match input_type {
-                    InputType::Text | InputType::Editor => {
+                    InputType::Text => {
                         self.input_state = InputState::TextInput {
                             value: String::new(),
                             cursor: 0,
                         };
+                    }
+                    InputType::Editor => {
+                        self.input_state = InputState::EditorPending;
                     }
                     InputType::Select => {
                         self.input_state = InputState::SelectInput {
@@ -973,6 +1022,74 @@ impl App {
         self.save_session()?;
         self.running = false;
         Ok(())
+    }
+
+    /// Launch an external editor for multi-line input.
+    ///
+    /// Temporarily exits the TUI, spawns the editor with a temp file,
+    /// waits for the editor to close, and reads back the content.
+    async fn launch_external_editor(&mut self) -> Result<String> {
+        use std::io::Write;
+
+        // Create a temporary file
+        let temp_dir = std::env::temp_dir();
+        let temp_path = temp_dir.join(format!("codeloops_editor_{}.md", std::process::id()));
+
+        // Write initial content (empty or with context)
+        let mut file = std::fs::File::create(&temp_path)?;
+        if let Some(ref q) = self.current_question {
+            writeln!(file, "# {}", q.text)?;
+            if let Some(ref ctx) = q.context {
+                writeln!(file, "# Context: {}", ctx)?;
+            }
+            writeln!(
+                file,
+                "# Delete these comment lines and write your answer below:"
+            )?;
+            writeln!(file)?;
+        }
+        drop(file);
+
+        // Temporarily exit TUI mode
+        self.cleanup_terminal()?;
+
+        // Determine editor to use
+        let editor = std::env::var("EDITOR")
+            .or_else(|_| std::env::var("VISUAL"))
+            .unwrap_or_else(|_| "vi".to_string());
+
+        // Spawn editor
+        let status = std::process::Command::new(&editor)
+            .arg(&temp_path)
+            .status()
+            .context(format!("Failed to launch editor: {}", editor))?;
+
+        // Restore TUI mode
+        enable_raw_mode().context("Failed to re-enable raw mode")?;
+        execute!(self.terminal.backend_mut(), EnterAlternateScreen)
+            .context("Failed to re-enter alternate screen")?;
+        self.terminal.clear()?;
+
+        // Check if editor exited successfully
+        if !status.success() {
+            // Clean up temp file
+            let _ = std::fs::remove_file(&temp_path);
+            return Ok(String::new());
+        }
+
+        // Read the content back
+        let content = std::fs::read_to_string(&temp_path).unwrap_or_default();
+
+        // Clean up temp file
+        let _ = std::fs::remove_file(&temp_path);
+
+        // Filter out comment lines (starting with #)
+        let filtered: Vec<&str> = content
+            .lines()
+            .filter(|line| !line.starts_with('#'))
+            .collect();
+
+        Ok(filtered.join("\n").trim().to_string())
     }
 }
 

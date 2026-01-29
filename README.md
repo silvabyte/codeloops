@@ -119,6 +119,9 @@ codeloops prompt --output features/auth.md
 # Use a specific agent for the interview
 codeloops prompt --agent claude
 
+# Preview without writing (dry run)
+codeloops prompt --dry-run
+
 # Resume an interrupted session
 codeloops prompt --resume ~/.local/share/codeloops/interviews/session-xyz.json
 ```
@@ -131,7 +134,30 @@ The agent asks probing questions about your task, extracting details about:
 
 As you answer, a live draft preview shows the prompt.md being built in real-time. The TUI uses a split-pane layout with the interview on the left and the draft on the right.
 
-Sessions are auto-saved, so if you're interrupted (Ctrl+C), you can resume later with `--resume`.
+### Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `Enter` | Submit answer / Start typing |
+| `Tab` | Switch between interview and draft panels |
+| `↑↓` | Navigate options / Scroll draft |
+| `Space` | Toggle option (multi-select) |
+| `y/n` | Quick confirm (yes/no questions) |
+| `Ctrl+S` | Save session and continue |
+| `Ctrl+C` | Save session and exit |
+| `Esc` | Cancel current input |
+
+### Project Scanning
+
+The prompt generator automatically scans your project directory to provide context:
+- Detects project type (Rust, Node.js, Python, Go)
+- Identifies frameworks and libraries in use
+- Lists key files (README, config files, entry points)
+- Maps directory structure
+
+This context helps the agent ask relevant, project-specific questions.
+
+Sessions are auto-saved, so if you're interrupted (Ctrl+C), you can resume later with `--resume`. Existing prompt.md files are automatically backed up before being overwritten.
 
 ## Session Viewer
 
@@ -218,6 +244,7 @@ The web UI provides a dashboard with session list, filters, statistics charts, i
 | `-a, --agent <AGENT>` | Agent to conduct the interview |
 | `-m, --model <MODEL>` | Model to use (if agent supports it) |
 | `--resume <FILE>` | Resume a previous interview session |
+| `--dry-run` | Preview output without writing file |
 
 ## Supported Agents
 

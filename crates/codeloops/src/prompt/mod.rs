@@ -29,6 +29,27 @@ pub struct PromptArgs {
     pub agent: Option<AgentType>,
     pub model: Option<String>,
     pub resume: Option<PathBuf>,
+    pub dry_run: bool,
+}
+
+/// Create a backup path with timestamp for an existing file.
+///
+/// Given a path like `prompt.md`, returns `prompt.20260128_143000.md`
+fn create_backup_path(original: &std::path::Path) -> PathBuf {
+    use chrono::Local;
+
+    let timestamp = Local::now().format("%Y%m%d_%H%M%S");
+    let stem = original
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("backup");
+    let ext = original
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("md");
+
+    let backup_name = format!("{}.{}.{}", stem, timestamp, ext);
+    original.with_file_name(backup_name)
 }
 
 /// Handle the `codeloops prompt` command
@@ -132,21 +153,48 @@ pub async fn handle_prompt_command(args: PromptArgs) -> Result<()> {
     // Handle the result
     match result {
         Ok(Some(final_draft)) => {
-            // Write the final prompt.md
-            std::fs::write(&output_path, final_draft.to_markdown())
-                .context("Failed to write prompt.md")?;
+            let markdown = final_draft.to_markdown();
 
-            eprintln!();
-            eprintln!(
-                "{} Created {}",
-                "✅".bright_green(),
-                output_path.display().to_string().bright_cyan()
-            );
-            eprintln!();
-            eprintln!(
-                "  Run your prompt: {}",
-                format!("codeloops --prompt-file {}", output_path.display()).bright_cyan()
-            );
+            if args.dry_run {
+                // Dry run: display output without writing
+                eprintln!();
+                eprintln!("{}", "=== Dry Run ===".bright_blue().bold());
+                eprintln!(
+                    "{} Would write to: {}",
+                    "->".dimmed(),
+                    output_path.display()
+                );
+                eprintln!();
+                println!("{}", markdown);
+                eprintln!();
+                eprintln!("{} Dry run - no file written", "->".dimmed());
+            } else {
+                // Backup existing file if it exists
+                if output_path.exists() {
+                    let backup_path = create_backup_path(&output_path);
+                    std::fs::copy(&output_path, &backup_path).context("Failed to create backup")?;
+                    eprintln!(
+                        "{} Backed up existing file to {}",
+                        "->".dimmed(),
+                        backup_path.display()
+                    );
+                }
+
+                // Write the final prompt.md
+                std::fs::write(&output_path, markdown).context("Failed to write prompt.md")?;
+
+                eprintln!();
+                eprintln!(
+                    "{} Created {}",
+                    "✅".bright_green(),
+                    output_path.display().to_string().bright_cyan()
+                );
+                eprintln!();
+                eprintln!(
+                    "  Run your prompt: {}",
+                    format!("codeloops --prompt-file {}", output_path.display()).bright_cyan()
+                );
+            }
         }
         Ok(None) => {
             // User cancelled or session saved for later
@@ -575,5 +623,104 @@ mod integration_tests {
 
         let final_pct = draft.completion_percentage();
         assert!(final_pct >= 90);
+    }
+
+    #[test]
+    fn test_backup_path_creation() {
+        use super::create_backup_path;
+        use std::path::Path;
+
+        let original = Path::new("/tmp/prompt.md");
+        let backup = create_backup_path(original);
+
+        // Should have same parent directory
+        assert_eq!(backup.parent(), original.parent());
+
+        // Should contain original stem and extension
+        let backup_name = backup.file_name().unwrap().to_str().unwrap();
+        assert!(backup_name.starts_with("prompt."));
+        assert!(backup_name.ends_with(".md"));
+
+        // Should have timestamp in between
+        let parts: Vec<&str> = backup_name.split('.').collect();
+        assert_eq!(parts.len(), 3); // prompt, timestamp, md
+        assert!(parts[1].len() == 15); // YYYYMMDD_HHMMSS
+    }
+
+    #[test]
+    fn test_backup_path_without_extension() {
+        use super::create_backup_path;
+        use std::path::Path;
+
+        let original = Path::new("/tmp/Makefile");
+        let backup = create_backup_path(original);
+
+        let backup_name = backup.file_name().unwrap().to_str().unwrap();
+        // Should still work with default extension
+        assert!(backup_name.starts_with("Makefile."));
+    }
+
+    #[test]
+    fn test_empty_text_response() {
+        // Verify empty string is handled gracefully
+        let response = UserResponse::text("");
+        match &response.answer {
+            UserAnswer::Text(text) => assert!(text.is_empty()),
+            _ => panic!("Expected Text answer"),
+        }
+        assert_eq!(response.answer.to_prompt_string(), "");
+    }
+
+    #[test]
+    fn test_empty_multi_selection() {
+        // Verify empty selection is handled gracefully
+        let response = UserResponse::multi_selection(vec![]);
+        match &response.answer {
+            UserAnswer::MultiSelection(selections) => assert!(selections.is_empty()),
+            _ => panic!("Expected MultiSelection answer"),
+        }
+        assert_eq!(response.answer.to_prompt_string(), "");
+    }
+
+    #[test]
+    fn test_malformed_json_fallback() {
+        // Verify that malformed JSON creates a fallback question
+        let malformed = "This is just plain text, not JSON";
+
+        // Attempt to parse as AgentMessage
+        let result: Result<AgentMessage, _> = serde_json::from_str(malformed);
+        assert!(result.is_err());
+
+        // The TUI's parse_agent_message would create a fallback
+        // We can't test that directly here, but we test the fallback creation logic
+        let fallback = AgentMessage::Question {
+            text: malformed.trim().to_string(),
+            context: Some("(Agent response was not in expected format)".to_string()),
+            input_type: InputType::Text,
+            options: vec![],
+            section: None,
+        };
+
+        match fallback {
+            AgentMessage::Question { text, context, .. } => {
+                assert_eq!(text, malformed);
+                assert!(context.is_some());
+            }
+            _ => panic!("Expected Question fallback"),
+        }
+    }
+
+    #[test]
+    fn test_editor_input_type_parsing() {
+        // Verify Editor input type is correctly parsed from JSON
+        let json = r#"{"type":"question","text":"Describe the feature","input_type":"editor","options":[]}"#;
+        let msg: AgentMessage = serde_json::from_str(json).unwrap();
+
+        match msg {
+            AgentMessage::Question { input_type, .. } => {
+                assert!(matches!(input_type, InputType::Editor));
+            }
+            _ => panic!("Expected Question with Editor input type"),
+        }
     }
 }

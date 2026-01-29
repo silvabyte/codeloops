@@ -186,6 +186,10 @@ enum Commands {
         /// Resume a previous interview session
         #[arg(long)]
         resume: Option<PathBuf>,
+
+        /// Show what would be generated without writing to file
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -266,6 +270,7 @@ async fn main() -> Result<()> {
             agent,
             model,
             resume,
+            dry_run,
         }) => {
             prompt::handle_prompt_command(prompt::PromptArgs {
                 output,
@@ -273,6 +278,7 @@ async fn main() -> Result<()> {
                 agent: agent.map(Into::into),
                 model,
                 resume,
+                dry_run,
             })
             .await
         }
