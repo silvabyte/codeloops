@@ -54,6 +54,21 @@ pub enum AgentMessage {
         /// For select/multi-select: the available options
         #[serde(default)]
         options: Vec<SelectOption>,
+        /// Whether this is a vague answer warning (user can press Esc to keep original)
+        #[serde(default)]
+        is_vague_warning: bool,
+    },
+
+    /// Agent suggests the interview is complete
+    SuggestComplete {
+        /// Summary of what was captured
+        summary: String,
+        /// Confidence level (0.0-1.0)
+        #[serde(default)]
+        confidence: f32,
+        /// Areas that could be improved if user wants to continue
+        #[serde(default)]
+        could_improve: Vec<String>,
     },
 
     /// The draft is complete
@@ -299,5 +314,105 @@ mod tests {
         );
         assert_eq!(UserAnswer::Confirm(true).to_prompt_string(), "yes");
         assert_eq!(UserAnswer::Confirm(false).to_prompt_string(), "no");
+    }
+
+    // Task 4.3: Tests for new message types
+
+    #[test]
+    fn test_suggest_complete_serialization() {
+        let msg = AgentMessage::SuggestComplete {
+            summary: "Comprehensive API with auth and rate limiting".to_string(),
+            confidence: 0.85,
+            could_improve: vec![
+                "Session timeout details".to_string(),
+                "Error message formats".to_string(),
+            ],
+        };
+
+        let json = serde_json::to_string(&msg).unwrap();
+        let parsed: AgentMessage = serde_json::from_str(&json).unwrap();
+
+        match parsed {
+            AgentMessage::SuggestComplete {
+                summary,
+                confidence,
+                could_improve,
+            } => {
+                assert_eq!(summary, "Comprehensive API with auth and rate limiting");
+                assert!((confidence - 0.85).abs() < 0.01);
+                assert_eq!(could_improve.len(), 2);
+            }
+            _ => panic!("Expected SuggestComplete variant"),
+        }
+    }
+
+    #[test]
+    fn test_clarification_with_vague_warning() {
+        let msg = AgentMessage::Clarification {
+            text: "Can you be more specific about 'fast'?".to_string(),
+            original_answer: "make it fast".to_string(),
+            input_type: InputType::Text,
+            options: vec![],
+            is_vague_warning: true,
+        };
+
+        let json = serde_json::to_string(&msg).unwrap();
+        let parsed: AgentMessage = serde_json::from_str(&json).unwrap();
+
+        match parsed {
+            AgentMessage::Clarification {
+                is_vague_warning, ..
+            } => {
+                assert!(is_vague_warning);
+            }
+            _ => panic!("Expected Clarification variant"),
+        }
+    }
+
+    #[test]
+    fn test_clarification_default_vague_warning() {
+        // Test that is_vague_warning defaults to false when not specified
+        let json = r#"{
+            "type": "clarification",
+            "text": "Can you clarify?",
+            "original_answer": "something",
+            "input_type": "text",
+            "options": []
+        }"#;
+
+        let parsed: AgentMessage = serde_json::from_str(json).unwrap();
+
+        match parsed {
+            AgentMessage::Clarification {
+                is_vague_warning, ..
+            } => {
+                assert!(!is_vague_warning); // Should default to false
+            }
+            _ => panic!("Expected Clarification variant"),
+        }
+    }
+
+    #[test]
+    fn test_suggest_complete_default_values() {
+        // Test that optional fields have sensible defaults
+        let json = r#"{
+            "type": "suggest_complete",
+            "summary": "All requirements gathered"
+        }"#;
+
+        let parsed: AgentMessage = serde_json::from_str(json).unwrap();
+
+        match parsed {
+            AgentMessage::SuggestComplete {
+                summary,
+                confidence,
+                could_improve,
+            } => {
+                assert_eq!(summary, "All requirements gathered");
+                assert_eq!(confidence, 0.0); // Default
+                assert!(could_improve.is_empty()); // Default empty vec
+            }
+            _ => panic!("Expected SuggestComplete variant"),
+        }
     }
 }

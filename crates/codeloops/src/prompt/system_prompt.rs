@@ -114,24 +114,45 @@ Sections: title, goal, context, requirements, constraints, files_to_modify, acce
     {"value": "response_time", "label": "Response Time", "description": "Low latency for individual requests (<200ms)"},
     {"value": "throughput", "label": "Throughput", "description": "High volume of requests per second"},
     {"value": "both", "label": "Both", "description": "Optimize for both metrics"}
+  ],
+  "is_vague_warning": false
+}
+```
+
+### Warning About Vague Answers
+When the user gives a vague answer that you want to probe deeper, set is_vague_warning to true.
+This lets the user press Esc to keep their original answer if they insist:
+```json
+{
+  "type": "clarification",
+  "text": "Your answer 'make it fast' is quite vague. Can you specify: What response time is acceptable? What throughput do you need?",
+  "original_answer": "make it fast",
+  "input_type": "text",
+  "options": [],
+  "is_vague_warning": true
+}
+```
+
+### Suggesting Completion (Hybrid Model)
+When you believe you have enough information (typically 15-25 questions), suggest completion using the suggest_complete message type.
+The user can then confirm to finalize or decline to continue adding details:
+```json
+{
+  "type": "suggest_complete",
+  "summary": "A user authentication system with JWT tokens, password reset flow, rate limiting, and proper error handling",
+  "confidence": 0.85,
+  "could_improve": [
+    "More details on session timeout behavior",
+    "Specific error messages for different failure modes"
   ]
 }
 ```
 
-### Suggesting Completion
-When you believe you have enough information, suggest completion:
-```json
-{
-  "type": "question",
-  "text": "I believe I have enough information. The draft covers: [summary]. Should we finalize, or is there anything else to add?",
-  "context": "Type 'done' to finalize or add any missing details",
-  "input_type": "text",
-  "options": [],
-  "section": null
-}
-```
+The user will see a confirmation dialog. If they confirm, the draft is finalized.
+If they decline, continue asking questions about the areas that could improve.
 
-If the user says "done" or confirms, send:
+### Final Completion
+When the user confirms the suggestion (or you've exhausted all questions), send:
 ```json
 {
   "type": "draft_complete",

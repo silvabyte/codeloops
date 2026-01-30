@@ -37,6 +37,12 @@ pub struct InterviewSession {
     /// Session format version (for migrations)
     #[serde(default = "default_version")]
     pub version: u32,
+    /// Question-answer pairs for edit history navigation
+    #[serde(default)]
+    pub qa_pairs: Vec<QuestionAnswerPair>,
+    /// Current position in qa_pairs when navigating history
+    #[serde(default)]
+    pub current_qa_index: Option<usize>,
 }
 
 /// Default version for old sessions without version field
@@ -77,6 +83,19 @@ pub enum TurnContent {
     UserResponse(UserResponse),
     /// Raw text (for system messages)
     Text(String),
+}
+
+/// A question-answer pair for edit history navigation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuestionAnswerPair {
+    /// Index in the qa_pairs list
+    pub index: usize,
+    /// The question that was asked
+    pub question: AgentMessage,
+    /// The user's answer (None if not yet answered)
+    pub answer: Option<UserResponse>,
+    /// Snapshot of the draft state after this QA pair was processed
+    pub draft_state_after: Option<PromptDraft>,
 }
 
 /// The draft prompt being built during the interview
@@ -354,7 +373,8 @@ impl PromptDraft {
             || !self.requirements.is_empty()
     }
 
-    /// Estimate completion percentage
+    /// Estimate completion percentage (used in tests)
+    #[cfg(test)]
     pub fn completion_percentage(&self) -> u8 {
         let mut score = 0u8;
         let mut max_score = 0u8;
@@ -413,6 +433,8 @@ impl InterviewSession {
             output_path,
             is_complete: false,
             version: SESSION_VERSION,
+            qa_pairs: Vec::new(),
+            current_qa_index: None,
         }
     }
 
@@ -523,6 +545,135 @@ impl InterviewSession {
         self.updated_at = Utc::now();
     }
 
+    /// Add a question-answer pair for edit history navigation.
+    ///
+    /// Called when a question is asked and answered.
+    pub fn add_qa_pair(&mut self, question: AgentMessage, answer: UserResponse) {
+        let index = self.qa_pairs.len();
+        self.qa_pairs.push(QuestionAnswerPair {
+            index,
+            question,
+            answer: Some(answer),
+            draft_state_after: Some(self.draft.clone()),
+        });
+        self.current_qa_index = Some(index);
+        self.updated_at = Utc::now();
+    }
+
+    /// Get the current QA index for display (1-based for users)
+    pub fn current_qa_display_index(&self) -> Option<usize> {
+        self.current_qa_index.map(|i| i + 1)
+    }
+
+    /// Get the total number of QA pairs
+    pub fn qa_count(&self) -> usize {
+        self.qa_pairs.len()
+    }
+
+    /// Check if we can navigate to a previous question
+    pub fn can_go_back(&self) -> bool {
+        self.current_qa_index.is_some_and(|i| i > 0)
+    }
+
+    /// Check if we can navigate to a next question (when navigating history)
+    pub fn can_go_forward(&self) -> bool {
+        if let Some(idx) = self.current_qa_index {
+            idx + 1 < self.qa_pairs.len()
+        } else {
+            false
+        }
+    }
+
+    /// Navigate to a previous question for editing.
+    ///
+    /// Returns the QA pair at the new index, or None if at the beginning.
+    pub fn go_back(&mut self) -> Option<&QuestionAnswerPair> {
+        if let Some(idx) = self.current_qa_index {
+            if idx > 0 {
+                self.current_qa_index = Some(idx - 1);
+                return self.qa_pairs.get(idx - 1);
+            }
+        }
+        None
+    }
+
+    /// Navigate to a next question (when in history navigation mode).
+    ///
+    /// Returns the QA pair at the new index, or None if at the end.
+    pub fn go_forward(&mut self) -> Option<&QuestionAnswerPair> {
+        if let Some(idx) = self.current_qa_index {
+            if idx + 1 < self.qa_pairs.len() {
+                self.current_qa_index = Some(idx + 1);
+                return self.qa_pairs.get(idx + 1);
+            }
+        }
+        None
+    }
+
+    /// Rewind to a specific question index for re-answering.
+    ///
+    /// This truncates the QA history from the specified index forward
+    /// and restores the draft state to what it was before that question was answered.
+    /// Also truncates conversation history to match.
+    pub fn rewind_to(&mut self, qa_index: usize) -> Result<&QuestionAnswerPair> {
+        if qa_index >= self.qa_pairs.len() {
+            return Err(anyhow::anyhow!(
+                "QA index {} out of bounds (max: {})",
+                qa_index,
+                self.qa_pairs.len().saturating_sub(1)
+            ));
+        }
+
+        // Restore draft state from the previous QA pair (or to initial state if rewinding to first)
+        if qa_index > 0 {
+            if let Some(prev_qa) = self.qa_pairs.get(qa_index - 1) {
+                if let Some(ref draft_state) = prev_qa.draft_state_after {
+                    self.draft = draft_state.clone();
+                }
+            }
+        } else {
+            // Rewinding to first question - reset draft to initial state
+            self.draft = PromptDraft::new();
+        }
+
+        // Truncate QA pairs from this index forward
+        self.qa_pairs.truncate(qa_index);
+
+        // Truncate history to match - find the history index corresponding to this QA
+        // Each QA corresponds to a Question + UserResponse pair in history
+        // But there may be other messages (DraftUpdate, Thinking) in between
+        // For simplicity, we find and truncate based on counting user responses
+        let mut user_response_count = 0;
+        let mut truncate_at = self.history.len();
+        for (i, turn) in self.history.iter().enumerate() {
+            if let TurnContent::UserResponse(_) = &turn.content {
+                if user_response_count == qa_index {
+                    // Truncate history just before this response
+                    truncate_at = i;
+                    break;
+                }
+                user_response_count += 1;
+            }
+        }
+        self.history.truncate(truncate_at);
+
+        // Update current index
+        self.current_qa_index = if qa_index > 0 {
+            Some(qa_index - 1)
+        } else {
+            None
+        };
+
+        self.updated_at = Utc::now();
+
+        // Return the question that will be re-asked
+        // Since we truncated, we need to look at the last question in history
+        // or indicate that we need to continue the interview
+        self.qa_pairs
+            .last()
+            .ok_or_else(|| anyhow::anyhow!("No QA pairs after rewind"))
+    }
+
     /// Build the conversation history as a string for the agent prompt
     pub fn history_for_prompt(&self) -> String {
         let mut parts = Vec::new();
@@ -550,6 +701,9 @@ impl InterviewSession {
                     }
                     AgentMessage::DraftComplete { summary } => {
                         parts.push(format!("Assistant: Draft complete. {}", summary));
+                    }
+                    AgentMessage::SuggestComplete { summary, .. } => {
+                        parts.push(format!("Assistant (suggesting completion): {}", summary));
                     }
                     AgentMessage::Error { message } => {
                         parts.push(format!("Assistant (error): {}", message));
@@ -823,5 +977,220 @@ mod tests {
         // Old fields should be preserved
         assert_eq!(session.draft.title, Some("Old Session".to_string()));
         assert_eq!(session.draft.goal, Some("Test migration".to_string()));
+    }
+
+    // Task 4.3: Integration tests for edit history
+
+    #[test]
+    fn test_qa_pair_tracking() {
+        let context = super::super::scanner::ProjectContext {
+            project_type: super::super::scanner::ProjectType::Rust,
+            languages: vec!["Rust".to_string()],
+            frameworks: vec![],
+            key_files: vec![],
+            directory_structure: vec![],
+            project_name: Some("test".to_string()),
+            project_description: None,
+        };
+
+        let mut session = InterviewSession::new(context, PathBuf::from("prompt.md"));
+
+        // Initially no QA pairs
+        assert_eq!(session.qa_count(), 0);
+        assert!(!session.can_go_back());
+        assert!(!session.can_go_forward());
+
+        // Add a QA pair
+        let question = AgentMessage::Question {
+            text: "What is the goal?".to_string(),
+            context: None,
+            input_type: crate::prompt::protocol::InputType::Text,
+            options: vec![],
+            section: Some("goal".to_string()),
+        };
+        let answer = UserResponse::text("Build an API");
+        session.add_qa_pair(question, answer);
+
+        assert_eq!(session.qa_count(), 1);
+        assert!(!session.can_go_back()); // Only one item, can't go back
+        assert!(!session.can_go_forward()); // At the end
+
+        // Add another QA pair
+        let question2 = AgentMessage::Question {
+            text: "What language?".to_string(),
+            context: None,
+            input_type: crate::prompt::protocol::InputType::Text,
+            options: vec![],
+            section: None,
+        };
+        let answer2 = UserResponse::text("Rust");
+        session.add_qa_pair(question2, answer2);
+
+        assert_eq!(session.qa_count(), 2);
+        assert!(session.can_go_back()); // Now we can go back
+        assert!(!session.can_go_forward()); // Still at the end
+    }
+
+    #[test]
+    fn test_qa_navigation() {
+        let context = super::super::scanner::ProjectContext {
+            project_type: super::super::scanner::ProjectType::Rust,
+            languages: vec!["Rust".to_string()],
+            frameworks: vec![],
+            key_files: vec![],
+            directory_structure: vec![],
+            project_name: Some("test".to_string()),
+            project_description: None,
+        };
+
+        let mut session = InterviewSession::new(context, PathBuf::from("prompt.md"));
+
+        // Add two QA pairs
+        let q1 = AgentMessage::Question {
+            text: "Question 1".to_string(),
+            context: None,
+            input_type: crate::prompt::protocol::InputType::Text,
+            options: vec![],
+            section: None,
+        };
+        session.add_qa_pair(q1, UserResponse::text("Answer 1"));
+
+        let q2 = AgentMessage::Question {
+            text: "Question 2".to_string(),
+            context: None,
+            input_type: crate::prompt::protocol::InputType::Text,
+            options: vec![],
+            section: None,
+        };
+        session.add_qa_pair(q2, UserResponse::text("Answer 2"));
+
+        // Navigate back
+        assert!(session.can_go_back());
+        let qa = session.go_back().unwrap();
+        match &qa.question {
+            AgentMessage::Question { text, .. } => {
+                assert_eq!(text, "Question 1");
+            }
+            _ => panic!("Expected Question"),
+        }
+
+        // Now we can go forward
+        assert!(session.can_go_forward());
+        let qa = session.go_forward().unwrap();
+        match &qa.question {
+            AgentMessage::Question { text, .. } => {
+                assert_eq!(text, "Question 2");
+            }
+            _ => panic!("Expected Question"),
+        }
+    }
+
+    #[test]
+    fn test_rewind_truncates_history() {
+        let context = super::super::scanner::ProjectContext {
+            project_type: super::super::scanner::ProjectType::Rust,
+            languages: vec!["Rust".to_string()],
+            frameworks: vec![],
+            key_files: vec![],
+            directory_structure: vec![],
+            project_name: Some("test".to_string()),
+            project_description: None,
+        };
+
+        let mut session = InterviewSession::new(context, PathBuf::from("prompt.md"));
+
+        // Update draft and add QA pairs
+        session.draft.title = Some("Initial".to_string());
+
+        let q1 = AgentMessage::Question {
+            text: "Q1".to_string(),
+            context: None,
+            input_type: crate::prompt::protocol::InputType::Text,
+            options: vec![],
+            section: None,
+        };
+        session.add_qa_pair(q1, UserResponse::text("A1"));
+
+        session.draft.goal = Some("First goal".to_string());
+
+        let q2 = AgentMessage::Question {
+            text: "Q2".to_string(),
+            context: None,
+            input_type: crate::prompt::protocol::InputType::Text,
+            options: vec![],
+            section: None,
+        };
+        session.add_qa_pair(q2, UserResponse::text("A2"));
+
+        session.draft.goal = Some("Updated goal".to_string());
+
+        let q3 = AgentMessage::Question {
+            text: "Q3".to_string(),
+            context: None,
+            input_type: crate::prompt::protocol::InputType::Text,
+            options: vec![],
+            section: None,
+        };
+        session.add_qa_pair(q3, UserResponse::text("A3"));
+
+        assert_eq!(session.qa_count(), 3);
+
+        // Rewind to question 2 (index 1 means we keep 0 and remove 1,2)
+        let _ = session.rewind_to(1);
+
+        // Should now have only 1 QA pair (index 0)
+        assert_eq!(session.qa_count(), 1);
+    }
+
+    #[test]
+    fn test_draft_restored_on_rewind() {
+        let context = super::super::scanner::ProjectContext {
+            project_type: super::super::scanner::ProjectType::Rust,
+            languages: vec!["Rust".to_string()],
+            frameworks: vec![],
+            key_files: vec![],
+            directory_structure: vec![],
+            project_name: Some("test".to_string()),
+            project_description: None,
+        };
+
+        let mut session = InterviewSession::new(context, PathBuf::from("prompt.md"));
+
+        // Set initial state
+        session.draft.title = Some("Before Q1".to_string());
+
+        let q1 = AgentMessage::Question {
+            text: "Q1".to_string(),
+            context: None,
+            input_type: crate::prompt::protocol::InputType::Text,
+            options: vec![],
+            section: None,
+        };
+        session.add_qa_pair(q1, UserResponse::text("A1"));
+        // Draft state after Q1 is captured
+
+        // Modify draft after Q1
+        session.draft.title = Some("After Q1".to_string());
+
+        let q2 = AgentMessage::Question {
+            text: "Q2".to_string(),
+            context: None,
+            input_type: crate::prompt::protocol::InputType::Text,
+            options: vec![],
+            section: None,
+        };
+        session.add_qa_pair(q2, UserResponse::text("A2"));
+
+        // Now draft should be "After Q1"
+        assert_eq!(session.draft.title, Some("After Q1".to_string()));
+
+        // Rewind to Q1 (index 1 means we're going back to re-answer Q1)
+        // This should restore draft to state before Q1 was answered
+        let _ = session.rewind_to(1);
+
+        // Draft should be restored to state after Q0 (which is "Before Q1" captured in first add_qa_pair)
+        // Actually, the rewind_to(1) means we keep QA[0] and remove QA[1+]
+        // So the draft is restored from QA[0].draft_state_after
+        assert_eq!(session.draft.title, Some("Before Q1".to_string()));
     }
 }

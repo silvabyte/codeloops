@@ -118,6 +118,14 @@ pub struct App {
     cancel_requested: bool,
     /// Which panel to show in single-panel mode
     panel_focus: PanelFocus,
+    /// Whether we're in vague answer warning mode (Esc keeps original)
+    vague_warning_mode: bool,
+    /// The original answer when in vague warning mode
+    vague_original_answer: Option<String>,
+    /// Whether we're showing a completion suggestion (hybrid completion model)
+    completion_suggestion_mode: bool,
+    /// Whether we're navigating edit history
+    navigating_history: bool,
 }
 
 impl App {
@@ -150,6 +158,10 @@ impl App {
             agent_start_time: None,
             cancel_requested: false,
             panel_focus: PanelFocus::default(),
+            vague_warning_mode: false,
+            vague_original_answer: None,
+            completion_suggestion_mode: false,
+            navigating_history: false,
         })
     }
 
@@ -572,6 +584,15 @@ impl App {
                 };
                 return Ok(());
             }
+            // Edit history navigation (Task 2.1)
+            (KeyModifiers::CONTROL, KeyCode::Up) => {
+                self.navigate_history_back().await?;
+                return Ok(());
+            }
+            (KeyModifiers::CONTROL, KeyCode::Down) => {
+                self.navigate_history_forward().await?;
+                return Ok(());
+            }
             _ => {}
         }
 
@@ -680,6 +701,15 @@ impl App {
                         *cursor = value.len();
                     }
                     KeyCode::Esc => {
+                        // In vague warning mode, Esc keeps the original answer
+                        if self.vague_warning_mode {
+                            if let Some(original) = self.vague_original_answer.take() {
+                                self.vague_warning_mode = false;
+                                let response = UserResponse::text(original);
+                                self.submit_response(response).await?;
+                                return Ok(());
+                            }
+                        }
                         self.input_state = InputState::Idle;
                     }
                     _ => {}
@@ -702,6 +732,15 @@ impl App {
                     self.submit_response(response).await?;
                 }
                 KeyCode::Esc => {
+                    // In vague warning mode, Esc keeps the original answer
+                    if self.vague_warning_mode {
+                        if let Some(original) = self.vague_original_answer.take() {
+                            self.vague_warning_mode = false;
+                            let response = UserResponse::text(original);
+                            self.submit_response(response).await?;
+                            return Ok(());
+                        }
+                    }
                     self.input_state = InputState::Idle;
                 }
                 _ => {}
@@ -739,6 +778,15 @@ impl App {
                     self.submit_response(response).await?;
                 }
                 KeyCode::Esc => {
+                    // In vague warning mode, Esc keeps the original answer
+                    if self.vague_warning_mode {
+                        if let Some(original) = self.vague_original_answer.take() {
+                            self.vague_warning_mode = false;
+                            let response = UserResponse::text(original);
+                            self.submit_response(response).await?;
+                            return Ok(());
+                        }
+                    }
                     self.input_state = InputState::Idle;
                 }
                 _ => {}
@@ -758,6 +806,15 @@ impl App {
                     self.submit_response(response).await?;
                 }
                 KeyCode::Esc => {
+                    // In vague warning mode, Esc keeps the original answer
+                    if self.vague_warning_mode {
+                        if let Some(original) = self.vague_original_answer.take() {
+                            self.vague_warning_mode = false;
+                            let response = UserResponse::text(original);
+                            self.submit_response(response).await?;
+                            return Ok(());
+                        }
+                    }
                     self.input_state = InputState::Idle;
                 }
                 _ => {}
@@ -908,6 +965,49 @@ impl App {
 
     /// Submit a response to the agent
     async fn submit_response(&mut self, response: UserResponse) -> Result<()> {
+        // Handle special modes
+        if self.completion_suggestion_mode {
+            // User confirmed/declined completion
+            self.completion_suggestion_mode = false;
+            if let crate::prompt::protocol::UserAnswer::Confirm(confirmed) = &response.answer {
+                if *confirmed {
+                    // User wants to finalize - mark complete
+                    self.session.mark_complete();
+                    self.status_message = Some(("Draft complete!".to_string(), Instant::now()));
+                    self.running = false;
+                    return Ok(());
+                }
+                // User wants to continue - fall through to continue interview
+            }
+        }
+
+        // Reset vague warning mode
+        self.vague_warning_mode = false;
+        self.vague_original_answer = None;
+
+        // Track QA pair for edit history if we have a current question
+        if let Some(ref question) = self.current_question {
+            // Convert CurrentQuestion back to AgentMessage for storage
+            let agent_msg = AgentMessage::Question {
+                text: question.text.clone(),
+                context: question.context.clone(),
+                input_type: question.input_type.clone(),
+                options: question.options.clone(),
+                section: question.section.clone(),
+            };
+            self.session.add_qa_pair(agent_msg, response.clone());
+        }
+
+        // If we're navigating history and re-answering, rewind to that point
+        if self.navigating_history {
+            if let Some(idx) = self.session.current_qa_index {
+                // Rewind to just after the current QA (which we just re-answered)
+                // The qa_pairs will be truncated and the draft restored
+                let _ = self.session.rewind_to(idx + 1);
+            }
+            self.navigating_history = false;
+        }
+
         // Add to history
         self.session.add_user_response(response.clone());
 
@@ -1068,8 +1168,16 @@ impl App {
                 original_answer,
                 input_type,
                 options,
+                is_vague_warning,
             } => {
-                let context = Some(format!("Your previous answer: \"{}\"", original_answer));
+                let context = if is_vague_warning {
+                    Some(format!(
+                        "Your answer was vague: \"{}\"\nPress Esc to keep original answer, or provide more detail.",
+                        original_answer
+                    ))
+                } else {
+                    Some(format!("Your previous answer: \"{}\"", original_answer))
+                };
                 self.current_question = Some(CurrentQuestion {
                     text,
                     context,
@@ -1077,9 +1185,48 @@ impl App {
                     options: options.clone(),
                     section: None,
                 });
+                self.vague_warning_mode = is_vague_warning;
+                self.vague_original_answer = if is_vague_warning {
+                    Some(original_answer)
+                } else {
+                    None
+                };
 
                 // Set up appropriate input state, with empty options fallback (Task 1.3)
                 self.setup_input_state_for_type(&input_type, options);
+            }
+            AgentMessage::SuggestComplete {
+                summary,
+                confidence,
+                could_improve,
+            } => {
+                // Show a confirmation dialog asking if the user wants to complete or continue
+                let context = if could_improve.is_empty() {
+                    format!("Confidence: {:.0}%", confidence * 100.0)
+                } else {
+                    format!(
+                        "Confidence: {:.0}%\n\nCould improve:\n{}",
+                        confidence * 100.0,
+                        could_improve
+                            .iter()
+                            .map(|s| format!("- {}", s))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    )
+                };
+
+                self.current_question = Some(CurrentQuestion {
+                    text: format!(
+                        "I believe I have enough information.\n\nSummary: {}\n\nWould you like to finalize the draft, or continue adding details?",
+                        summary
+                    ),
+                    context: Some(context),
+                    input_type: InputType::Confirm,
+                    options: vec![],
+                    section: None,
+                });
+                self.completion_suggestion_mode = true;
+                self.input_state = InputState::ConfirmInput { selected: true };
             }
             AgentMessage::DraftComplete { summary } => {
                 self.session.mark_complete();
@@ -1164,6 +1311,251 @@ impl App {
         self.save_session()?;
         self.running = false;
         Ok(())
+    }
+
+    /// Navigate to the previous question in edit history (Ctrl+Up).
+    ///
+    /// This allows users to go back and re-answer a previous question.
+    /// The draft will be regenerated from that point when the user provides a new answer.
+    async fn navigate_history_back(&mut self) -> Result<()> {
+        if !self.session.can_go_back() {
+            self.status_message = Some((
+                "Already at the beginning of the interview".to_string(),
+                Instant::now(),
+            ));
+            return Ok(());
+        }
+
+        // Get the previous QA pair
+        if let Some(qa) = self.session.go_back() {
+            let qa = qa.clone(); // Clone to avoid borrow issues
+            self.navigating_history = true;
+
+            // Show the question again
+            match &qa.question {
+                AgentMessage::Question {
+                    text,
+                    context,
+                    input_type,
+                    options,
+                    section,
+                } => {
+                    self.current_question = Some(CurrentQuestion {
+                        text: text.clone(),
+                        context: context.clone(),
+                        input_type: input_type.clone(),
+                        options: options.clone(),
+                        section: section.clone(),
+                    });
+                    self.setup_input_state_for_type(input_type, options.clone());
+
+                    // Pre-fill the previous answer if we have one
+                    if let Some(ref answer) = qa.answer {
+                        self.prefill_input_with_answer(answer);
+                    }
+
+                    // Show navigation status
+                    let current = self.session.current_qa_display_index().unwrap_or(0);
+                    let total = self.session.qa_count();
+                    self.status_message = Some((
+                        format!(
+                            "Question {} of {} (Ctrl+Down to go forward)",
+                            current, total
+                        ),
+                        Instant::now(),
+                    ));
+                }
+                AgentMessage::Clarification {
+                    text,
+                    original_answer,
+                    input_type,
+                    options,
+                    is_vague_warning,
+                } => {
+                    let context = if *is_vague_warning {
+                        Some(format!(
+                            "Your answer was vague: \"{}\"\nPress Esc to keep original answer.",
+                            original_answer
+                        ))
+                    } else {
+                        Some(format!("Your previous answer: \"{}\"", original_answer))
+                    };
+                    self.current_question = Some(CurrentQuestion {
+                        text: text.clone(),
+                        context,
+                        input_type: input_type.clone(),
+                        options: options.clone(),
+                        section: None,
+                    });
+                    self.setup_input_state_for_type(input_type, options.clone());
+
+                    if let Some(ref answer) = qa.answer {
+                        self.prefill_input_with_answer(answer);
+                    }
+
+                    let current = self.session.current_qa_display_index().unwrap_or(0);
+                    let total = self.session.qa_count();
+                    self.status_message = Some((
+                        format!(
+                            "Question {} of {} (Ctrl+Down to go forward)",
+                            current, total
+                        ),
+                        Instant::now(),
+                    ));
+                }
+                _ => {
+                    // Not a question-type message, shouldn't be in qa_pairs
+                    self.status_message = Some((
+                        "Unexpected message type in history".to_string(),
+                        Instant::now(),
+                    ));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Navigate to the next question in edit history (Ctrl+Down).
+    ///
+    /// Only available when navigating history (after using Ctrl+Up).
+    async fn navigate_history_forward(&mut self) -> Result<()> {
+        if !self.navigating_history {
+            self.status_message = Some((
+                "Not currently navigating history (use Ctrl+Up first)".to_string(),
+                Instant::now(),
+            ));
+            return Ok(());
+        }
+
+        if !self.session.can_go_forward() {
+            // At the end of history, exit navigation mode
+            self.navigating_history = false;
+            self.status_message = Some((
+                "Reached end of history - continuing interview".to_string(),
+                Instant::now(),
+            ));
+            // Continue the interview from current point
+            self.continue_interview().await?;
+            return Ok(());
+        }
+
+        // Get the next QA pair
+        if let Some(qa) = self.session.go_forward() {
+            let qa = qa.clone(); // Clone to avoid borrow issues
+
+            // Show the question
+            match &qa.question {
+                AgentMessage::Question {
+                    text,
+                    context,
+                    input_type,
+                    options,
+                    section,
+                } => {
+                    self.current_question = Some(CurrentQuestion {
+                        text: text.clone(),
+                        context: context.clone(),
+                        input_type: input_type.clone(),
+                        options: options.clone(),
+                        section: section.clone(),
+                    });
+                    self.setup_input_state_for_type(input_type, options.clone());
+
+                    if let Some(ref answer) = qa.answer {
+                        self.prefill_input_with_answer(answer);
+                    }
+
+                    let current = self.session.current_qa_display_index().unwrap_or(0);
+                    let total = self.session.qa_count();
+                    self.status_message = Some((
+                        format!("Question {} of {} (Ctrl+Up to go back)", current, total),
+                        Instant::now(),
+                    ));
+                }
+                AgentMessage::Clarification {
+                    text,
+                    original_answer,
+                    input_type,
+                    options,
+                    is_vague_warning,
+                } => {
+                    let context = if *is_vague_warning {
+                        Some(format!(
+                            "Your answer was vague: \"{}\"\nPress Esc to keep original answer.",
+                            original_answer
+                        ))
+                    } else {
+                        Some(format!("Your previous answer: \"{}\"", original_answer))
+                    };
+                    self.current_question = Some(CurrentQuestion {
+                        text: text.clone(),
+                        context,
+                        input_type: input_type.clone(),
+                        options: options.clone(),
+                        section: None,
+                    });
+                    self.setup_input_state_for_type(input_type, options.clone());
+
+                    if let Some(ref answer) = qa.answer {
+                        self.prefill_input_with_answer(answer);
+                    }
+
+                    let current = self.session.current_qa_display_index().unwrap_or(0);
+                    let total = self.session.qa_count();
+                    self.status_message = Some((
+                        format!("Question {} of {} (Ctrl+Up to go back)", current, total),
+                        Instant::now(),
+                    ));
+                }
+                _ => {
+                    self.status_message = Some((
+                        "Unexpected message type in history".to_string(),
+                        Instant::now(),
+                    ));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Pre-fill input fields with a previous answer (for history navigation).
+    fn prefill_input_with_answer(&mut self, answer: &UserResponse) {
+        use crate::prompt::protocol::UserAnswer;
+
+        match &answer.answer {
+            UserAnswer::Text(text) => {
+                self.input_state = InputState::TextInput {
+                    value: text.clone(),
+                    cursor: text.len(),
+                };
+            }
+            UserAnswer::Selection(value) => {
+                // Find the index of the selected option
+                if let InputState::SelectInput { options, selected } = &mut self.input_state {
+                    for (i, opt) in options.iter().enumerate() {
+                        if &opt.value == value {
+                            *selected = i;
+                            break;
+                        }
+                    }
+                }
+            }
+            UserAnswer::MultiSelection(values) => {
+                if let InputState::MultiSelectInput {
+                    options, selected, ..
+                } = &mut self.input_state
+                {
+                    for (i, opt) in options.iter().enumerate() {
+                        selected[i] = values.contains(&opt.value);
+                    }
+                }
+            }
+            UserAnswer::Confirm(value) => {
+                self.input_state = InputState::ConfirmInput { selected: *value };
+            }
+        }
     }
 
     /// Launch an external editor for multi-line input.
