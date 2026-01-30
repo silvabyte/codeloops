@@ -2,7 +2,7 @@
 
 use std::io::{self, Stdout};
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use crossterm::{
@@ -27,10 +27,9 @@ use crate::prompt::{
     system_prompt::{build_continuation_prompt, build_system_prompt},
 };
 
-use super::layout::{DraftLayout, InterviewLayout, MainLayout};
+use super::layout::{DraftLayout, InterviewLayout, LayoutMode, MainLayout, PanelFocus};
 use super::widgets::{
-    ConfirmInput, DraftWidget, MultiSelectInput, ProgressWidget, QuestionWidget, SelectInput,
-    TextInput,
+    ConfirmInput, DraftWidget, MultiSelectInput, QuestionWidget, SelectInput, TextInput,
 };
 
 /// The current focus area in the TUI
@@ -78,6 +77,15 @@ pub struct CurrentQuestion {
     pub section: Option<String>,
 }
 
+/// Agent timeout duration (120 seconds)
+const AGENT_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// Maximum number of retries for agent calls
+const MAX_AGENT_RETRIES: usize = 3;
+
+/// Status message display duration (5 seconds)
+const STATUS_DURATION: Duration = Duration::from_secs(5);
+
 /// The main TUI application
 pub struct App {
     /// The interview session
@@ -98,10 +106,18 @@ pub struct App {
     running: bool,
     /// Error message to display
     error_message: Option<String>,
-    /// Status message
-    status_message: Option<String>,
+    /// Status message with timestamp for auto-expiration
+    status_message: Option<(String, Instant)>,
     /// Terminal instance
     terminal: Terminal<CrosstermBackend<Stdout>>,
+    /// Flag indicating agent needs to continue after DraftUpdate
+    needs_continuation: bool,
+    /// When agent execution started (for elapsed time display)
+    agent_start_time: Option<Instant>,
+    /// Flag to cancel ongoing agent request
+    cancel_requested: bool,
+    /// Which panel to show in single-panel mode
+    panel_focus: PanelFocus,
 }
 
 impl App {
@@ -130,6 +146,10 @@ impl App {
             error_message: None,
             status_message: None,
             terminal,
+            needs_continuation: false,
+            agent_start_time: None,
+            cancel_requested: false,
+            panel_focus: PanelFocus::default(),
         })
     }
 
@@ -150,6 +170,12 @@ impl App {
 
         // Main event loop
         while self.running {
+            // Check if we need to continue after a DraftUpdate (Task 1.2 fix)
+            if self.needs_continuation {
+                self.needs_continuation = false;
+                self.continue_interview().await?;
+            }
+
             // Draw the UI
             self.draw()?;
 
@@ -189,6 +215,13 @@ impl App {
 
     /// Draw the UI
     fn draw(&mut self) -> Result<()> {
+        // Clear expired status messages
+        if let Some((_, timestamp)) = &self.status_message {
+            if timestamp.elapsed() > STATUS_DURATION {
+                self.status_message = None;
+            }
+        }
+
         // Extract render state to avoid borrow issues
         let render_state = RenderState {
             agent_name: self.agent.name().to_string(),
@@ -199,7 +232,9 @@ impl App {
             current_question: self.current_question.clone(),
             draft_scroll: self.draft_scroll,
             error_message: self.error_message.clone(),
-            status_message: self.status_message.clone(),
+            status_message: self.status_message.as_ref().map(|(msg, _)| msg.clone()),
+            agent_start_time: self.agent_start_time,
+            panel_focus: self.panel_focus,
         };
 
         self.terminal.draw(|frame| {
@@ -220,6 +255,8 @@ struct RenderState {
     draft_scroll: u16,
     error_message: Option<String>,
     status_message: Option<String>,
+    agent_start_time: Option<Instant>,
+    panel_focus: PanelFocus,
 }
 
 impl RenderState {
@@ -230,11 +267,25 @@ impl RenderState {
         // Render header
         self.render_header(frame, layout.header);
 
-        // Render left panel (interview)
-        self.render_interview_panel(frame, layout.left_panel);
-
-        // Render right panel (draft preview)
-        self.render_draft_panel(frame, layout.right_panel);
+        // Render panels based on layout mode
+        match layout.mode {
+            LayoutMode::DualPanel => {
+                // Render both panels side by side
+                self.render_interview_panel(frame, layout.left_panel);
+                self.render_draft_panel(frame, layout.right_panel);
+            }
+            LayoutMode::SinglePanel => {
+                // Render only the focused panel
+                match self.panel_focus {
+                    PanelFocus::Interview => {
+                        self.render_interview_panel(frame, layout.left_panel);
+                    }
+                    PanelFocus::Draft => {
+                        self.render_draft_panel(frame, layout.right_panel);
+                    }
+                }
+            }
+        }
 
         // Render footer
         self.render_footer(frame, layout.footer);
@@ -285,9 +336,17 @@ impl RenderState {
         // Render question or status
         match &self.input_state {
             InputState::WaitingForAgent { message } => {
+                // Show elapsed time if we're tracking agent start
+                let elapsed_str = if let Some(start) = self.agent_start_time {
+                    let elapsed = start.elapsed().as_secs();
+                    format!(" ({}s)", elapsed)
+                } else {
+                    String::new()
+                };
+
                 let thinking = Paragraph::new(vec![
                     Line::from(Span::styled(
-                        "⏳ Thinking...",
+                        format!("⏳ Thinking...{}", elapsed_str),
                         Style::default()
                             .fg(Color::Yellow)
                             .add_modifier(Modifier::BOLD),
@@ -295,6 +354,11 @@ impl RenderState {
                     Line::from(""),
                     Line::from(Span::styled(
                         message.as_str(),
+                        Style::default().fg(Color::DarkGray),
+                    )),
+                    Line::from(""),
+                    Line::from(Span::styled(
+                        "Press Esc to cancel",
                         Style::default().fg(Color::DarkGray),
                     )),
                 ])
@@ -429,26 +493,9 @@ impl RenderState {
 
         let draft_layout = DraftLayout::new(inner_area);
 
-        // Title with completion
-        let completion = self.draft.completion_percentage();
-        let title = Line::from(vec![
-            Span::styled("prompt.md ", Style::default().fg(Color::White)),
-            Span::styled(
-                format!("({}% complete)", completion),
-                Style::default().fg(if completion >= 75 {
-                    Color::Green
-                } else if completion >= 50 {
-                    Color::Yellow
-                } else {
-                    Color::Red
-                }),
-            ),
-        ]);
+        // Title (Task 3.4: removed progress percentage - it was misleading)
+        let title = Line::from(Span::styled("prompt.md", Style::default().fg(Color::White)));
         frame.render_widget(Paragraph::new(title), draft_layout.title);
-
-        // Progress bar
-        let progress = ProgressWidget::new(completion);
-        frame.render_widget(progress, draft_layout.progress);
 
         // Draft content
         let draft = DraftWidget::new(&self.draft).scroll(self.draft_scroll);
@@ -509,14 +556,19 @@ impl App {
             (KeyModifiers::CONTROL, KeyCode::Char('s')) => {
                 // Save session
                 self.save_session()?;
-                self.status_message = Some("Session saved!".to_string());
+                self.status_message = Some(("Session saved!".to_string(), Instant::now()));
                 return Ok(());
             }
             (KeyModifiers::NONE, KeyCode::Tab) => {
-                // Switch focus
+                // Switch focus between interview and draft
                 self.focus = match self.focus {
                     Focus::Question => Focus::Draft,
                     Focus::Draft => Focus::Question,
+                };
+                // In single panel mode, also toggle which panel is visible
+                self.panel_focus = match self.panel_focus {
+                    PanelFocus::Interview => PanelFocus::Draft,
+                    PanelFocus::Draft => PanelFocus::Interview,
                 };
                 return Ok(());
             }
@@ -582,7 +634,8 @@ impl App {
                     } else {
                         // User cancelled or empty content
                         self.input_state = InputState::EditorPending;
-                        self.status_message = Some("Editor returned empty content".to_string());
+                        self.status_message =
+                            Some(("Editor returned empty content".to_string(), Instant::now()));
                     }
                 } else if key.code == KeyCode::Esc {
                     self.input_state = InputState::Idle;
@@ -710,7 +763,12 @@ impl App {
                 _ => {}
             },
             InputState::WaitingForAgent { .. } => {
-                // Can't do much while waiting
+                // Allow Esc to cancel the agent request (Task 2.6)
+                if key.code == KeyCode::Esc {
+                    self.cancel_requested = true;
+                    self.status_message =
+                        Some(("Cancelling request...".to_string(), Instant::now()));
+                }
             }
         }
 
@@ -742,6 +800,63 @@ impl App {
         Ok(())
     }
 
+    /// Execute an agent call with timeout and retry logic.
+    ///
+    /// This wraps agent.execute() with:
+    /// - A timeout of AGENT_TIMEOUT seconds
+    /// - Exponential backoff retry (up to MAX_AGENT_RETRIES attempts)
+    /// - Elapsed time tracking for UI display
+    async fn execute_agent_with_retry(&mut self, prompt: &str) -> Result<String> {
+        self.agent_start_time = Some(Instant::now());
+
+        for attempt in 0..MAX_AGENT_RETRIES {
+            if attempt > 0 {
+                // Exponential backoff: 1s, 2s, 4s
+                let delay = Duration::from_millis(1000 * 2u64.pow(attempt as u32 - 1));
+                self.status_message = Some((
+                    format!("Retry {} of {}...", attempt, MAX_AGENT_RETRIES - 1),
+                    Instant::now(),
+                ));
+                self.draw()?;
+                tokio::time::sleep(delay).await;
+            }
+
+            // Check for cancellation before each attempt
+            if self.cancel_requested {
+                self.cancel_requested = false;
+                self.agent_start_time = None;
+                return Err(anyhow::anyhow!("Request cancelled by user"));
+            }
+
+            match tokio::time::timeout(
+                AGENT_TIMEOUT,
+                self.agent.execute(prompt, &self.agent_config),
+            )
+            .await
+            {
+                Ok(Ok(output)) => {
+                    self.agent_start_time = None;
+                    return Ok(output.stdout);
+                }
+                Ok(Err(e)) if attempt == MAX_AGENT_RETRIES - 1 => {
+                    self.agent_start_time = None;
+                    return Err(e.into());
+                }
+                Ok(Err(_)) => continue, // Retry on agent error
+                Err(_) if attempt == MAX_AGENT_RETRIES - 1 => {
+                    self.agent_start_time = None;
+                    return Err(anyhow::anyhow!(
+                        "Agent timed out after {} seconds",
+                        AGENT_TIMEOUT.as_secs()
+                    ));
+                }
+                Err(_) => continue, // Retry on timeout
+            }
+        }
+
+        unreachable!()
+    }
+
     /// Start a new interview
     async fn start_interview(&mut self) -> Result<()> {
         self.input_state = InputState::WaitingForAgent {
@@ -752,15 +867,14 @@ impl App {
         // Build the system prompt with project context
         let system_prompt = build_system_prompt(&self.session.project_context);
 
-        // Send to agent
+        // Send to agent with timeout and retry
         let output = self
-            .agent
-            .execute(&system_prompt, &self.agent_config)
+            .execute_agent_with_retry(&system_prompt)
             .await
             .context("Failed to start interview")?;
 
         // Parse the response
-        self.handle_agent_output(&output.stdout)?;
+        self.handle_agent_output(&output)?;
 
         Ok(())
     }
@@ -780,15 +894,14 @@ impl App {
 
         let full_prompt = format!("{}\n\n{}", system_prompt, continuation);
 
-        // Send to agent
+        // Send to agent with timeout and retry
         let output = self
-            .agent
-            .execute(&full_prompt, &self.agent_config)
+            .execute_agent_with_retry(&full_prompt)
             .await
             .context("Failed to continue interview")?;
 
         // Parse the response
-        self.handle_agent_output(&output.stdout)?;
+        self.handle_agent_output(&output)?;
 
         Ok(())
     }
@@ -813,44 +926,56 @@ impl App {
 
         let full_prompt = format!("{}\n\n{}", system_prompt, continuation);
 
-        // Send to agent
+        // Send to agent with timeout and retry
         let output = self
-            .agent
-            .execute(&full_prompt, &self.agent_config)
+            .execute_agent_with_retry(&full_prompt)
             .await
             .context("Failed to get agent response")?;
 
         // Parse the response
-        self.handle_agent_output(&output.stdout)?;
+        self.handle_agent_output(&output)?;
 
         Ok(())
     }
 
-    /// Handle agent output and parse JSON messages
+    /// Handle agent output and parse JSON messages.
+    ///
+    /// This function parses ALL JSON messages in the output (agents may send
+    /// multiple messages like DraftUpdate + Question in one response) and
+    /// processes them in order.
     fn handle_agent_output(&mut self, output: &str) -> Result<()> {
-        // Try to find and parse JSON in the output
-        let message = self.parse_agent_message(output)?;
+        // Parse all JSON messages from the output
+        let messages = self.parse_all_agent_messages(output)?;
 
-        // Add to history
-        self.session.add_agent_message(message.clone());
+        // Process each message
+        let total = messages.len();
+        for (idx, message) in messages.into_iter().enumerate() {
+            let is_last = idx == total - 1;
 
-        // Handle the message
-        self.handle_agent_message(message)?;
+            // Add to history
+            self.session.add_agent_message(message.clone());
 
-        Ok(())
-    }
-
-    /// Parse an agent message from output
-    fn parse_agent_message(&self, output: &str) -> Result<AgentMessage> {
-        // Try to find JSON in the output
-        // The agent might output some text before/after the JSON
-
-        // First, try to parse the whole thing as JSON
-        if let Ok(msg) = serde_json::from_str::<AgentMessage>(output.trim()) {
-            return Ok(msg);
+            // Handle the message
+            self.handle_agent_message(message, is_last)?;
         }
 
-        // Try to find JSON object in the output
+        Ok(())
+    }
+
+    /// Parse ALL agent messages from output.
+    ///
+    /// Agents may output multiple JSON objects in a single response (e.g.,
+    /// DraftUpdate followed by Question). This function finds and parses
+    /// all of them using bracket-matching.
+    fn parse_all_agent_messages(&self, output: &str) -> Result<Vec<AgentMessage>> {
+        let mut messages = Vec::new();
+
+        // First, try to parse the whole thing as a single JSON object
+        if let Ok(msg) = serde_json::from_str::<AgentMessage>(output.trim()) {
+            return Ok(vec![msg]);
+        }
+
+        // Find all JSON objects using bracket matching
         let mut depth = 0;
         let mut start = None;
 
@@ -868,7 +993,7 @@ impl App {
                         if let Some(s) = start {
                             let json_str = &output[s..=i];
                             if let Ok(msg) = serde_json::from_str::<AgentMessage>(json_str) {
-                                return Ok(msg);
+                                messages.push(msg);
                             }
                         }
                         start = None;
@@ -878,19 +1003,27 @@ impl App {
             }
         }
 
-        // If we couldn't parse JSON, create a fallback question
+        // If we couldn't parse any JSON, create a fallback question
         // This handles the case where the agent outputs plain text
-        Ok(AgentMessage::Question {
-            text: output.trim().to_string(),
-            context: Some("(Agent response was not in expected format)".to_string()),
-            input_type: InputType::Text,
-            options: vec![],
-            section: None,
-        })
+        if messages.is_empty() {
+            messages.push(AgentMessage::Question {
+                text: output.trim().to_string(),
+                context: Some("(Agent response was not in expected format)".to_string()),
+                input_type: InputType::Text,
+                options: vec![],
+                section: None,
+            });
+        }
+
+        Ok(messages)
     }
 
-    /// Handle a parsed agent message
-    fn handle_agent_message(&mut self, message: AgentMessage) -> Result<()> {
+    /// Handle a parsed agent message.
+    ///
+    /// `is_last` indicates whether this is the last message in the current batch.
+    /// For DraftUpdate messages, if it's the last message, we need to request
+    /// continuation from the agent (otherwise the interview freezes).
+    fn handle_agent_message(&mut self, message: AgentMessage, is_last: bool) -> Result<()> {
         match message {
             AgentMessage::Question {
                 text,
@@ -907,35 +1040,8 @@ impl App {
                     section,
                 });
 
-                // Set up appropriate input state
-                match input_type {
-                    InputType::Text => {
-                        self.input_state = InputState::TextInput {
-                            value: String::new(),
-                            cursor: 0,
-                        };
-                    }
-                    InputType::Editor => {
-                        self.input_state = InputState::EditorPending;
-                    }
-                    InputType::Select => {
-                        self.input_state = InputState::SelectInput {
-                            options,
-                            selected: 0,
-                        };
-                    }
-                    InputType::MultiSelect => {
-                        let len = options.len();
-                        self.input_state = InputState::MultiSelectInput {
-                            options,
-                            selected: vec![false; len],
-                            cursor: 0,
-                        };
-                    }
-                    InputType::Confirm => {
-                        self.input_state = InputState::ConfirmInput { selected: true };
-                    }
-                }
+                // Set up appropriate input state, with empty options fallback (Task 1.3)
+                self.setup_input_state_for_type(&input_type, options);
             }
             AgentMessage::DraftUpdate {
                 section,
@@ -944,10 +1050,14 @@ impl App {
             } => {
                 // Update the draft
                 self.session.apply_draft_update(&section, &content, append);
-                self.status_message = Some(format!("Updated: {}", section));
+                self.status_message = Some((format!("Updated: {}", section), Instant::now()));
 
-                // Continue the interview
-                // The agent should send another message after a draft update
+                // If this is the last message and it's a DraftUpdate, we need to
+                // continue the interview - the agent should have sent a follow-up
+                // question but didn't (Task 1.2 fix)
+                if is_last {
+                    self.needs_continuation = true;
+                }
                 self.input_state = InputState::Idle;
             }
             AgentMessage::Thinking { message } => {
@@ -968,38 +1078,12 @@ impl App {
                     section: None,
                 });
 
-                match input_type {
-                    InputType::Text => {
-                        self.input_state = InputState::TextInput {
-                            value: String::new(),
-                            cursor: 0,
-                        };
-                    }
-                    InputType::Editor => {
-                        self.input_state = InputState::EditorPending;
-                    }
-                    InputType::Select => {
-                        self.input_state = InputState::SelectInput {
-                            options,
-                            selected: 0,
-                        };
-                    }
-                    InputType::MultiSelect => {
-                        let len = options.len();
-                        self.input_state = InputState::MultiSelectInput {
-                            options,
-                            selected: vec![false; len],
-                            cursor: 0,
-                        };
-                    }
-                    InputType::Confirm => {
-                        self.input_state = InputState::ConfirmInput { selected: true };
-                    }
-                }
+                // Set up appropriate input state, with empty options fallback (Task 1.3)
+                self.setup_input_state_for_type(&input_type, options);
             }
             AgentMessage::DraftComplete { summary } => {
                 self.session.mark_complete();
-                self.status_message = Some(summary);
+                self.status_message = Some((summary, Instant::now()));
                 self.running = false;
             }
             AgentMessage::Error { message } => {
@@ -1009,6 +1093,64 @@ impl App {
         }
 
         Ok(())
+    }
+
+    /// Set up the appropriate input state for a given input type.
+    ///
+    /// Handles empty options gracefully by falling back to text input (Task 1.3).
+    fn setup_input_state_for_type(&mut self, input_type: &InputType, options: Vec<SelectOption>) {
+        match input_type {
+            InputType::Text => {
+                self.input_state = InputState::TextInput {
+                    value: String::new(),
+                    cursor: 0,
+                };
+            }
+            InputType::Editor => {
+                self.input_state = InputState::EditorPending;
+            }
+            InputType::Select => {
+                // Task 1.3: Handle empty options gracefully
+                if options.is_empty() {
+                    self.status_message = Some((
+                        "No options provided - using text input".to_string(),
+                        Instant::now(),
+                    ));
+                    self.input_state = InputState::TextInput {
+                        value: String::new(),
+                        cursor: 0,
+                    };
+                } else {
+                    self.input_state = InputState::SelectInput {
+                        options,
+                        selected: 0,
+                    };
+                }
+            }
+            InputType::MultiSelect => {
+                // Task 1.3: Handle empty options gracefully
+                if options.is_empty() {
+                    self.status_message = Some((
+                        "No options provided - using text input".to_string(),
+                        Instant::now(),
+                    ));
+                    self.input_state = InputState::TextInput {
+                        value: String::new(),
+                        cursor: 0,
+                    };
+                } else {
+                    let len = options.len();
+                    self.input_state = InputState::MultiSelectInput {
+                        options,
+                        selected: vec![false; len],
+                        cursor: 0,
+                    };
+                }
+            }
+            InputType::Confirm => {
+                self.input_state = InputState::ConfirmInput { selected: true };
+            }
+        }
     }
 
     /// Save the session
@@ -1099,5 +1241,152 @@ impl Drop for App {
         let _ = disable_raw_mode();
         let _ = execute!(self.terminal.backend_mut(), LeaveAlternateScreen);
         let _ = self.terminal.show_cursor();
+    }
+}
+
+/// Parse all JSON objects from output (standalone function for testing)
+#[cfg(test)]
+fn parse_all_json_objects(output: &str) -> Vec<AgentMessage> {
+    let mut messages = Vec::new();
+
+    // First, try to parse the whole thing as a single JSON object
+    if let Ok(msg) = serde_json::from_str::<AgentMessage>(output.trim()) {
+        return vec![msg];
+    }
+
+    // Find all JSON objects using bracket matching
+    let mut depth = 0;
+    let mut start = None;
+
+    for (i, c) in output.char_indices() {
+        match c {
+            '{' => {
+                if depth == 0 {
+                    start = Some(i);
+                }
+                depth += 1;
+            }
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    if let Some(s) = start {
+                        let json_str = &output[s..=i];
+                        if let Ok(msg) = serde_json::from_str::<AgentMessage>(json_str) {
+                            messages.push(msg);
+                        }
+                    }
+                    start = None;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Fallback if no JSON found
+    if messages.is_empty() {
+        messages.push(AgentMessage::Question {
+            text: output.trim().to_string(),
+            context: Some("(Agent response was not in expected format)".to_string()),
+            input_type: InputType::Text,
+            options: vec![],
+            section: None,
+        });
+    }
+
+    messages
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_single_json_object() {
+        let output = r#"{"type": "question", "text": "What is your goal?", "input_type": "text", "options": []}"#;
+        let messages = parse_all_json_objects(output);
+
+        assert_eq!(messages.len(), 1);
+        match &messages[0] {
+            AgentMessage::Question { text, .. } => {
+                assert_eq!(text, "What is your goal?");
+            }
+            _ => panic!("Expected Question"),
+        }
+    }
+
+    #[test]
+    fn test_parse_multiple_json_objects() {
+        let output = r#"{"type": "draft_update", "section": "title", "content": "My Feature", "append": false}
+{"type": "question", "text": "What else?", "input_type": "text", "options": []}"#;
+
+        let messages = parse_all_json_objects(output);
+
+        assert_eq!(messages.len(), 2);
+        match &messages[0] {
+            AgentMessage::DraftUpdate { section, .. } => {
+                assert_eq!(section, "title");
+            }
+            _ => panic!("Expected DraftUpdate"),
+        }
+        match &messages[1] {
+            AgentMessage::Question { text, .. } => {
+                assert_eq!(text, "What else?");
+            }
+            _ => panic!("Expected Question"),
+        }
+    }
+
+    #[test]
+    fn test_parse_json_with_surrounding_text() {
+        let output = r#"Some thinking text here...
+{"type": "question", "text": "What is your goal?", "input_type": "text", "options": []}
+More text after"#;
+
+        let messages = parse_all_json_objects(output);
+
+        assert_eq!(messages.len(), 1);
+        match &messages[0] {
+            AgentMessage::Question { text, .. } => {
+                assert_eq!(text, "What is your goal?");
+            }
+            _ => panic!("Expected Question"),
+        }
+    }
+
+    #[test]
+    fn test_fallback_on_invalid_json() {
+        let output = "This is just plain text, not JSON at all";
+        let messages = parse_all_json_objects(output);
+
+        assert_eq!(messages.len(), 1);
+        match &messages[0] {
+            AgentMessage::Question { text, context, .. } => {
+                assert_eq!(text, output);
+                assert!(context.as_ref().unwrap().contains("not in expected format"));
+            }
+            _ => panic!("Expected fallback Question"),
+        }
+    }
+
+    #[test]
+    fn test_empty_select_options_handled() {
+        // This tests that the system handles empty options
+        // The actual handling is in setup_input_state_for_type
+        let output =
+            r#"{"type": "question", "text": "Choose:", "input_type": "select", "options": []}"#;
+        let messages = parse_all_json_objects(output);
+
+        assert_eq!(messages.len(), 1);
+        match &messages[0] {
+            AgentMessage::Question {
+                input_type,
+                options,
+                ..
+            } => {
+                assert!(matches!(input_type, InputType::Select));
+                assert!(options.is_empty());
+            }
+            _ => panic!("Expected Question"),
+        }
     }
 }

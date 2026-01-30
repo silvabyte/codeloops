@@ -190,6 +190,14 @@ enum Commands {
         /// Show what would be generated without writing to file
         #[arg(long)]
         dry_run: bool,
+
+        /// Clean up old interview sessions
+        #[arg(long)]
+        clean: bool,
+
+        /// Only delete sessions older than this many days (default: 30, use with --clean)
+        #[arg(long, default_value = "30")]
+        older_than: Option<u64>,
     },
 }
 
@@ -271,6 +279,8 @@ async fn main() -> Result<()> {
             model,
             resume,
             dry_run,
+            clean,
+            older_than,
         }) => {
             prompt::handle_prompt_command(prompt::PromptArgs {
                 output,
@@ -279,6 +289,8 @@ async fn main() -> Result<()> {
                 model,
                 resume,
                 dry_run,
+                clean,
+                older_than_days: older_than,
             })
             .await
         }

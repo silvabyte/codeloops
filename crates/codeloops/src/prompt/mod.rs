@@ -30,6 +30,10 @@ pub struct PromptArgs {
     pub model: Option<String>,
     pub resume: Option<PathBuf>,
     pub dry_run: bool,
+    /// Clean up old sessions
+    pub clean: bool,
+    /// Days threshold for cleanup (default 30)
+    pub older_than_days: Option<u64>,
 }
 
 /// Create a backup path with timestamp for an existing file.
@@ -54,6 +58,11 @@ fn create_backup_path(original: &std::path::Path) -> PathBuf {
 
 /// Handle the `codeloops prompt` command
 pub async fn handle_prompt_command(args: PromptArgs) -> Result<()> {
+    // Handle session cleanup if requested
+    if args.clean {
+        return handle_session_cleanup(args.older_than_days.unwrap_or(30));
+    }
+
     // Determine working directory
     let working_dir = args
         .working_dir
@@ -231,6 +240,119 @@ fn parse_agent_type(s: &str) -> Option<AgentType> {
         "cursor" => Some(AgentType::Cursor),
         _ => None,
     }
+}
+
+/// Handle session cleanup command (Task 3.1)
+fn handle_session_cleanup(older_than_days: u64) -> Result<()> {
+    use chrono::{Duration, Utc};
+
+    let sessions_dir = dirs::data_local_dir()
+        .ok_or_else(|| anyhow::anyhow!("Could not determine local data directory"))?
+        .join("codeloops")
+        .join("interviews");
+
+    if !sessions_dir.exists() {
+        eprintln!("{} No sessions directory found", "->".dimmed());
+        return Ok(());
+    }
+
+    let cutoff = Utc::now() - Duration::days(older_than_days as i64);
+    let mut sessions_to_delete = Vec::new();
+
+    // Find sessions older than cutoff
+    for entry in std::fs::read_dir(&sessions_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+
+        // Try to load the session to check its date
+        match InterviewSession::load(&path) {
+            Ok(session) => {
+                if session.updated_at < cutoff {
+                    sessions_to_delete.push((path, session));
+                }
+            }
+            Err(_) => {
+                // If we can't parse it, check file modification time
+                if let Ok(metadata) = entry.metadata() {
+                    if let Ok(modified) = metadata.modified() {
+                        let modified_time: chrono::DateTime<Utc> = modified.into();
+                        if modified_time < cutoff {
+                            // Can't load session, but it's old - offer to delete
+                            eprintln!(
+                                "{} Warning: Could not parse session {}, but it's older than {} days",
+                                "!".yellow(),
+                                path.display(),
+                                older_than_days
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if sessions_to_delete.is_empty() {
+        eprintln!(
+            "{} No sessions older than {} days found",
+            "->".dimmed(),
+            older_than_days
+        );
+        return Ok(());
+    }
+
+    // Display sessions to be deleted
+    eprintln!(
+        "\n{} Found {} session(s) older than {} days:\n",
+        "->".dimmed(),
+        sessions_to_delete.len(),
+        older_than_days
+    );
+
+    for (path, session) in &sessions_to_delete {
+        let title = session.draft.title.as_deref().unwrap_or("(untitled)");
+        let age_days = (Utc::now() - session.updated_at).num_days();
+        eprintln!(
+            "  {} - {} ({} days old)",
+            path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("unknown"),
+            title,
+            age_days
+        );
+    }
+    eprintln!();
+
+    // Confirm with user
+    let confirm = dialoguer::Confirm::new()
+        .with_prompt(format!("Delete {} session(s)?", sessions_to_delete.len()))
+        .default(false)
+        .interact()?;
+
+    if !confirm {
+        eprintln!("{} Cancelled", "->".dimmed());
+        return Ok(());
+    }
+
+    // Delete sessions
+    let mut deleted = 0;
+    for (path, _) in sessions_to_delete {
+        match std::fs::remove_file(&path) {
+            Ok(()) => {
+                deleted += 1;
+            }
+            Err(e) => {
+                eprintln!("{} Failed to delete {}: {}", "!".red(), path.display(), e);
+            }
+        }
+    }
+
+    eprintln!("\n{} Deleted {} session(s)", "✅".bright_green(), deleted);
+
+    Ok(())
 }
 
 #[cfg(test)]

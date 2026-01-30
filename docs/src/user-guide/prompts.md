@@ -325,6 +325,86 @@ A clear prompt helps the critic make accurate decisions. Vague prompts lead to t
 - Approving incomplete work (didn't know what to check)
 - Continuously requesting changes (unclear when "done")
 
+## Interactive Prompt Generator
+
+The `codeloops prompt` command provides a TUI-based interview system that generates comprehensive prompts through guided questions.
+
+### Basic Usage
+
+```bash
+# Start a new interview
+codeloops prompt
+
+# Resume a previous session
+codeloops prompt --resume ~/.local/share/codeloops/interviews/interview-123.json
+
+# Preview without writing (dry run)
+codeloops prompt --dry-run
+
+# Specify output file
+codeloops prompt -o feature-spec.md
+```
+
+### Interview Process
+
+The agent asks thorough questions to build a comprehensive prompt covering:
+
+1. **Goal & Scope** - What you want to accomplish
+2. **Technical Requirements** - Specific implementation details
+3. **Edge Cases** - Boundary conditions and error scenarios
+4. **Testing Strategy** - How to verify the implementation
+5. **Acceptance Criteria** - Definition of done
+
+Expect 15-25 questions for a thorough interview. The agent will probe vague answers to get specific details.
+
+### Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `Enter` | Submit answer |
+| `Tab` | Switch between Interview and Draft panels |
+| `Ctrl+S` | Save session for later |
+| `Ctrl+C` | Save and quit |
+| `↑/↓` | Navigate options / scroll draft |
+| `Esc` | Cancel during agent wait |
+
+### Session Management
+
+Interview sessions are automatically saved and can be resumed:
+
+```bash
+# Clean up old sessions (older than 30 days)
+codeloops prompt --clean
+
+# Clean sessions older than 7 days
+codeloops prompt --clean --older-than 7
+```
+
+### Sections Generated
+
+The interview generates these sections:
+
+| Section | Description |
+|---------|-------------|
+| `title` | Clear name for the task |
+| `goal` | Primary objective (2-4 sentences) |
+| `context` | Background and motivation |
+| `requirements` | Specific, actionable items |
+| `constraints` | Limitations and must-not-do items |
+| `files_to_modify` | Known files to change |
+| `acceptance_criteria` | Measurable completion criteria |
+| `edge_cases` | Boundary conditions to handle |
+| `error_handling` | How to handle failures |
+| `testing_strategy` | How to verify the implementation |
+| `user_flow` | Step-by-step user interaction |
+| `notes` | Additional context |
+
+### Adaptive Layout
+
+The TUI automatically adapts to terminal size:
+- **Wide terminals (100+ cols)**: Side-by-side Interview and Draft panels
+- **Narrow terminals (<100 cols)**: Single panel with Tab to toggle
+
 ## Generating Prompts with Agent Commands
 
 You can configure your coding agent to generate `prompt.md` files automatically. This creates a powerful workflow:

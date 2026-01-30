@@ -12,6 +12,9 @@ use serde::{Deserialize, Serialize};
 use super::protocol::{AgentMessage, UserResponse};
 use super::scanner::ProjectContext;
 
+/// Current session format version (for migration support)
+pub const SESSION_VERSION: u32 = 2;
+
 /// An interview session that can be saved and resumed
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InterviewSession {
@@ -31,6 +34,14 @@ pub struct InterviewSession {
     pub output_path: PathBuf,
     /// Whether the interview is complete
     pub is_complete: bool,
+    /// Session format version (for migrations)
+    #[serde(default = "default_version")]
+    pub version: u32,
+}
+
+/// Default version for old sessions without version field
+fn default_version() -> u32 {
+    1
 }
 
 /// A single turn in the conversation
@@ -87,6 +98,18 @@ pub struct PromptDraft {
     pub acceptance_criteria: Vec<String>,
     /// Any additional notes
     pub notes: Option<String>,
+    /// Edge cases to consider
+    #[serde(default)]
+    pub edge_cases: Vec<String>,
+    /// Error handling approach
+    #[serde(default)]
+    pub error_handling: Option<String>,
+    /// Testing strategy
+    #[serde(default)]
+    pub testing_strategy: Option<String>,
+    /// User flow description
+    #[serde(default)]
+    pub user_flow: Option<String>,
 }
 
 impl PromptDraft {
@@ -150,6 +173,50 @@ impl PromptDraft {
                     }
                 } else {
                     self.notes = Some(content.to_string());
+                }
+            }
+            // New sections (Task 3.2)
+            "edge_cases" | "edge cases" => {
+                if append {
+                    self.edge_cases.push(content.to_string());
+                } else {
+                    self.edge_cases = vec![content.to_string()];
+                }
+            }
+            "error_handling" | "error handling" | "errors" => {
+                if append {
+                    if let Some(ref mut existing) = self.error_handling {
+                        existing.push_str("\n\n");
+                        existing.push_str(content);
+                    } else {
+                        self.error_handling = Some(content.to_string());
+                    }
+                } else {
+                    self.error_handling = Some(content.to_string());
+                }
+            }
+            "testing_strategy" | "testing strategy" | "testing" | "tests" => {
+                if append {
+                    if let Some(ref mut existing) = self.testing_strategy {
+                        existing.push_str("\n\n");
+                        existing.push_str(content);
+                    } else {
+                        self.testing_strategy = Some(content.to_string());
+                    }
+                } else {
+                    self.testing_strategy = Some(content.to_string());
+                }
+            }
+            "user_flow" | "user flow" | "flow" => {
+                if append {
+                    if let Some(ref mut existing) = self.user_flow {
+                        existing.push_str("\n\n");
+                        existing.push_str(content);
+                    } else {
+                        self.user_flow = Some(content.to_string());
+                    }
+                } else {
+                    self.user_flow = Some(content.to_string());
                 }
             }
             _ => {
@@ -242,6 +309,34 @@ impl PromptDraft {
             parts.push("\n".to_string());
         }
 
+        // Edge Cases (new section)
+        if !self.edge_cases.is_empty() {
+            parts.push("## Edge Cases\n".to_string());
+            for edge_case in &self.edge_cases {
+                if edge_case.starts_with('-') || edge_case.starts_with('*') {
+                    parts.push(format!("{}\n", edge_case));
+                } else {
+                    parts.push(format!("- {}\n", edge_case));
+                }
+            }
+            parts.push("\n".to_string());
+        }
+
+        // Error Handling (new section)
+        if let Some(ref error_handling) = self.error_handling {
+            parts.push(format!("## Error Handling\n\n{}\n", error_handling));
+        }
+
+        // Testing Strategy (new section)
+        if let Some(ref testing_strategy) = self.testing_strategy {
+            parts.push(format!("## Testing Strategy\n\n{}\n", testing_strategy));
+        }
+
+        // User Flow (new section)
+        if let Some(ref user_flow) = self.user_flow {
+            parts.push(format!("## User Flow\n\n{}\n", user_flow));
+        }
+
         // Notes
         if let Some(ref notes) = self.notes {
             parts.push(format!("## Notes\n\n{}\n", notes));
@@ -317,26 +412,64 @@ impl InterviewSession {
             draft: PromptDraft::new(),
             output_path,
             is_complete: false,
+            version: SESSION_VERSION,
         }
     }
 
-    /// Load a session from a file
+    /// Load a session from a file.
+    ///
+    /// Automatically migrates older session formats to the current version.
     pub fn load(path: &Path) -> Result<Self> {
         let content = std::fs::read_to_string(path)
             .with_context(|| format!("Failed to read session file: {}", path.display()))?;
-        let session: Self = serde_json::from_str(&content)
+        let mut session: Self = serde_json::from_str(&content)
             .with_context(|| format!("Failed to parse session file: {}", path.display()))?;
+
+        // Perform migrations if needed
+        if session.version < SESSION_VERSION {
+            session.migrate()?;
+        }
+
         Ok(session)
     }
 
-    /// Save the session to a file
+    /// Migrate session from older version to current version.
+    fn migrate(&mut self) -> Result<()> {
+        // v1 -> v2: Add new draft sections (handled by serde defaults)
+        // The new fields (edge_cases, error_handling, testing_strategy, user_flow)
+        // are already initialized to defaults by #[serde(default)]
+
+        // Update version
+        self.version = SESSION_VERSION;
+        self.updated_at = Utc::now();
+
+        Ok(())
+    }
+
+    /// Save the session to a file atomically.
+    ///
+    /// Uses write-to-temp-then-rename pattern to avoid corruption on crash.
     pub fn save(&self) -> Result<PathBuf> {
         let sessions_dir = get_sessions_dir()?;
         let path = sessions_dir.join(format!("{}.json", self.id));
+        let temp_path = sessions_dir.join(format!(".{}.json.tmp", self.id));
 
         let content = serde_json::to_string_pretty(self).context("Failed to serialize session")?;
-        std::fs::write(&path, content)
-            .with_context(|| format!("Failed to write session file: {}", path.display()))?;
+
+        // Write to temp file first
+        std::fs::write(&temp_path, &content)
+            .with_context(|| format!("Failed to write temp file: {}", temp_path.display()))?;
+
+        // Atomic rename (on same filesystem)
+        std::fs::rename(&temp_path, &path).with_context(|| {
+            // Try to clean up temp file on error
+            let _ = std::fs::remove_file(&temp_path);
+            format!(
+                "Failed to rename {} to {}",
+                temp_path.display(),
+                path.display()
+            )
+        })?;
 
         Ok(path)
     }
@@ -573,5 +706,122 @@ mod tests {
             parsed.project_context.project_name,
             Some("test".to_string())
         );
+    }
+
+    #[test]
+    fn test_new_sections_update() {
+        let mut draft = PromptDraft::new();
+
+        // Test edge_cases
+        draft.update_section("edge_cases", "Empty input", false);
+        assert_eq!(draft.edge_cases.len(), 1);
+        draft.update_section("edge_cases", "Null values", true);
+        assert_eq!(draft.edge_cases.len(), 2);
+
+        // Test error_handling
+        draft.update_section("error_handling", "Retry on network error", false);
+        assert_eq!(
+            draft.error_handling,
+            Some("Retry on network error".to_string())
+        );
+
+        // Test testing_strategy
+        draft.update_section("testing_strategy", "Unit tests for all modules", false);
+        assert_eq!(
+            draft.testing_strategy,
+            Some("Unit tests for all modules".to_string())
+        );
+
+        // Test user_flow
+        draft.update_section("user_flow", "User logs in then views dashboard", false);
+        assert_eq!(
+            draft.user_flow,
+            Some("User logs in then views dashboard".to_string())
+        );
+    }
+
+    #[test]
+    fn test_new_sections_markdown_rendering() {
+        let mut draft = PromptDraft::new();
+        draft.title = Some("Test Feature".to_string());
+        draft.edge_cases.push("Empty input".to_string());
+        draft.edge_cases.push("Very long input".to_string());
+        draft.error_handling = Some("Log all errors".to_string());
+        draft.testing_strategy = Some("Unit tests required".to_string());
+        draft.user_flow = Some("Step 1: User clicks button".to_string());
+
+        let markdown = draft.to_markdown();
+        assert!(markdown.contains("## Edge Cases"));
+        assert!(markdown.contains("- Empty input"));
+        assert!(markdown.contains("- Very long input"));
+        assert!(markdown.contains("## Error Handling"));
+        assert!(markdown.contains("Log all errors"));
+        assert!(markdown.contains("## Testing Strategy"));
+        assert!(markdown.contains("Unit tests required"));
+        assert!(markdown.contains("## User Flow"));
+        assert!(markdown.contains("Step 1: User clicks button"));
+    }
+
+    #[test]
+    fn test_session_version() {
+        let context = super::super::scanner::ProjectContext {
+            project_type: super::super::scanner::ProjectType::Rust,
+            languages: vec!["Rust".to_string()],
+            frameworks: vec![],
+            key_files: vec![],
+            directory_structure: vec![],
+            project_name: Some("test".to_string()),
+            project_description: None,
+        };
+
+        let session = InterviewSession::new(context, PathBuf::from("prompt.md"));
+        assert_eq!(session.version, SESSION_VERSION);
+    }
+
+    #[test]
+    fn test_v1_session_loads_with_defaults() {
+        // Simulate a v1 session JSON without version field and new draft sections
+        let v1_json = r#"{
+            "id": "interview-test-12345678",
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z",
+            "project_context": {
+                "project_type": "rust",
+                "languages": ["Rust"],
+                "frameworks": [],
+                "key_files": [],
+                "directory_structure": [],
+                "project_name": "test",
+                "project_description": null
+            },
+            "history": [],
+            "draft": {
+                "title": "Old Session",
+                "goal": "Test migration",
+                "context": null,
+                "requirements": [],
+                "constraints": [],
+                "files_to_modify": [],
+                "acceptance_criteria": [],
+                "notes": null
+            },
+            "output_path": "prompt.md",
+            "is_complete": false
+        }"#;
+
+        let session: InterviewSession = serde_json::from_str(v1_json).unwrap();
+
+        // Version should default to 1
+        assert_eq!(session.version, 1);
+
+        // New draft fields should have defaults
+        assert!(session.draft.edge_cases.is_empty());
+        assert!(session.draft.error_handling.is_none());
+        assert!(session.draft.testing_strategy.is_none());
+        assert!(session.draft.user_flow.is_none());
+
+        // Old fields should be preserved
+        assert_eq!(session.draft.title, Some("Old Session".to_string()));
+        assert_eq!(session.draft.goal, Some("Test migration".to_string()));
     }
 }

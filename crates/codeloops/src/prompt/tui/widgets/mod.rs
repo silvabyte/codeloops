@@ -2,10 +2,12 @@
 
 mod draft;
 mod input;
-mod progress;
 mod question;
+
+// Progress widget removed (Task 3.4: percentage was misleading)
+#[allow(dead_code)]
+mod progress;
 
 pub use draft::DraftWidget;
 pub use input::{ConfirmInput, MultiSelectInput, SelectInput, TextInput};
-pub use progress::ProgressWidget;
 pub use question::QuestionWidget;
