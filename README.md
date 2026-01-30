@@ -105,60 +105,6 @@ After using all the coding agents in the world. Having any sort of ui or tui end
    - `CONTINUE`: Provide feedback, run another iteration
    - `ERROR`: Provide recovery suggestion, continue
 
-## Interactive Prompt Generator
-
-Writing comprehensive prompt.md files can be challenging - you might forget to specify documentation requirements, test coverage, or edge cases. The `codeloops prompt` command launches an interactive TUI that uses your configured coding agent to interview you and generate a thorough prompt.md file.
-
-```bash
-# Start the interactive prompt generator
-codeloops prompt
-
-# Specify output file
-codeloops prompt --output features/auth.md
-
-# Use a specific agent for the interview
-codeloops prompt --agent claude
-
-# Preview without writing (dry run)
-codeloops prompt --dry-run
-
-# Resume an interrupted session
-codeloops prompt --resume ~/.local/share/codeloops/interviews/session-xyz.json
-```
-
-The agent asks probing questions about your task, extracting details about:
-- Goals and scope
-- Technical requirements and constraints
-- Edge cases and error handling
-- Acceptance criteria
-
-As you answer, a live draft preview shows the prompt.md being built in real-time. The TUI uses a split-pane layout with the interview on the left and the draft on the right.
-
-### Keyboard Shortcuts
-
-| Key | Action |
-|-----|--------|
-| `Enter` | Submit answer / Start typing |
-| `Tab` | Switch between interview and draft panels |
-| `↑↓` | Navigate options / Scroll draft |
-| `Space` | Toggle option (multi-select) |
-| `y/n` | Quick confirm (yes/no questions) |
-| `Ctrl+S` | Save session and continue |
-| `Ctrl+C` | Save session and exit |
-| `Esc` | Cancel current input |
-
-### Project Scanning
-
-The prompt generator automatically scans your project directory to provide context:
-- Detects project type (Rust, Node.js, Python, Go)
-- Identifies frameworks and libraries in use
-- Lists key files (README, config files, entry points)
-- Maps directory structure
-
-This context helps the agent ask relevant, project-specific questions.
-
-Sessions are auto-saved, so if you're interrupted (Ctrl+C), you can resume later with `--resume`. Existing prompt.md files are automatically backed up before being overwritten.
-
 ## Session Viewer
 
 Codeloops persists every session as a JSONL file. You can browse, filter, and inspect sessions using the built-in CLI or web UI.
@@ -234,17 +180,6 @@ The web UI provides a dashboard with session list, filters, statistics charts, i
 | `--dev` | Development mode (Vite HMR) |
 | `--api-port <PORT>` | API server port (default: 3100) |
 | `--ui-port <PORT>` | UI server port (default: 3101) |
-
-### Prompt
-
-| Option | Description |
-|--------|-------------|
-| `-o, --output <FILE>` | Output file path (default: prompt.md) |
-| `-d, --working-dir <DIR>` | Working directory for project scanning |
-| `-a, --agent <AGENT>` | Agent to conduct the interview |
-| `-m, --model <MODEL>` | Model to use (if agent supports it) |
-| `--resume <FILE>` | Resume a previous interview session |
-| `--dry-run` | Preview output without writing file |
 
 ## Supported Agents
 

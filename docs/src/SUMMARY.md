@@ -13,7 +13,6 @@
 - [CLI Reference](./user-guide/cli-reference.md)
 - [Configuration](./user-guide/configuration.md)
 - [Agents](./user-guide/agents.md)
-- [Writing Prompts](./user-guide/prompts.md)
 - [Sessions](./user-guide/sessions.md)
 
 # Web UI

@@ -15,7 +15,6 @@ When no command is specified, codeloops runs the actor-critic loop (equivalent t
 | Command | Description |
 |---------|-------------|
 | `run` | Run the actor-critic loop (default) |
-| `prompt` | Interactive prompt.md generator |
 | `sessions` | Browse and inspect sessions |
 | `ui` | Start the web UI |
 | `init` | Interactive configuration setup |
@@ -235,92 +234,6 @@ codeloops ui --dev
 ```
 
 The UI opens automatically in your default browser.
-
-## Prompt Command
-
-Launch an interactive TUI that uses your configured coding agent to interview you and generate a comprehensive prompt.md file.
-
-```bash
-codeloops prompt [OPTIONS]
-```
-
-### How It Works
-
-The prompt generator helps you create thorough prompt.md files by:
-
-1. **Project Scanning**: Automatically detects your project type (Rust, Node, Python, Go) and gathers context about your codebase
-2. **Agent Interview**: The configured agent asks probing questions to extract every detail needed for a complete prompt
-3. **Live Draft Preview**: Watch the prompt.md being built in real-time in a split-pane TUI
-4. **Session Persistence**: Auto-saves progress so you can resume if interrupted
-
-The agent uses a structured JSON protocol to communicate with the TUI, enabling dynamic input types (text, select, multi-select, confirm) based on the question.
-
-### Options
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `-o, --output <FILE>` | Path | `prompt.md` | Output file path for the generated prompt |
-| `-d, --working-dir <DIR>` | Path | Current directory | Working directory for project scanning |
-| `-a, --agent <AGENT>` | Enum | From config | Agent to conduct the interview |
-| `-m, --model <MODEL>` | String | - | Model to use (if agent supports it) |
-| `--resume <FILE>` | Path | - | Resume a previous interview session |
-
-Agent values: `claude`, `opencode`, `cursor`
-
-### Examples
-
-```bash
-# Start interactive prompt generator (uses default agent)
-codeloops prompt
-
-# Generate prompt in a specific directory
-codeloops prompt --working-dir ~/projects/myapp
-
-# Save to custom output file
-codeloops prompt --output features/user-auth.md
-
-# Use a specific agent for the interview
-codeloops prompt --agent claude
-
-# Use a specific model
-codeloops prompt --agent claude --model opus
-
-# Resume an interrupted session
-codeloops prompt --resume ~/.local/share/codeloops/interviews/session-2025-01-27.json
-```
-
-### TUI Controls
-
-| Key | Action |
-|-----|--------|
-| `Enter` | Submit answer |
-| `Tab` | Switch focus between interview and draft preview |
-| `↑/↓` | Navigate options (for select inputs) |
-| `Space` | Toggle selection (for multi-select inputs) |
-| `Ctrl+C` | Save session and exit |
-| `Esc` | Cancel current input |
-
-### Session Files
-
-Interview sessions are saved to `~/.local/share/codeloops/interviews/`. Each session file contains:
-- Conversation history
-- Current draft state
-- Project context
-- Timestamp information
-
-You can resume any saved session using the `--resume` flag.
-
-### Generated Prompt Structure
-
-The generated prompt.md includes these sections:
-
-- **Title**: Clear, concise name for the task
-- **Goal**: Primary objective in 1-3 sentences
-- **Context**: Background, motivation, and relevant existing state
-- **Requirements**: Specific, actionable requirements
-- **Constraints**: Technical limitations and must-not-do items
-- **Files to Modify**: Specific files that will need changes
-- **Acceptance Criteria**: Measurable criteria for completion
 
 ## Init Command
 
