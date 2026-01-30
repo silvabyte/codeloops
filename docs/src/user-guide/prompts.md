@@ -366,7 +366,39 @@ Expect 15-25 questions for a thorough interview. The agent will probe vague answ
 | `Ctrl+S` | Save session for later |
 | `Ctrl+C` | Save and quit |
 | `↑/↓` | Navigate options / scroll draft |
+| `Ctrl+↑` | Go to previous question (edit history) |
+| `Ctrl+↓` | Go to next question (edit history) |
 | `Esc` | Cancel during agent wait |
+
+### Edit History
+
+You can navigate back to previous questions to change your answers:
+
+1. Press `Ctrl+↑` to go back to a previous question
+2. Edit your answer and press Enter to submit
+3. The draft will regenerate from that point forward
+4. Use `Ctrl+↓` to move forward through questions
+
+This is useful when you realize a previous answer was incomplete or you want to explore a different direction.
+
+### Hybrid Completion Model
+
+The interview uses a hybrid completion model where the agent suggests when the prompt is complete, but you have final control:
+
+**Agent-initiated completion:**
+- When the agent believes enough information has been gathered, it will suggest completing the interview
+- You'll see a confirmation dialog with a summary of what was captured
+- Choose "Yes" to accept and generate the prompt, or "No" to continue adding more details
+
+**User-initiated completion:**
+- Type `done` as your answer at any point to signal you're ready to complete
+- The agent will summarize what's been captured and ask for confirmation
+- This is useful when you feel the prompt is comprehensive enough for your needs
+
+**Quality warnings:**
+- If you provide a vague answer, the agent may ask for clarification
+- You can press `Esc` to keep your original answer and proceed anyway
+- The agent tries to be thorough but respects your judgment on when enough detail is enough
 
 ### Session Management
 
