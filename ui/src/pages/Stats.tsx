@@ -1,8 +1,8 @@
 import { useStats } from '@/hooks/useStats'
-import { SubNav } from '@/components/SubNav'
+import { SectionHeader } from '@/components/SectionHeader'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
-const runInsightsNavItems = [
+const runInsightsTabs = [
   { label: 'Overview', path: '/run-insights' },
   { label: 'Status', path: '/run-insights/status' },
 ]
@@ -30,14 +30,12 @@ export function Stats() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold">Run Insights</h1>
-      </div>
+    <div className="flex flex-col h-[calc(100vh-65px)]">
+      <SectionHeader context="Run Insights" tabs={runInsightsTabs} />
 
-      <SubNav items={runInsightsNavItems} />
-
-      {/* Summary cards */}
+      <div className="flex-1 overflow-auto">
+        <div className="max-w-5xl mx-auto px-6 py-6 space-y-6">
+          {/* Summary cards */}
       <div className="grid grid-cols-4 gap-4">
         <SummaryCard label="Total Sessions" value={String(stats.total_sessions)} />
         <SummaryCard label="Success Rate" value={`${Math.round(stats.success_rate * 100)}%`} />
@@ -103,6 +101,8 @@ export function Stats() {
           </div>
         </div>
       )}
+        </div>
+      </div>
     </div>
   )
 }

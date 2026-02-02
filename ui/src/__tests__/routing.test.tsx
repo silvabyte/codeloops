@@ -158,7 +158,8 @@ describe('App Routing', () => {
 
       await waitFor(() => {
         const statusTab = screen.getByRole('link', { name: 'Status' })
-        expect(statusTab).toHaveClass('border-primary')
+        // SectionHeader uses amber background for active tabs
+        expect(statusTab).toHaveClass('bg-amber/10')
       })
     })
 
