@@ -13,9 +13,8 @@ pub async fn handle_ui_command(dev: bool, api_port: u16, ui_port: u16) -> Result
     let store = Arc::new(SessionStore::new()?);
     let watcher = Arc::new(SessionWatcher::new().context("Failed to start session watcher")?);
     let working_dir = std::env::current_dir().context("Failed to get current directory")?;
-    let prompt_store = Arc::new(
-        PromptStore::new().context("Failed to initialize prompt database")?
-    );
+    let prompt_store =
+        Arc::new(PromptStore::new().context("Failed to initialize prompt database")?);
 
     let router = api::create_router(store, watcher, working_dir, prompt_store);
 

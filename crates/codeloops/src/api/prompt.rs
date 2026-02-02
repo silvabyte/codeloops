@@ -257,8 +257,12 @@ pub async fn save_prompt_session(
 ) -> Result<Json<SavePromptSessionResponse>, (StatusCode, String)> {
     let now = Utc::now();
 
-    let session_state_json = serde_json::to_string(&req.session_state)
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid session state: {}", e)))?;
+    let session_state_json = serde_json::to_string(&req.session_state).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Invalid session state: {}", e),
+        )
+    })?;
 
     // Check if this is an update or insert
     let existing = state
@@ -351,8 +355,13 @@ pub async fn get_prompt(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Prompt not found".to_string()))?;
 
-    let session_state: SessionStatePayload = serde_json::from_str(&record.session_state)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Invalid session state: {}", e)))?;
+    let session_state: SessionStatePayload =
+        serde_json::from_str(&record.session_state).map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Invalid session state: {}", e),
+            )
+        })?;
 
     Ok(Json(GetPromptResponse {
         id: record.id,

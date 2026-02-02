@@ -174,8 +174,7 @@ impl PromptStore {
             sql.push_str(&format!(" OFFSET {}", offset));
         }
 
-        let params: Vec<&dyn rusqlite::ToSql> =
-            param_values.iter().map(|p| p.as_ref()).collect();
+        let params: Vec<&dyn rusqlite::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
 
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map(params.as_slice(), |row| Self::row_to_record(row))?;

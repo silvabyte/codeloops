@@ -4,4 +4,4 @@
 
 mod prompt_store;
 
-pub use prompt_store::{PromptRecord, PromptStore, PromptFilter};
+pub use prompt_store::{PromptFilter, PromptRecord, PromptStore};
