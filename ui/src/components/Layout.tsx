@@ -5,7 +5,7 @@ export function Layout() {
   const location = useLocation()
 
   const navItems = [
-    { path: '/', label: 'New Prompt' },
+    { path: '/', label: 'Prompts' },
     { path: '/run-insights', label: 'Run Insights' },
   ]
 
