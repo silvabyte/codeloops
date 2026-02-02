@@ -9,7 +9,7 @@ export function NotFound() {
         to="/"
         className="text-primary hover:text-primary/80 transition-colors"
       >
-        Back to Dashboard
+        Back to Home
       </Link>
     </div>
   )

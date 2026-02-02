@@ -2,13 +2,19 @@ import { useCallback, useState } from 'react'
 import { StatsBar } from '@/components/StatsBar'
 import { SessionFilters } from '@/components/SessionFilters'
 import { SessionTable } from '@/components/SessionTable'
+import { SubNav } from '@/components/SubNav'
 import { Welcome } from '@/components/Welcome'
 import { useSessions } from '@/hooks/useSessions'
 import { useStats } from '@/hooks/useStats'
 import { useSessionEvents } from '@/hooks/useSSE'
 import type { SessionFilter } from '@/api/types'
 
-function DashboardSkeleton() {
+const runInsightsNavItems = [
+  { label: 'Overview', path: '/run-insights' },
+  { label: 'Status', path: '/run-insights/status' },
+]
+
+function RunInsightsSkeleton() {
   return (
     <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
       <div className="h-8 w-32 bg-muted rounded animate-pulse" />
@@ -23,7 +29,7 @@ function DashboardSkeleton() {
   )
 }
 
-export function Dashboard() {
+export function RunInsights() {
   const [filter, setFilter] = useState<SessionFilter>({})
   const { sessions, loading, reload } = useSessions(filter)
   const { stats, loading: statsLoading, reload: reloadStats } = useStats()
@@ -43,7 +49,7 @@ export function Dashboard() {
 
   // Show skeleton only on initial load
   if (loading && !hasSessions && !hasFilters) {
-    return <DashboardSkeleton />
+    return <RunInsightsSkeleton />
   }
 
   // Show welcome when no sessions and no filters applied
@@ -57,7 +63,9 @@ export function Dashboard() {
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
-      <h1 className="text-2xl font-bold">Sessions</h1>
+      <h1 className="text-2xl font-bold">Run Insights</h1>
+
+      <SubNav items={runInsightsNavItems} />
 
       <StatsBar stats={stats} loading={statsLoading} />
 

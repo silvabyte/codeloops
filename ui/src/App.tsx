@@ -1,6 +1,6 @@
 import { Routes, Route } from 'react-router-dom'
 import { Layout } from '@/components/Layout'
-import { Dashboard } from '@/pages/Dashboard'
+import { RunInsights } from '@/pages/RunInsights'
 import { SessionDetail } from '@/pages/SessionDetail'
 import { Stats } from '@/pages/Stats'
 import { PromptBuilder } from '@/pages/PromptBuilder'
@@ -10,10 +10,10 @@ function App() {
   return (
     <Routes>
       <Route element={<Layout />}>
-        <Route path="/" element={<Dashboard />} />
+        <Route path="/" element={<PromptBuilder />} />
+        <Route path="/run-insights" element={<RunInsights />} />
+        <Route path="/run-insights/status" element={<Stats />} />
         <Route path="/sessions/:id" element={<SessionDetail />} />
-        <Route path="/stats" element={<Stats />} />
-        <Route path="/prompt-builder" element={<PromptBuilder />} />
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

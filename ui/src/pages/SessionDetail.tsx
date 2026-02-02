@@ -32,10 +32,10 @@ export function SessionDetail() {
       <div className="max-w-5xl mx-auto px-6 py-8">
         <div className="text-destructive">{error || 'Session not found'}</div>
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/run-insights')}
           className="mt-4 text-sm text-primary hover:underline"
         >
-          Back to dashboard
+          Back to Run Insights
         </button>
       </div>
     )
@@ -55,10 +55,10 @@ export function SessionDetail() {
       {/* Header */}
       <div>
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/run-insights')}
           className="text-sm text-muted-foreground hover:text-foreground mb-3 block"
         >
-          &larr; Back
+          &larr; Back to Run Insights
         </button>
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-bold">Session</h1>

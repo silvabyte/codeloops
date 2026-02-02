@@ -5,10 +5,17 @@ export function Layout() {
   const location = useLocation()
 
   const navItems = [
-    { path: '/', label: 'Dashboard' },
-    { path: '/stats', label: 'Stats' },
-    { path: '/prompt-builder', label: 'New Prompt' },
+    { path: '/', label: 'New Prompt' },
+    { path: '/run-insights', label: 'Run Insights' },
   ]
+
+  const isActive = (path: string) => {
+    if (path === '/') {
+      return location.pathname === '/'
+    }
+    // Match /run-insights and /run-insights/status
+    return location.pathname.startsWith(path)
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -24,7 +31,7 @@ export function Layout() {
                 to={item.path}
                 className={cn(
                   'text-sm transition-colors',
-                  location.pathname === item.path
+                  isActive(item.path)
                     ? 'text-foreground font-medium'
                     : 'text-muted-foreground hover:text-foreground'
                 )}

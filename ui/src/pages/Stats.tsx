@@ -1,9 +1,13 @@
-import { useNavigate } from 'react-router-dom'
 import { useStats } from '@/hooks/useStats'
+import { SubNav } from '@/components/SubNav'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
+const runInsightsNavItems = [
+  { label: 'Overview', path: '/run-insights' },
+  { label: 'Status', path: '/run-insights/status' },
+]
+
 export function Stats() {
-  const navigate = useNavigate()
   const { stats, loading, error } = useStats()
 
   if (loading) {
@@ -28,14 +32,10 @@ export function Stats() {
   return (
     <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
       <div>
-        <button
-          onClick={() => navigate('/')}
-          className="text-sm text-muted-foreground hover:text-foreground mb-3 block"
-        >
-          &larr; Back
-        </button>
-        <h1 className="text-2xl font-bold">Statistics</h1>
+        <h1 className="text-2xl font-bold">Run Insights</h1>
       </div>
+
+      <SubNav items={runInsightsNavItems} />
 
       {/* Summary cards */}
       <div className="grid grid-cols-4 gap-4">
