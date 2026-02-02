@@ -118,14 +118,9 @@ export function PromptBuilder() {
     [handleNewPrompt, isReady, previewOpen, togglePreview, keyboardHint]
   )
 
-  // Build breadcrumb context
-  const headerContext = useMemo(
-    () => [
-      { label: session.projectName, icon: '📁' },
-      { label: workType },
-    ],
-    [session.projectName, workType]
-  )
+  // Build header context - simple "Planning: Feature" format
+  const capitalizedWorkType = workType ? workType.charAt(0).toUpperCase() + workType.slice(1) : ''
+  const headerContext = workType ? `Planning: ${capitalizedWorkType}` : 'Prompt Planner'
 
   // State machine driven rendering
   switch (state.status) {
@@ -140,7 +135,7 @@ export function PromptBuilder() {
       return (
         <div className="flex flex-col h-[calc(100vh-65px)]">
           <SectionHeader
-            context={[{ label: state.projectName, icon: '📁' }]}
+            context="Prompt Planner"
             actions={[
               { label: 'History', onClick: () => setHistoryOpen(true) },
             ]}
@@ -173,7 +168,7 @@ export function PromptBuilder() {
         return (
           <div className="flex flex-col h-[calc(100vh-65px)]">
             <SectionHeader
-              context={[{ label: state.projectName, icon: '📁' }]}
+              context="Prompt Planner"
               actions={[
                 { label: 'History', onClick: () => setHistoryOpen(true) },
               ]}
