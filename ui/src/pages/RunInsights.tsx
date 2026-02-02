@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
-import { StatsBar } from '@/components/StatsBar'
+import { HealthPulse } from '@/components/HealthPulse'
 import { SessionFilters } from '@/components/SessionFilters'
-import { SessionTable } from '@/components/SessionTable'
+import { SessionList } from '@/components/SessionList'
 import { SectionHeader } from '@/components/SectionHeader'
 import { Welcome } from '@/components/Welcome'
 import { useSessions } from '@/hooks/useSessions'
@@ -16,15 +16,14 @@ const runInsightsTabs = [
 
 function RunInsightsSkeleton() {
   return (
-    <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
-      <div className="h-8 w-32 bg-muted rounded animate-pulse" />
-      <div className="grid grid-cols-4 gap-4">
-        {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-24 bg-muted rounded animate-pulse" />
+    <div className="max-w-4xl mx-auto px-6 py-8 space-y-8">
+      <div className="h-8 w-64 bg-muted rounded animate-pulse" />
+      <div className="h-10 w-full bg-muted rounded animate-pulse" />
+      <div className="space-y-3">
+        {[1, 2, 3, 4, 5].map((i) => (
+          <div key={i} className="h-20 bg-muted rounded-lg animate-pulse" />
         ))}
       </div>
-      <div className="h-12 w-full bg-muted rounded animate-pulse" />
-      <div className="h-64 w-full bg-muted rounded animate-pulse" />
     </div>
   )
 }
@@ -55,7 +54,7 @@ export function RunInsights() {
   // Show welcome when no sessions and no filters applied
   if (!hasSessions && !hasFilters && !loading) {
     return (
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-4xl mx-auto px-6 py-8">
         <Welcome />
       </div>
     )
@@ -66,10 +65,10 @@ export function RunInsights() {
       <SectionHeader context="Run Insights" tabs={runInsightsTabs} />
 
       <div className="flex-1 overflow-auto">
-        <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
-          <StatsBar stats={stats} loading={statsLoading} />
+        <div className="max-w-4xl mx-auto px-6 py-8 space-y-8">
+          <HealthPulse stats={stats} loading={statsLoading} />
           <SessionFilters onFilterChange={handleFilterChange} />
-          <SessionTable sessions={sessions} loading={loading} />
+          <SessionList sessions={sessions} loading={loading} />
         </div>
       </div>
     </div>

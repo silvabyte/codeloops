@@ -44,6 +44,7 @@ pub fn create_router(
         .route("/api/sessions/{id}", get(sessions::get_session))
         .route("/api/sessions/{id}/diff", get(sessions::get_session_diff))
         .route("/api/stats", get(stats::get_stats))
+        .route("/api/metrics", get(stats::get_metrics))
         // Prompt builder
         .route("/api/context", get(context::get_context))
         .route("/api/prompt-session", post(prompt::create_session))

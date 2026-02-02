@@ -3,7 +3,9 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 
 use crate::parser::{parse_session, parse_session_summary};
-use crate::types::{DayCount, ProjectStats, Session, SessionFilter, SessionStats, SessionSummary};
+use crate::types::{
+    AgenticMetrics, DayCount, ProjectStats, Session, SessionFilter, SessionStats, SessionSummary,
+};
 
 /// Provides access to session files on disk.
 pub struct SessionStore {
@@ -153,6 +155,188 @@ impl SessionStore {
             success_rate,
             avg_iterations,
             avg_duration_secs,
+            sessions_over_time,
+            by_project,
+        })
+    }
+
+    /// Compute agentic efficacy metrics (DORA-inspired) over sessions matching the filter.
+    pub fn agentic_metrics(&self, filter: &SessionFilter) -> Result<AgenticMetrics> {
+        let summaries = self.list(filter)?;
+        let total_sessions = summaries.len();
+
+        if total_sessions == 0 {
+            return Ok(AgenticMetrics {
+                total_sessions: 0,
+                successful_sessions: 0,
+                success_rate: 0.0,
+                first_try_success_rate: 0.0,
+                avg_iterations_to_success: 0.0,
+                avg_cycle_time_secs: 0.0,
+                waste_rate: 0.0,
+                total_iterations: 0,
+                critic_approval_rate: 0.0,
+                avg_feedback_length: 0.0,
+                improvement_rate: 0.0,
+                sessions_over_time: Vec::new(),
+                by_project: Vec::new(),
+            });
+        }
+
+        // Filter successful sessions
+        let successful_summaries: Vec<_> = summaries
+            .iter()
+            .filter(|s| s.outcome.as_deref() == Some("success"))
+            .collect();
+        let successful_sessions = successful_summaries.len();
+        let success_rate = successful_sessions as f64 / total_sessions as f64;
+
+        // First-try success: iterations = 1 AND success
+        let first_try_successes = successful_summaries
+            .iter()
+            .filter(|s| s.iterations == 1)
+            .count();
+        let first_try_success_rate = if successful_sessions > 0 {
+            first_try_successes as f64 / successful_sessions as f64
+        } else {
+            0.0
+        };
+
+        // Avg iterations for successful sessions
+        let avg_iterations_to_success = if successful_sessions > 0 {
+            successful_summaries
+                .iter()
+                .map(|s| s.iterations as f64)
+                .sum::<f64>()
+                / successful_sessions as f64
+        } else {
+            0.0
+        };
+
+        // Avg duration for successful sessions
+        let successful_durations: Vec<f64> = successful_summaries
+            .iter()
+            .filter_map(|s| s.duration_secs)
+            .collect();
+        let avg_cycle_time_secs = if successful_durations.is_empty() {
+            0.0
+        } else {
+            successful_durations.iter().sum::<f64>() / successful_durations.len() as f64
+        };
+
+        // Waste rate: failed + interrupted + max_iterations_reached
+        let waste_outcomes = ["failed", "interrupted", "max_iterations_reached"];
+        let waste_count = summaries
+            .iter()
+            .filter(|s| {
+                s.outcome
+                    .as_deref()
+                    .map(|o| waste_outcomes.contains(&o))
+                    .unwrap_or(false)
+            })
+            .count();
+        let waste_rate = waste_count as f64 / total_sessions as f64;
+
+        // Critic metrics: load full sessions to access iterations
+        let mut total_iterations = 0usize;
+        let mut approvals = 0usize;
+        let mut rejections = 0usize;
+        let mut total_feedback_length = 0usize;
+        let mut improvement_count = 0usize;
+
+        for summary in &summaries {
+            if let Ok(session) = self.get(&summary.id) {
+                let iterations = &session.iterations;
+                total_iterations += iterations.len();
+
+                for (i, iteration) in iterations.iter().enumerate() {
+                    let is_approved = iteration.critic_decision.to_lowercase() == "approve"
+                        || iteration.critic_decision.to_lowercase() == "approved";
+
+                    if is_approved {
+                        approvals += 1;
+
+                        // Check if previous iteration was rejected (improvement)
+                        if i > 0 {
+                            let prev = &iterations[i - 1];
+                            let prev_rejected = prev.critic_decision.to_lowercase() != "approve"
+                                && prev.critic_decision.to_lowercase() != "approved";
+                            if prev_rejected {
+                                improvement_count += 1;
+                            }
+                        }
+                    } else {
+                        rejections += 1;
+                        if let Some(feedback) = &iteration.feedback {
+                            total_feedback_length += feedback.len();
+                        }
+                    }
+                }
+            }
+        }
+
+        let critic_approval_rate = if total_iterations > 0 {
+            approvals as f64 / total_iterations as f64
+        } else {
+            0.0
+        };
+
+        let avg_feedback_length = if rejections > 0 {
+            total_feedback_length as f64 / rejections as f64
+        } else {
+            0.0
+        };
+
+        let improvement_rate = if rejections > 0 {
+            improvement_count as f64 / rejections as f64
+        } else {
+            0.0
+        };
+
+        // Sessions over time (group by date)
+        let mut day_counts: std::collections::BTreeMap<String, usize> =
+            std::collections::BTreeMap::new();
+        for s in &summaries {
+            let date = s.timestamp.format("%Y-%m-%d").to_string();
+            *day_counts.entry(date).or_insert(0) += 1;
+        }
+        let sessions_over_time: Vec<DayCount> = day_counts
+            .into_iter()
+            .map(|(date, count)| DayCount { date, count })
+            .collect();
+
+        // By project
+        let mut project_map: std::collections::HashMap<String, (usize, usize)> =
+            std::collections::HashMap::new();
+        for s in &summaries {
+            let entry = project_map.entry(s.project.clone()).or_insert((0, 0));
+            entry.0 += 1;
+            if s.outcome.as_deref() == Some("success") {
+                entry.1 += 1;
+            }
+        }
+        let mut by_project: Vec<ProjectStats> = project_map
+            .into_iter()
+            .map(|(project, (total, successes))| ProjectStats {
+                project,
+                total,
+                success_rate: successes as f64 / total as f64,
+            })
+            .collect();
+        by_project.sort_by(|a, b| b.total.cmp(&a.total));
+
+        Ok(AgenticMetrics {
+            total_sessions,
+            successful_sessions,
+            success_rate,
+            first_try_success_rate,
+            avg_iterations_to_success,
+            avg_cycle_time_secs,
+            waste_rate,
+            total_iterations,
+            critic_approval_rate,
+            avg_feedback_length,
+            improvement_rate,
             sessions_over_time,
             by_project,
         })

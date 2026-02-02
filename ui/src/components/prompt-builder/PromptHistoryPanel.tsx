@@ -11,7 +11,7 @@ interface PromptHistoryPanelProps {
   currentProjectName?: string
 }
 
-export function PromptHistoryPanel({ isOpen, onClose, onSelect, currentProjectName }: PromptHistoryPanelProps) {
+export function PromptHistoryPanel({ isOpen, onClose, onSelect }: PromptHistoryPanelProps) {
   const [prompts, setPrompts] = useState<PromptSummary[]>([])
   const [projects, setProjects] = useState<string[]>([])
   const [loading, setLoading] = useState(true)

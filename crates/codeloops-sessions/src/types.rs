@@ -107,3 +107,33 @@ pub struct ProjectStats {
     pub total: usize,
     pub success_rate: f64,
 }
+
+/// Efficacy metrics for agentic software development (DORA-inspired)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgenticMetrics {
+    // Session metrics
+    pub total_sessions: usize,
+    pub successful_sessions: usize,
+    pub success_rate: f64,
+    /// % of successful sessions with iterations=1
+    pub first_try_success_rate: f64,
+    /// Mean iterations for successful sessions
+    pub avg_iterations_to_success: f64,
+    /// Mean duration for successful sessions
+    pub avg_cycle_time_secs: f64,
+    /// % failed/interrupted/max_iter
+    pub waste_rate: f64,
+
+    // Critic metrics
+    pub total_iterations: usize,
+    /// % iterations where critic approved
+    pub critic_approval_rate: f64,
+    /// Mean feedback chars for rejections
+    pub avg_feedback_length: f64,
+    /// % rejections where next iteration improved
+    pub improvement_rate: f64,
+
+    // Breakdowns (reuse existing types)
+    pub sessions_over_time: Vec<DayCount>,
+    pub by_project: Vec<ProjectStats>,
+}

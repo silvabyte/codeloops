@@ -1,4 +1,4 @@
-import type { Session, SessionFilter, SessionStats, SessionSummary } from './types'
+import type { AgenticMetrics, Session, SessionFilter, SessionStats, SessionSummary } from './types'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3100'
 
@@ -32,6 +32,12 @@ export async function fetchSessionDiff(id: string): Promise<string> {
 export async function fetchStats(): Promise<SessionStats> {
   const res = await fetch(`${API_BASE}/api/stats`)
   if (!res.ok) throw new Error(`Failed to fetch stats: ${res.statusText}`)
+  return res.json()
+}
+
+export async function fetchMetrics(): Promise<AgenticMetrics> {
+  const res = await fetch(`${API_BASE}/api/metrics`)
+  if (!res.ok) throw new Error(`Failed to fetch metrics: ${res.statusText}`)
   return res.json()
 }
 

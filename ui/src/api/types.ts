@@ -72,6 +72,27 @@ export interface SessionStats {
   by_project: ProjectStats[]
 }
 
+export interface AgenticMetrics {
+  // Session metrics
+  total_sessions: number
+  successful_sessions: number
+  success_rate: number
+  first_try_success_rate: number
+  avg_iterations_to_success: number
+  avg_cycle_time_secs: number
+  waste_rate: number
+
+  // Critic metrics
+  total_iterations: number
+  critic_approval_rate: number
+  avg_feedback_length: number
+  improvement_rate: number
+
+  // Breakdowns
+  sessions_over_time: DayCount[]
+  by_project: ProjectStats[]
+}
+
 export interface SessionFilter {
   outcome?: string
   after?: string
