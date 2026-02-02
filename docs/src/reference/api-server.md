@@ -334,6 +334,199 @@ eventSource.addEventListener('session_completed', (e) => {
 curl -N http://localhost:3100/api/sessions/live
 ```
 
+---
+
+## Prompt Builder Endpoints
+
+The Prompt Builder feature provides endpoints for creating `prompt.md` files through an AI-guided interview process.
+
+### Get Context
+
+Get the current working directory context for the UI.
+
+**Request**
+
+```
+GET /api/context
+```
+
+**Response**
+
+```json
+{
+  "workingDir": "/home/user/projects/myapp",
+  "projectName": "myapp"
+}
+```
+
+**Response Fields**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `workingDir` | string | Absolute path to working directory |
+| `projectName` | string | Basename of working directory |
+
+**Example**
+
+```bash
+curl http://localhost:3100/api/context
+```
+
+### Create Prompt Session
+
+Start a new prompt building session.
+
+**Request**
+
+```
+POST /api/prompt-session
+```
+
+**Request Body**
+
+```json
+{
+  "workType": "feature",
+  "workingDir": "/home/user/projects/myapp"
+}
+```
+
+**Request Fields**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `workType` | string | Work type: `feature`, `defect`, `risk`, `debt`, or `custom` |
+| `workingDir` | string | Absolute path to working directory |
+
+**Response**
+
+```json
+{
+  "sessionId": "prompt-abc123-def456"
+}
+```
+
+**Example**
+
+```bash
+curl -X POST http://localhost:3100/api/prompt-session \
+  -H "Content-Type: application/json" \
+  -d '{"workType": "feature", "workingDir": "/home/user/projects/myapp"}'
+```
+
+### Send Message
+
+Send a message to the prompt session and receive AI response via SSE.
+
+**Request**
+
+```
+POST /api/prompt-session/{sessionId}/message
+```
+
+**Path Parameters**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `sessionId` | string | Session identifier from create session |
+
+**Request Body**
+
+```json
+{
+  "content": "I want to add user authentication"
+}
+```
+
+**Response**
+
+Content-Type: `text/event-stream`
+
+```
+data: {"content":"Let's"}
+data: {"content":" design"}
+data: {"content":" this"}
+data: {"content":" feature."}
+data: {"promptDraft":"# Feature: User Authentication\n\n## Problem\n..."}
+data: [DONE]
+```
+
+**SSE Events**
+
+| Event Data | Description |
+|------------|-------------|
+| `{"content": "..."}` | Streaming text chunk from AI |
+| `{"promptDraft": "..."}` | Updated prompt.md draft |
+| `[DONE]` | End of stream marker |
+
+**Special Messages**
+
+Send `__INIT__` as the content to get the initial AI greeting for the selected work type.
+
+**Example**
+
+```bash
+# Get initial greeting
+curl -X POST "http://localhost:3100/api/prompt-session/prompt-abc123/message" \
+  -H "Content-Type: application/json" \
+  -d '{"content": "__INIT__"}'
+
+# Send user message
+curl -X POST "http://localhost:3100/api/prompt-session/prompt-abc123/message" \
+  -H "Content-Type: application/json" \
+  -d '{"content": "I want to add input validation for the API"}'
+```
+
+### Save Prompt
+
+Save the prompt.md content to disk.
+
+**Request**
+
+```
+POST /api/prompt/save
+```
+
+**Request Body**
+
+```json
+{
+  "workingDir": "/home/user/projects/myapp",
+  "content": "# Feature: Input Validation\n\n## Problem\n..."
+}
+```
+
+**Request Fields**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `workingDir` | string | Directory to save prompt.md |
+| `content` | string | Content to write to prompt.md |
+
+**Response**
+
+```json
+{
+  "path": "/home/user/projects/myapp/prompt.md"
+}
+```
+
+**Error Responses**
+
+| Status | Description |
+|--------|-------------|
+| 500 | Write failed (permission denied, disk full, etc.) |
+
+**Example**
+
+```bash
+curl -X POST http://localhost:3100/api/prompt/save \
+  -H "Content-Type: application/json" \
+  -d '{"workingDir": "/home/user/projects/myapp", "content": "# My Prompt\n\nContent here..."}'
+```
+
+---
+
 ## Error Responses
 
 ### 404 Not Found

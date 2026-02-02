@@ -19,6 +19,7 @@
 
 - [Overview](./web-ui/overview.md)
 - [Usage](./web-ui/usage.md)
+- [Prompt Builder](./web-ui/prompt-builder.md)
 - [Development](./web-ui/development.md)
 
 # Architecture

@@ -49,8 +49,10 @@ pub struct SavePromptResponse {
 
 #[derive(Debug, Clone)]
 pub struct PromptSession {
+    #[allow(dead_code)]
     pub id: String,
     pub work_type: String,
+    #[allow(dead_code)]
     pub working_dir: String,
     pub messages: Vec<ChatMessage>,
     pub prompt_draft: String,

@@ -63,7 +63,25 @@ codeloops --json-output --prompt "task description"
 codeloops --dry-run --prompt "test"
 ```
 
-After using all the coding agents in the world. Having any sort of ui or tui ends up being... overly complex and ultimitly restrictive. Why not just a prompt.md file? It's so much simpler, easier... all the things...
+After using all the coding agents in the world. Having any sort of ui or tui ends up being... overly complex and ultimately restrictive. Why not just a prompt.md file? It's so much simpler, easier... all the things...
+
+## Prompt Builder
+
+Don't know where to start? The Prompt Builder is an AI-powered conversational interface that helps you create high-quality `prompt.md` files.
+
+```bash
+# Start the web UI and navigate to /prompt-builder
+codeloops ui
+```
+
+1. **Select work type**: Feature, Defect, Risk, Debt, or Custom
+2. **Answer questions**: The AI guides you through a tailored interview
+3. **Preview & edit**: Watch your prompt build in real-time
+4. **Save**: Write `prompt.md` to your project
+
+Keyboard shortcuts: `Cmd/Ctrl+Enter` to send, `Cmd/Ctrl+P` for preview panel.
+
+See the [Prompt Builder documentation](https://silvabyte.github.io/codeloops/web-ui/prompt-builder.html) for details.
 
 ## How It Works
 
