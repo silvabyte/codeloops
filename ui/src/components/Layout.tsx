@@ -7,6 +7,7 @@ export function Layout() {
   const navItems = [
     { path: '/', label: 'Dashboard' },
     { path: '/stats', label: 'Stats' },
+    { path: '/prompt-builder', label: 'New Prompt' },
   ]
 
   return (

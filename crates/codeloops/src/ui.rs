@@ -11,8 +11,9 @@ pub async fn handle_ui_command(dev: bool, api_port: u16, ui_port: u16) -> Result
 
     let store = Arc::new(SessionStore::new()?);
     let watcher = Arc::new(SessionWatcher::new().context("Failed to start session watcher")?);
+    let working_dir = std::env::current_dir().context("Failed to get current directory")?;
 
-    let router = api::create_router(store, watcher);
+    let router = api::create_router(store, watcher, working_dir);
 
     // Start the API server
     let api_addr = format!("0.0.0.0:{}", api_port);

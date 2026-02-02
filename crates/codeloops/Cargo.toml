@@ -32,6 +32,8 @@ axum.workspace = true
 tower-http.workspace = true
 tokio-stream.workspace = true
 open.workspace = true
+uuid.workspace = true
+lazy_static.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
