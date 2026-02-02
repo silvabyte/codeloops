@@ -234,7 +234,7 @@ export function PromptBuilder() {
       <div
         className={cn(
           'flex flex-col transition-all duration-200',
-          previewOpen ? 'w-[60%]' : 'w-full'
+          previewOpen ? 'w-1/2' : 'w-full'
         )}
       >
         <SectionHeader context={headerContext} actions={headerActions} />
@@ -266,7 +266,7 @@ export function PromptBuilder() {
 
       {/* Preview panel */}
       {previewOpen && (
-        <div className="w-[40%]">
+        <div className="w-1/2">
           <PreviewPanel
             content={promptDraft}
             onContentChange={updatePromptDraft}
