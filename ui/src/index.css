@@ -8,6 +8,7 @@
   --color-card: #111118;
   --color-card-foreground: #fafafa;
   --color-border: #27272a;
+  --color-border-subtle: #1f1f23;
   --color-primary: #6366f1;
   --color-primary-foreground: #ffffff;
   --color-secondary: #1e1e2e;
@@ -19,6 +20,15 @@
   --color-warning: #eab308;
   --color-ring: #6366f1;
   --radius: 0.5rem;
+
+  /* Amber accent (from site design system) */
+  --color-amber: #f59e0b;
+  --color-amber-dim: #b45309;
+  --color-amber-glow: rgba(245, 158, 11, 0.15);
+  --color-amber-bright: #fbbf24;
+
+  /* Surface color for typing indicator */
+  --color-surface: #0f0f11;
 }
 
 body {
@@ -26,4 +36,42 @@ body {
   background-color: var(--color-background);
   color: var(--color-foreground);
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* Typing indicator animation (matches site's amber circuit theme) */
+@keyframes typingPulse {
+  0%, 60%, 100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.typing-indicator {
+  display: flex;
+  gap: 0.375rem;
+  padding: 0.75rem 1rem;
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border-subtle);
+}
+
+.typing-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--color-amber);
+  border-radius: 50%;
+  animation: typingPulse 1.4s ease-in-out infinite;
+  box-shadow: 0 0 8px var(--color-amber-glow);
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
 }

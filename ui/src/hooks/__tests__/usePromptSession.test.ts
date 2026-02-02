@@ -165,11 +165,24 @@ describe('usePromptSession', () => {
   })
 
   describe('prompt draft editing', () => {
-    it('should update prompt draft', async () => {
+    it('should update prompt draft when in ready state', async () => {
+      const mockSessionId = 'test-session-123'
+      mockCreatePromptSession.mockResolvedValue({ sessionId: mockSessionId })
+
+      async function* mockMessages() {
+        yield 'Welcome!'
+      }
+      mockSendPromptMessage.mockReturnValue(mockMessages())
+
       const { result } = renderHook(() => usePromptSession())
 
       await waitFor(() => {
         expect(result.current.contextLoading).toBe(false)
+      })
+
+      // First establish a session to get to ready state
+      await act(async () => {
+        await result.current.selectWorkType('feature')
       })
 
       act(() => {
@@ -178,14 +191,43 @@ describe('usePromptSession', () => {
 
       expect(result.current.session.promptDraft).toBe('# New content')
     })
-  })
 
-  describe('preview toggle', () => {
-    it('should toggle preview panel', async () => {
+    it('should not update prompt draft when not in ready state', async () => {
       const { result } = renderHook(() => usePromptSession())
 
       await waitFor(() => {
         expect(result.current.contextLoading).toBe(false)
+      })
+
+      // Try to update without a session (selecting_work_type state)
+      act(() => {
+        result.current.updatePromptDraft('# New content')
+      })
+
+      // Should remain empty because we're not in ready state
+      expect(result.current.session.promptDraft).toBe('')
+    })
+  })
+
+  describe('preview toggle', () => {
+    it('should toggle preview panel when in ready state', async () => {
+      const mockSessionId = 'test-session-123'
+      mockCreatePromptSession.mockResolvedValue({ sessionId: mockSessionId })
+
+      async function* mockMessages() {
+        yield 'Welcome!'
+      }
+      mockSendPromptMessage.mockReturnValue(mockMessages())
+
+      const { result } = renderHook(() => usePromptSession())
+
+      await waitFor(() => {
+        expect(result.current.contextLoading).toBe(false)
+      })
+
+      // First establish a session to get to ready state
+      await act(async () => {
+        await result.current.selectWorkType('feature')
       })
 
       expect(result.current.session.previewOpen).toBe(false)
@@ -203,11 +245,24 @@ describe('usePromptSession', () => {
       expect(result.current.session.previewOpen).toBe(false)
     })
 
-    it('should close preview', async () => {
+    it('should close preview when in ready state', async () => {
+      const mockSessionId = 'test-session-123'
+      mockCreatePromptSession.mockResolvedValue({ sessionId: mockSessionId })
+
+      async function* mockMessages() {
+        yield 'Welcome!'
+      }
+      mockSendPromptMessage.mockReturnValue(mockMessages())
+
       const { result } = renderHook(() => usePromptSession())
 
       await waitFor(() => {
         expect(result.current.contextLoading).toBe(false)
+      })
+
+      // First establish a session to get to ready state
+      await act(async () => {
+        await result.current.selectWorkType('feature')
       })
 
       act(() => {
@@ -220,6 +275,22 @@ describe('usePromptSession', () => {
         result.current.closePreview()
       })
 
+      expect(result.current.session.previewOpen).toBe(false)
+    })
+
+    it('should not toggle preview when not in ready state', async () => {
+      const { result } = renderHook(() => usePromptSession())
+
+      await waitFor(() => {
+        expect(result.current.contextLoading).toBe(false)
+      })
+
+      // Try to toggle without a session (selecting_work_type state)
+      act(() => {
+        result.current.togglePreview()
+      })
+
+      // Should remain false because we're not in ready state
       expect(result.current.session.previewOpen).toBe(false)
     })
   })
@@ -318,9 +389,16 @@ describe('usePromptSession', () => {
   })
 
   describe('save functionality', () => {
-    it('should save prompt to disk', async () => {
+    it('should save prompt to disk when in ready state', async () => {
       const mockPath = '/test/project/prompt.md'
       mockSavePrompt.mockResolvedValue({ path: mockPath })
+      mockCreatePromptSession.mockResolvedValue({ sessionId: 'test-123' })
+
+      async function* mockMessages() {
+        yield 'Welcome!'
+        yield '__PROMPT_DRAFT__# Test prompt'
+      }
+      mockSendPromptMessage.mockReturnValue(mockMessages())
 
       const { result } = renderHook(() => usePromptSession())
 
@@ -328,8 +406,9 @@ describe('usePromptSession', () => {
         expect(result.current.contextLoading).toBe(false)
       })
 
-      act(() => {
-        result.current.updatePromptDraft('# Test prompt')
+      // First establish a session to get to ready state with a prompt draft
+      await act(async () => {
+        await result.current.selectWorkType('feature')
       })
 
       let savedPath: string | null = null
@@ -341,7 +420,7 @@ describe('usePromptSession', () => {
       expect(savedPath).toBe(mockPath)
     })
 
-    it('should not save if prompt draft is empty', async () => {
+    it('should not save if not in ready state', async () => {
       const { result } = renderHook(() => usePromptSession())
 
       await waitFor(() => {
@@ -357,8 +436,14 @@ describe('usePromptSession', () => {
       expect(savedPath).toBeNull()
     })
 
-    it('should handle save error', async () => {
-      mockSavePrompt.mockRejectedValue(new Error('Permission denied'))
+    it('should not save if prompt draft is empty', async () => {
+      mockCreatePromptSession.mockResolvedValue({ sessionId: 'test-123' })
+
+      async function* mockMessages() {
+        yield 'Welcome!'
+        // No __PROMPT_DRAFT__ chunk, so promptDraft remains empty
+      }
+      mockSendPromptMessage.mockReturnValue(mockMessages())
 
       const { result } = renderHook(() => usePromptSession())
 
@@ -366,8 +451,37 @@ describe('usePromptSession', () => {
         expect(result.current.contextLoading).toBe(false)
       })
 
-      act(() => {
-        result.current.updatePromptDraft('# Test')
+      await act(async () => {
+        await result.current.selectWorkType('feature')
+      })
+
+      let savedPath: string | null = null
+      await act(async () => {
+        savedPath = await result.current.save()
+      })
+
+      expect(mockSavePrompt).not.toHaveBeenCalled()
+      expect(savedPath).toBeNull()
+    })
+
+    it('should handle save error', async () => {
+      mockSavePrompt.mockRejectedValue(new Error('Permission denied'))
+      mockCreatePromptSession.mockResolvedValue({ sessionId: 'test-123' })
+
+      async function* mockMessages() {
+        yield 'Welcome!'
+        yield '__PROMPT_DRAFT__# Test'
+      }
+      mockSendPromptMessage.mockReturnValue(mockMessages())
+
+      const { result } = renderHook(() => usePromptSession())
+
+      await waitFor(() => {
+        expect(result.current.contextLoading).toBe(false)
+      })
+
+      await act(async () => {
+        await result.current.selectWorkType('feature')
       })
 
       await act(async () => {

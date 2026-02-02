@@ -8,7 +8,19 @@ import {
   savePrompt,
 } from '@/lib/prompt-session'
 
-export type SessionStatus = 'selecting' | 'chatting' | 'complete'
+/**
+ * Discriminated union for prompt session state machine.
+ *
+ * Each state maps to exactly one UI representation, making impossible states unrepresentable.
+ */
+export type PromptSessionState =
+  | { status: 'loading_context' }
+  | { status: 'selecting_work_type'; workingDir: string; projectName: string }
+  | { status: 'creating_session'; workingDir: string; projectName: string; workType: WorkType }
+  | { status: 'awaiting_agent'; workingDir: string; projectName: string; workType: WorkType; sessionId: string }
+  | { status: 'streaming'; workingDir: string; projectName: string; workType: WorkType; sessionId: string; messages: Message[]; promptDraft: string }
+  | { status: 'ready'; workingDir: string; projectName: string; workType: WorkType; sessionId: string; messages: Message[]; promptDraft: string; previewOpen: boolean }
+  | { status: 'error'; workingDir: string; projectName: string; error: string; previousState?: PromptSessionState }
 
 export interface PromptSession {
   id: string | null
@@ -17,7 +29,7 @@ export interface PromptSession {
   projectName: string
   messages: Message[]
   promptDraft: string
-  status: SessionStatus
+  status: 'selecting' | 'chatting' | 'complete'
   previewOpen: boolean
 }
 
@@ -32,7 +44,6 @@ function getStorageKey(projectPath: string): string {
  * The prompt content is sent separately via the promptDraft field.
  */
 function stripPromptTags(content: string): string {
-  // Remove <prompt>...</prompt> blocks from display
   return content.replace(/<prompt>[\s\S]*?<\/prompt>/g, '').trim()
 }
 
@@ -40,23 +51,111 @@ function generateId(): string {
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 }
 
-const defaultSession: PromptSession = {
-  id: null,
-  workType: null,
-  workingDir: '',
-  projectName: '',
-  messages: [],
-  promptDraft: '',
-  status: 'selecting',
-  previewOpen: false,
+/**
+ * Derive legacy PromptSession shape from state machine for backwards compatibility with components.
+ */
+function deriveSession(state: PromptSessionState): PromptSession {
+  switch (state.status) {
+    case 'loading_context':
+      return {
+        id: null,
+        workType: null,
+        workingDir: '',
+        projectName: '',
+        messages: [],
+        promptDraft: '',
+        status: 'selecting',
+        previewOpen: false,
+      }
+    case 'selecting_work_type':
+      return {
+        id: null,
+        workType: null,
+        workingDir: state.workingDir,
+        projectName: state.projectName,
+        messages: [],
+        promptDraft: '',
+        status: 'selecting',
+        previewOpen: false,
+      }
+    case 'creating_session':
+    case 'awaiting_agent':
+      return {
+        id: state.status === 'awaiting_agent' ? state.sessionId : null,
+        workType: state.workType,
+        workingDir: state.workingDir,
+        projectName: state.projectName,
+        messages: [],
+        promptDraft: '',
+        status: 'chatting',
+        previewOpen: false,
+      }
+    case 'streaming':
+      return {
+        id: state.sessionId,
+        workType: state.workType,
+        workingDir: state.workingDir,
+        projectName: state.projectName,
+        messages: state.messages,
+        promptDraft: state.promptDraft,
+        status: 'chatting',
+        previewOpen: false,
+      }
+    case 'ready':
+      return {
+        id: state.sessionId,
+        workType: state.workType,
+        workingDir: state.workingDir,
+        projectName: state.projectName,
+        messages: state.messages,
+        promptDraft: state.promptDraft,
+        status: 'chatting',
+        previewOpen: state.previewOpen,
+      }
+    case 'error':
+      // Preserve what we can from the previous state
+      if (state.previousState && state.previousState.status !== 'error' && state.previousState.status !== 'loading_context') {
+        const prev = deriveSession(state.previousState)
+        return prev
+      }
+      return {
+        id: null,
+        workType: null,
+        workingDir: state.workingDir,
+        projectName: state.projectName,
+        messages: [],
+        promptDraft: '',
+        status: 'selecting',
+        previewOpen: false,
+      }
+  }
+}
+
+/**
+ * Derive UI-relevant flags from state machine.
+ */
+function deriveFlags(state: PromptSessionState) {
+  return {
+    isLoading: state.status === 'creating_session' || state.status === 'awaiting_agent' || state.status === 'streaming',
+    isCreatingSession: state.status === 'creating_session',
+    isAwaitingAgent: state.status === 'awaiting_agent',
+    isStreaming: state.status === 'streaming',
+    contextLoading: state.status === 'loading_context',
+    error: state.status === 'error' ? state.error : null,
+  }
+}
+
+interface StoredSession {
+  id: string | null
+  workType: WorkType | null
+  messages: Message[]
+  promptDraft: string
+  previewOpen: boolean
 }
 
 export function usePromptSession() {
-  const [session, setSession] = useState<PromptSession>(defaultSession)
-  const [isLoading, setIsLoading] = useState(false)
+  const [state, setState] = useState<PromptSessionState>({ status: 'loading_context' })
   const [isSaving, setIsSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [contextLoading, setContextLoading] = useState(true)
   const abortControllerRef = useRef<AbortController | null>(null)
 
   // Load context and restore session on mount
@@ -70,38 +169,38 @@ export function usePromptSession() {
         const stored = localStorage.getItem(storageKey)
         if (stored) {
           try {
-            const parsed = JSON.parse(stored)
-            setSession({
-              ...parsed,
-              workingDir: context.workingDir,
-              projectName: context.projectName,
-            })
+            const parsed: StoredSession = JSON.parse(stored)
+            if (parsed.id && parsed.workType) {
+              // Restore to ready state
+              setState({
+                status: 'ready',
+                workingDir: context.workingDir,
+                projectName: context.projectName,
+                workType: parsed.workType,
+                sessionId: parsed.id,
+                messages: parsed.messages || [],
+                promptDraft: parsed.promptDraft || '',
+                previewOpen: parsed.previewOpen || false,
+              })
+              return
+            }
           } catch {
             // Invalid stored session, start fresh
-            setSession({
-              ...defaultSession,
-              workingDir: context.workingDir,
-              projectName: context.projectName,
-            })
           }
-        } else {
-          setSession({
-            ...defaultSession,
-            workingDir: context.workingDir,
-            projectName: context.projectName,
-          })
         }
+
+        setState({
+          status: 'selecting_work_type',
+          workingDir: context.workingDir,
+          projectName: context.projectName,
+        })
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to load context')
-        // Use defaults if context fails - fallback to empty strings
-        // since we're in the browser and don't have the server context
-        setSession({
-          ...defaultSession,
+        setState({
+          status: 'error',
           workingDir: '',
           projectName: 'Unknown Project',
+          error: e instanceof Error ? e.message : 'Failed to load context',
         })
-      } finally {
-        setContextLoading(false)
       }
     }
     init()
@@ -109,68 +208,138 @@ export function usePromptSession() {
 
   // Persist session changes to localStorage
   useEffect(() => {
-    if (!session.workingDir || contextLoading) return
+    if (state.status === 'loading_context') return
 
-    const storageKey = getStorageKey(session.workingDir)
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(session))
-    } catch {
-      // Ignore storage errors (quota exceeded, etc.)
+    const workingDir = 'workingDir' in state ? state.workingDir : ''
+    if (!workingDir) return
+
+    const storageKey = getStorageKey(workingDir)
+
+    // Only persist ready state
+    if (state.status === 'ready') {
+      try {
+        const toStore: StoredSession = {
+          id: state.sessionId,
+          workType: state.workType,
+          messages: state.messages,
+          promptDraft: state.promptDraft,
+          previewOpen: state.previewOpen,
+        }
+        localStorage.setItem(storageKey, JSON.stringify(toStore))
+      } catch {
+        // Ignore storage errors
+      }
     }
-  }, [session, contextLoading])
+  }, [state])
 
   const selectWorkType = useCallback(async (type: WorkType) => {
-    setIsLoading(true)
-    setError(null)
+    // Guard: only transition from selecting_work_type
+    if (state.status !== 'selecting_work_type') return
+
+    const { workingDir, projectName } = state
+
+    // Immediately transition to creating_session (UI shows chat view with typing indicator)
+    setState({
+      status: 'creating_session',
+      workingDir,
+      projectName,
+      workType: type,
+    })
 
     try {
-      const { sessionId } = await createPromptSession(type, session.workingDir)
+      const { sessionId } = await createPromptSession(type, workingDir)
 
-      // Get initial AI message
-      const initialMessages: Message[] = []
+      // Transition to awaiting_agent
+      setState({
+        status: 'awaiting_agent',
+        workingDir,
+        projectName,
+        workType: type,
+        sessionId,
+      })
+
+      // Stream initial AI message
       let currentContent = ''
+      let currentDraft = ''
 
       for await (const chunk of sendPromptMessage(sessionId, '__INIT__')) {
         if (chunk.startsWith('__ERROR__')) {
           const errorMsg = chunk.slice('__ERROR__'.length)
-          setError(errorMsg)
-          break
+          setState({
+            status: 'error',
+            workingDir,
+            projectName,
+            error: errorMsg,
+            previousState: {
+              status: 'awaiting_agent',
+              workingDir,
+              projectName,
+              workType: type,
+              sessionId,
+            },
+          })
+          return
         } else if (chunk.startsWith('__PROMPT_DRAFT__')) {
-          const draft = chunk.slice('__PROMPT_DRAFT__'.length)
-          setSession((s) => ({ ...s, promptDraft: draft }))
+          currentDraft = chunk.slice('__PROMPT_DRAFT__'.length)
         } else {
           currentContent += chunk
+
+          // Transition to streaming on first content
+          const displayContent = stripPromptTags(currentContent)
+          if (displayContent) {
+            setState({
+              status: 'streaming',
+              workingDir,
+              projectName,
+              workType: type,
+              sessionId,
+              messages: [{
+                id: generateId(),
+                role: 'assistant',
+                content: displayContent,
+              }],
+              promptDraft: currentDraft,
+            })
+          }
         }
       }
 
-      if (currentContent) {
-        // Strip prompt tags for display
-        const displayContent = stripPromptTags(currentContent)
-        if (displayContent) {
-          initialMessages.push({
-            id: generateId(),
-            role: 'assistant',
-            content: displayContent,
-          })
-        }
-      }
-
-      setSession((s) => ({
-        ...s,
-        id: sessionId,
+      // Transition to ready
+      const displayContent = stripPromptTags(currentContent)
+      setState({
+        status: 'ready',
+        workingDir,
+        projectName,
         workType: type,
-        status: 'chatting',
-        messages: initialMessages,
-      }))
+        sessionId,
+        messages: displayContent ? [{
+          id: generateId(),
+          role: 'assistant',
+          content: displayContent,
+        }] : [],
+        promptDraft: currentDraft,
+        previewOpen: false,
+      })
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to start session')
-    } finally {
-      setIsLoading(false)
+      setState({
+        status: 'error',
+        workingDir,
+        projectName,
+        error: e instanceof Error ? e.message : 'Failed to start session',
+        previousState: {
+          status: 'selecting_work_type',
+          workingDir,
+          projectName,
+        },
+      })
     }
-  }, [session.workingDir])
+  }, [state])
 
   const sendMessage = useCallback(async (content: string) => {
-    if (!session.id || isLoading) return
+    // Guard: only send from ready state
+    if (state.status !== 'ready') return
+
+    const { workingDir, projectName, workType, sessionId, messages, promptDraft, previewOpen } = state
 
     // Add user message immediately
     const userMessage: Message = {
@@ -179,115 +348,229 @@ export function usePromptSession() {
       content,
     }
 
-    setSession((s) => ({
-      ...s,
-      messages: [...s.messages, userMessage],
-    }))
+    const updatedMessages = [...messages, userMessage]
 
-    setIsLoading(true)
-    setError(null)
+    // Transition to streaming with user message
+    setState({
+      status: 'streaming',
+      workingDir,
+      projectName,
+      workType,
+      sessionId,
+      messages: updatedMessages,
+      promptDraft,
+    })
 
     try {
       let assistantContent = ''
       const assistantId = generateId()
+      let currentDraft = promptDraft
 
-      // Stream AI response
-      for await (const chunk of sendPromptMessage(session.id, content)) {
+      for await (const chunk of sendPromptMessage(sessionId, content)) {
         if (chunk.startsWith('__ERROR__')) {
           const errorMsg = chunk.slice('__ERROR__'.length)
-          setError(errorMsg)
-          break
+          setState({
+            status: 'error',
+            workingDir,
+            projectName,
+            error: errorMsg,
+            previousState: {
+              status: 'ready',
+              workingDir,
+              projectName,
+              workType,
+              sessionId,
+              messages: updatedMessages,
+              promptDraft: currentDraft,
+              previewOpen,
+            },
+          })
+          return
         } else if (chunk.startsWith('__PROMPT_DRAFT__')) {
-          const draft = chunk.slice('__PROMPT_DRAFT__'.length)
-          setSession((s) => ({ ...s, promptDraft: draft }))
+          currentDraft = chunk.slice('__PROMPT_DRAFT__'.length)
         } else {
           assistantContent += chunk
-          // Update message as it streams (strip <prompt> tags for display)
           const displayContent = stripPromptTags(assistantContent)
-          setSession((s) => {
-            const existingIdx = s.messages.findIndex((m) => m.id === assistantId)
+
+          // Update streaming state with assistant response
+          setState((prev) => {
+            if (prev.status !== 'streaming') return prev
+
+            const existingIdx = prev.messages.findIndex((m) => m.id === assistantId)
+            let newMessages: Message[]
             if (existingIdx >= 0) {
-              const updated = [...s.messages]
-              updated[existingIdx] = {
-                ...updated[existingIdx],
-                content: displayContent,
-              }
-              return { ...s, messages: updated }
+              newMessages = [...prev.messages]
+              newMessages[existingIdx] = { ...newMessages[existingIdx], content: displayContent }
             } else {
-              return {
-                ...s,
-                messages: [
-                  ...s.messages,
-                  { id: assistantId, role: 'assistant', content: displayContent },
-                ],
-              }
+              newMessages = [
+                ...prev.messages,
+                { id: assistantId, role: 'assistant', content: displayContent },
+              ]
+            }
+
+            return {
+              ...prev,
+              messages: newMessages,
+              promptDraft: currentDraft,
             }
           })
         }
       }
+
+      // Transition to ready
+      const displayContent = stripPromptTags(assistantContent)
+      setState((prev) => {
+        if (prev.status !== 'streaming') return prev
+
+        const existingIdx = prev.messages.findIndex((m) => m.id === assistantId)
+        let finalMessages: Message[]
+        if (existingIdx >= 0) {
+          finalMessages = [...prev.messages]
+          finalMessages[existingIdx] = { ...finalMessages[existingIdx], content: displayContent }
+        } else if (displayContent) {
+          finalMessages = [
+            ...prev.messages,
+            { id: assistantId, role: 'assistant', content: displayContent },
+          ]
+        } else {
+          finalMessages = prev.messages
+        }
+
+        return {
+          status: 'ready',
+          workingDir: prev.workingDir,
+          projectName: prev.projectName,
+          workType: prev.workType,
+          sessionId: prev.sessionId,
+          messages: finalMessages,
+          promptDraft: currentDraft,
+          previewOpen,
+        }
+      })
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to send message')
-    } finally {
-      setIsLoading(false)
+      setState({
+        status: 'error',
+        workingDir,
+        projectName,
+        error: e instanceof Error ? e.message : 'Failed to send message',
+        previousState: {
+          status: 'ready',
+          workingDir,
+          projectName,
+          workType,
+          sessionId,
+          messages: updatedMessages,
+          promptDraft,
+          previewOpen,
+        },
+      })
     }
-  }, [session.id, isLoading])
+  }, [state])
 
   const updatePromptDraft = useCallback((content: string) => {
-    setSession((s) => ({ ...s, promptDraft: content }))
+    setState((prev) => {
+      if (prev.status === 'ready') {
+        return { ...prev, promptDraft: content }
+      }
+      if (prev.status === 'streaming') {
+        return { ...prev, promptDraft: content }
+      }
+      return prev
+    })
   }, [])
 
   const togglePreview = useCallback(() => {
-    setSession((s) => ({ ...s, previewOpen: !s.previewOpen }))
+    setState((prev) => {
+      if (prev.status === 'ready') {
+        return { ...prev, previewOpen: !prev.previewOpen }
+      }
+      return prev
+    })
   }, [])
 
   const closePreview = useCallback(() => {
-    setSession((s) => ({ ...s, previewOpen: false }))
+    setState((prev) => {
+      if (prev.status === 'ready') {
+        return { ...prev, previewOpen: false }
+      }
+      return prev
+    })
   }, [])
 
   const save = useCallback(async () => {
-    if (!session.promptDraft || isSaving) return null
+    if (state.status !== 'ready' || isSaving) return null
+
+    const { workingDir, promptDraft } = state
+    if (!promptDraft) return null
 
     setIsSaving(true)
-    setError(null)
 
     try {
-      const result = await savePrompt(session.workingDir, session.promptDraft)
+      const result = await savePrompt(workingDir, promptDraft)
       return result.path
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save prompt')
+      setState((prev) => ({
+        status: 'error',
+        workingDir: 'workingDir' in prev ? prev.workingDir : '',
+        projectName: 'projectName' in prev ? prev.projectName : '',
+        error: e instanceof Error ? e.message : 'Failed to save prompt',
+        previousState: prev,
+      }))
       return null
     } finally {
       setIsSaving(false)
     }
-  }, [session.workingDir, session.promptDraft, isSaving])
+  }, [state, isSaving])
 
   const reset = useCallback(() => {
-    // Cancel any ongoing requests
     abortControllerRef.current?.abort()
 
-    // Clear localStorage
-    if (session.workingDir) {
-      const storageKey = getStorageKey(session.workingDir)
+    const workingDir = 'workingDir' in state ? state.workingDir : ''
+    const projectName = 'projectName' in state ? state.projectName : ''
+
+    if (workingDir) {
+      const storageKey = getStorageKey(workingDir)
       localStorage.removeItem(storageKey)
     }
 
-    // Reset session state
-    setSession((s) => ({
-      ...defaultSession,
-      workingDir: s.workingDir,
-      projectName: s.projectName,
-    }))
-    setError(null)
-    setIsLoading(false)
-    setIsSaving(false)
-  }, [session.workingDir])
+    setState({
+      status: 'selecting_work_type',
+      workingDir,
+      projectName,
+    })
+  }, [state])
+
+  const clearError = useCallback(() => {
+    if (state.status === 'error' && state.previousState) {
+      setState(state.previousState)
+    } else if (state.status === 'error') {
+      setState({
+        status: 'selecting_work_type',
+        workingDir: state.workingDir,
+        projectName: state.projectName,
+      })
+    }
+  }, [state])
+
+  // Derive legacy shapes for backwards compatibility
+  const session = deriveSession(state)
+  const flags = deriveFlags(state)
 
   return {
+    // State machine
+    state,
+    // Legacy session shape (for components)
     session,
-    isLoading,
+    // Derived flags
+    isLoading: flags.isLoading,
     isSaving,
-    error,
-    contextLoading,
+    error: flags.error,
+    contextLoading: flags.contextLoading,
+    // Granular loading states
+    isCreatingSession: flags.isCreatingSession,
+    isAwaitingAgent: flags.isAwaitingAgent,
+    isStreaming: flags.isStreaming,
+    // Actions
     selectWorkType,
     sendMessage,
     updatePromptDraft,
@@ -295,5 +578,6 @@ export function usePromptSession() {
     closePreview,
     save,
     reset,
+    clearError,
   }
 }

@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState, useCallback, type KeyboardEvent } from 'react'
 import { cn } from '@/lib/utils'
+import { TypingIndicator } from './TypingIndicator'
 
 export interface Message {
   id: string
@@ -11,10 +12,17 @@ interface ConversationProps {
   messages: Message[]
   onSend: (content: string) => void
   isLoading?: boolean
+  showTypingIndicator?: boolean
   disabled?: boolean
 }
 
-export function Conversation({ messages, onSend, isLoading, disabled }: ConversationProps) {
+export function Conversation({
+  messages,
+  onSend,
+  isLoading,
+  showTypingIndicator,
+  disabled,
+}: ConversationProps) {
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -25,7 +33,7 @@ export function Conversation({ messages, onSend, isLoading, disabled }: Conversa
 
   useEffect(() => {
     scrollToBottom()
-  }, [messages, scrollToBottom])
+  }, [messages, showTypingIndicator, scrollToBottom])
 
   const handleSend = useCallback(() => {
     const trimmed = input.trim()
@@ -35,7 +43,7 @@ export function Conversation({ messages, onSend, isLoading, disabled }: Conversa
   }, [input, disabled, isLoading, onSend])
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
     }
@@ -63,11 +71,7 @@ export function Conversation({ messages, onSend, isLoading, disabled }: Conversa
             </p>
           </div>
         ))}
-        {isLoading && (
-          <div className="mr-auto">
-            <span className="text-sm text-muted-foreground/50">...</span>
-          </div>
-        )}
+        {showTypingIndicator && <TypingIndicator />}
         <div ref={messagesEndRef} />
       </div>
 
@@ -80,7 +84,7 @@ export function Conversation({ messages, onSend, isLoading, disabled }: Conversa
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Type here..."
-            disabled={disabled || isLoading}
+            disabled={disabled || isLoading || showTypingIndicator}
             rows={3}
             className={cn(
               'w-full bg-transparent text-foreground placeholder:text-muted-foreground/50',
@@ -88,8 +92,11 @@ export function Conversation({ messages, onSend, isLoading, disabled }: Conversa
               'disabled:opacity-50'
             )}
           />
-          <span className="absolute bottom-0 right-0 text-xs text-muted-foreground/40">
-            {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+↵
+          <span
+            className="absolute bottom-0 right-0 text-xs text-muted-foreground/40"
+            title="Enter to send"
+          >
+            ↵
           </span>
         </div>
       </div>

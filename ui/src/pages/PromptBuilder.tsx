@@ -15,11 +15,11 @@ function LoadingSkeleton() {
 
 export function PromptBuilder() {
   const {
+    state,
     session,
-    isLoading,
     isSaving,
     error,
-    contextLoading,
+    isStreaming,
     selectWorkType,
     sendMessage,
     updatePromptDraft,
@@ -27,23 +27,27 @@ export function PromptBuilder() {
     closePreview,
     save,
     reset,
+    clearError,
   } = usePromptSession()
 
   // Keyboard shortcuts
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      // Cmd/Ctrl + P: Toggle preview
+      // Cmd/Ctrl + P: Toggle preview (only in ready state)
       if ((e.metaKey || e.ctrlKey) && e.key === 'p') {
         e.preventDefault()
         togglePreview()
         return
       }
 
-      // Escape: Close preview or clear focus
+      // Escape: Close preview or clear error
       if (e.key === 'Escape') {
         if (session.previewOpen) {
           e.preventDefault()
           closePreview()
+        } else if (error) {
+          e.preventDefault()
+          clearError()
         }
         return
       }
@@ -51,7 +55,7 @@ export function PromptBuilder() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [session.previewOpen, togglePreview, closePreview])
+  }, [session.previewOpen, togglePreview, closePreview, error, clearError])
 
   const handleSave = useCallback(async () => {
     const path = await save()
@@ -71,7 +75,73 @@ export function PromptBuilder() {
     console.log('Downloaded prompt.md')
   }, [])
 
-  if (contextLoading) {
+  // State machine driven rendering
+  switch (state.status) {
+    case 'loading_context':
+      return (
+        <div className="max-w-3xl mx-auto px-6">
+          <LoadingSkeleton />
+        </div>
+      )
+
+    case 'selecting_work_type':
+      return (
+        <div className="max-w-3xl mx-auto px-6">
+          <WorkTypeSelector
+            projectName={state.projectName}
+            onSelect={selectWorkType}
+          />
+          {error && (
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+        </div>
+      )
+
+    case 'error':
+      // For errors, show appropriate UI based on previous state
+      if (state.previousState?.status === 'selecting_work_type' || !state.previousState) {
+        return (
+          <div className="max-w-3xl mx-auto px-6">
+            <WorkTypeSelector
+              projectName={state.projectName}
+              onSelect={selectWorkType}
+            />
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 text-sm text-destructive bg-background/95 px-4 py-2 rounded-md border border-destructive/20">
+              {state.error}
+              <button
+                onClick={clearError}
+                className="ml-3 text-xs text-muted-foreground hover:text-foreground"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )
+      }
+      // Fall through to chat view for errors during chat
+      // (handled below with chat states)
+      break
+
+    case 'creating_session':
+    case 'awaiting_agent':
+    case 'streaming':
+    case 'ready':
+      // All chat states render the same layout, with different loading indicators
+      break
+  }
+
+  // Chat view (creating_session, awaiting_agent, streaming, ready, or error during chat)
+  const showTypingIndicator = state.status === 'creating_session' || state.status === 'awaiting_agent'
+  const isInChatState = state.status === 'creating_session' ||
+    state.status === 'awaiting_agent' ||
+    state.status === 'streaming' ||
+    state.status === 'ready' ||
+    (state.status === 'error' && state.previousState?.status !== 'selecting_work_type')
+
+  if (!isInChatState) {
+    // Fallback - shouldn't reach here
     return (
       <div className="max-w-3xl mx-auto px-6">
         <LoadingSkeleton />
@@ -79,31 +149,17 @@ export function PromptBuilder() {
     )
   }
 
-  // Selecting state - show work type selector
-  if (session.status === 'selecting') {
-    return (
-      <div className="max-w-3xl mx-auto px-6">
-        <WorkTypeSelector
-          projectName={session.projectName}
-          onSelect={selectWorkType}
-        />
-        {error && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 text-sm text-destructive">
-            {error}
-          </div>
-        )}
-      </div>
-    )
-  }
+  const workType = 'workType' in state ? state.workType : session.workType
+  const previewOpen = state.status === 'ready' ? state.previewOpen : false
+  const promptDraft = 'promptDraft' in state ? state.promptDraft : session.promptDraft
 
-  // Chatting state - show conversation with optional preview panel
   return (
     <div className="h-[calc(100vh-65px)] flex">
       {/* Conversation area */}
       <div
         className={cn(
           'flex flex-col transition-all duration-200',
-          session.previewOpen ? 'w-[60%]' : 'w-full'
+          previewOpen ? 'w-[60%]' : 'w-full'
         )}
       >
         {/* Header */}
@@ -116,19 +172,22 @@ export function PromptBuilder() {
               Start over
             </button>
             <span className="text-xs text-muted-foreground/50">
-              {session.workType}
+              {workType}
             </span>
           </div>
           <button
             onClick={togglePreview}
+            disabled={state.status !== 'ready'}
             className={cn(
               'text-sm transition-colors',
-              session.previewOpen
-                ? 'text-foreground'
-                : 'text-muted-foreground hover:text-foreground'
+              state.status !== 'ready'
+                ? 'text-muted-foreground/30 cursor-not-allowed'
+                : previewOpen
+                  ? 'text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
             )}
           >
-            {session.previewOpen ? 'Hide preview' : 'View prompt'}
+            {previewOpen ? 'Hide preview' : 'View prompt'}
             <span className="ml-2 text-xs text-muted-foreground/50">
               {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+P
             </span>
@@ -140,23 +199,31 @@ export function PromptBuilder() {
           <Conversation
             messages={session.messages}
             onSend={sendMessage}
-            isLoading={isLoading}
+            isLoading={isStreaming}
+            showTypingIndicator={showTypingIndicator}
+            disabled={state.status !== 'ready'}
           />
         </div>
 
         {/* Error */}
         {error && (
-          <div className="px-6 py-2 text-sm text-destructive">
-            {error}
+          <div className="px-6 py-2 text-sm text-destructive flex items-center justify-between">
+            <span>{error}</span>
+            <button
+              onClick={clearError}
+              className="text-xs text-muted-foreground hover:text-foreground ml-4"
+            >
+              Dismiss
+            </button>
           </div>
         )}
       </div>
 
       {/* Preview panel */}
-      {session.previewOpen && (
+      {previewOpen && (
         <div className="w-[40%]">
           <PreviewPanel
-            content={session.promptDraft}
+            content={promptDraft}
             onContentChange={updatePromptDraft}
             onSave={handleSave}
             onCopy={handleCopy}

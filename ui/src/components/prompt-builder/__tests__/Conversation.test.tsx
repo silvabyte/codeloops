@@ -8,6 +8,7 @@ describe('Conversation', () => {
     messages: [] as Message[],
     onSend: mockOnSend,
     isLoading: false,
+    showTypingIndicator: false,
     disabled: false,
   }
 
@@ -56,18 +57,20 @@ describe('Conversation', () => {
       expect(screen.getByText('How can I help?')).toBeInTheDocument()
     })
 
-    it('should show loading indicator when isLoading', () => {
-      render(<Conversation {...defaultProps} isLoading={true} />)
+    it('should show typing indicator when showTypingIndicator is true', () => {
+      render(<Conversation {...defaultProps} showTypingIndicator={true} />)
 
-      expect(screen.getByText('...')).toBeInTheDocument()
+      // Typing indicator renders 3 dots with the typing-indicator class
+      const indicator = document.querySelector('.typing-indicator')
+      expect(indicator).toBeInTheDocument()
     })
 
     it('should show keyboard shortcut hint', () => {
       render(<Conversation {...defaultProps} />)
 
-      // Look for either Mac or Windows shortcut
-      const hint = screen.getByText(/\+↵/)
+      const hint = screen.getByText('↵')
       expect(hint).toBeInTheDocument()
+      expect(hint).toHaveAttribute('title', 'Enter to send')
     })
   })
 
@@ -81,32 +84,22 @@ describe('Conversation', () => {
       expect(textarea).toHaveValue('Test message')
     })
 
-    it('should call onSend with Cmd+Enter', () => {
-      render(<Conversation {...defaultProps} />)
-
-      const textarea = screen.getByPlaceholderText('Type here...')
-      fireEvent.change(textarea, { target: { value: 'Test message' } })
-      fireEvent.keyDown(textarea, { key: 'Enter', metaKey: true })
-
-      expect(mockOnSend).toHaveBeenCalledWith('Test message')
-    })
-
-    it('should call onSend with Ctrl+Enter', () => {
-      render(<Conversation {...defaultProps} />)
-
-      const textarea = screen.getByPlaceholderText('Type here...')
-      fireEvent.change(textarea, { target: { value: 'Test message' } })
-      fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true })
-
-      expect(mockOnSend).toHaveBeenCalledWith('Test message')
-    })
-
-    it('should not call onSend with just Enter', () => {
+    it('should call onSend with Enter', () => {
       render(<Conversation {...defaultProps} />)
 
       const textarea = screen.getByPlaceholderText('Type here...')
       fireEvent.change(textarea, { target: { value: 'Test message' } })
       fireEvent.keyDown(textarea, { key: 'Enter' })
+
+      expect(mockOnSend).toHaveBeenCalledWith('Test message')
+    })
+
+    it('should not call onSend with Shift+Enter (allows newline)', () => {
+      render(<Conversation {...defaultProps} />)
+
+      const textarea = screen.getByPlaceholderText('Type here...')
+      fireEvent.change(textarea, { target: { value: 'Test message' } })
+      fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: true })
 
       expect(mockOnSend).not.toHaveBeenCalled()
     })
@@ -116,7 +109,7 @@ describe('Conversation', () => {
 
       const textarea = screen.getByPlaceholderText('Type here...')
       fireEvent.change(textarea, { target: { value: 'Test message' } })
-      fireEvent.keyDown(textarea, { key: 'Enter', metaKey: true })
+      fireEvent.keyDown(textarea, { key: 'Enter' })
 
       expect(textarea).toHaveValue('')
     })
@@ -125,7 +118,7 @@ describe('Conversation', () => {
       render(<Conversation {...defaultProps} />)
 
       const textarea = screen.getByPlaceholderText('Type here...')
-      fireEvent.keyDown(textarea, { key: 'Enter', metaKey: true })
+      fireEvent.keyDown(textarea, { key: 'Enter' })
 
       expect(mockOnSend).not.toHaveBeenCalled()
     })
@@ -135,7 +128,7 @@ describe('Conversation', () => {
 
       const textarea = screen.getByPlaceholderText('Type here...')
       fireEvent.change(textarea, { target: { value: '   ' } })
-      fireEvent.keyDown(textarea, { key: 'Enter', metaKey: true })
+      fireEvent.keyDown(textarea, { key: 'Enter' })
 
       expect(mockOnSend).not.toHaveBeenCalled()
     })
@@ -145,7 +138,7 @@ describe('Conversation', () => {
 
       const textarea = screen.getByPlaceholderText('Type here...')
       fireEvent.change(textarea, { target: { value: '  Test message  ' } })
-      fireEvent.keyDown(textarea, { key: 'Enter', metaKey: true })
+      fireEvent.keyDown(textarea, { key: 'Enter' })
 
       expect(mockOnSend).toHaveBeenCalledWith('Test message')
     })
@@ -171,7 +164,7 @@ describe('Conversation', () => {
 
       const textarea = screen.getByPlaceholderText('Type here...')
       fireEvent.change(textarea, { target: { value: 'Test' } })
-      fireEvent.keyDown(textarea, { key: 'Enter', metaKey: true })
+      fireEvent.keyDown(textarea, { key: 'Enter' })
 
       expect(mockOnSend).not.toHaveBeenCalled()
     })
@@ -181,7 +174,7 @@ describe('Conversation', () => {
 
       const textarea = screen.getByPlaceholderText('Type here...')
       fireEvent.change(textarea, { target: { value: 'Test' } })
-      fireEvent.keyDown(textarea, { key: 'Enter', metaKey: true })
+      fireEvent.keyDown(textarea, { key: 'Enter' })
 
       expect(mockOnSend).not.toHaveBeenCalled()
     })
