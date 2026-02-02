@@ -159,8 +159,6 @@ export function usePromptSession() {
   const [state, setState] = useState<PromptSessionState>({ status: 'loading_context' })
   const [isSaving, setIsSaving] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
-  const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const lastSavedRef = useRef<string>('')
 
   // Load context and restore session on mount
   useEffect(() => {
@@ -210,57 +208,11 @@ export function usePromptSession() {
     init()
   }, [])
 
-  // Auto-save session to backend (debounced)
-  useEffect(() => {
-    if (state.status !== 'ready') return
+  // NOTE: Auto-save to backend is no longer needed here.
+  // The backend now persists messages immediately after each exchange.
+  // We only keep localStorage as a backup for immediate recovery on page refresh.
 
-    const { sessionId, workType, workingDir, projectName, messages, promptDraft, previewOpen } = state
-
-    // Create a signature to detect changes
-    const signature = JSON.stringify({ sessionId, messages, promptDraft })
-    if (signature === lastSavedRef.current) return
-
-    // Clear any pending auto-save
-    if (autoSaveTimeoutRef.current) {
-      clearTimeout(autoSaveTimeoutRef.current)
-    }
-
-    // Debounce auto-save by 2 seconds
-    autoSaveTimeoutRef.current = setTimeout(async () => {
-      try {
-        // Generate a title from the first user message or prompt content
-        const firstUserMessage = messages.find((m) => m.role === 'user')
-        const title = firstUserMessage?.content.slice(0, 50) ||
-          (promptDraft ? promptDraft.split('\n')[0].replace(/^#\s*/, '').slice(0, 50) : undefined)
-
-        await savePromptSession({
-          id: sessionId,
-          title,
-          workType,
-          projectPath: workingDir,
-          projectName,
-          content: promptDraft || undefined,
-          sessionState: {
-            messages,
-            promptDraft,
-            previewOpen,
-          },
-        })
-        lastSavedRef.current = signature
-      } catch (e) {
-        // Silent retry on error - don't interrupt user flow
-        console.error('Auto-save failed:', e)
-      }
-    }, 2000)
-
-    return () => {
-      if (autoSaveTimeoutRef.current) {
-        clearTimeout(autoSaveTimeoutRef.current)
-      }
-    }
-  }, [state])
-
-  // Also persist to localStorage as backup (for immediate recovery)
+  // Persist to localStorage as backup (for immediate recovery)
   useEffect(() => {
     if (state.status === 'loading_context') return
 
