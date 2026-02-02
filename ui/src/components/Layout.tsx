@@ -21,8 +21,8 @@ export function Layout() {
     <div className="min-h-screen bg-background">
       <header className="border-b border-border">
         <div className="px-6 py-4 flex items-center justify-between">
-          <Link to="/" className="text-lg font-semibold text-foreground hover:text-foreground/80 transition-colors">
-            Codeloops
+          <Link to="/" className="hover:opacity-80 transition-opacity">
+            <img src="/icon.svg" alt="Codeloops" className="h-7 w-auto" />
           </Link>
           <nav className="flex items-center gap-6">
             {navItems.map((item) => (
