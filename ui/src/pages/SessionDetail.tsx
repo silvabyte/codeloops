@@ -137,6 +137,7 @@ export function SessionDetail() {
           <ContentBlock
             label="Prompt"
             content={session.start.prompt}
+            markdown
           />
         )}
 
@@ -151,6 +152,7 @@ export function SessionDetail() {
                 <ContentBlock
                   label="Summary"
                   content={session.end.summary}
+                  markdown
                 />
                 {session.end.confidence != null && (
                   <div className="text-sm text-muted-foreground">
