@@ -8,28 +8,33 @@ mod stats;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::Router;
 use tower_http::cors::CorsLayer;
 
 use codeloops_sessions::{SessionStore, SessionWatcher};
+
+use crate::db::PromptStore;
 
 #[derive(Clone)]
 pub struct AppState {
     pub store: Arc<SessionStore>,
     pub watcher: Arc<SessionWatcher>,
     pub working_dir: PathBuf,
+    pub prompt_store: Arc<PromptStore>,
 }
 
 pub fn create_router(
     store: Arc<SessionStore>,
     watcher: Arc<SessionWatcher>,
     working_dir: PathBuf,
+    prompt_store: Arc<PromptStore>,
 ) -> Router {
     let state = AppState {
         store,
         watcher,
         working_dir,
+        prompt_store,
     };
 
     Router::new()
@@ -47,6 +52,11 @@ pub fn create_router(
             post(prompt::send_message),
         )
         .route("/api/prompt/save", post(prompt::save_prompt))
+        // Prompt history
+        .route("/api/prompts", get(prompt::list_prompts))
+        .route("/api/prompts", post(prompt::save_prompt_session))
+        .route("/api/prompts/{id}", get(prompt::get_prompt))
+        .route("/api/prompts/{id}", delete(prompt::delete_prompt))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }

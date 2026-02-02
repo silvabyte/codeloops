@@ -1,8 +1,9 @@
-import { useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { cn } from '@/lib/utils'
 import { WorkTypeSelector } from '@/components/prompt-builder/WorkTypeSelector'
 import { Conversation } from '@/components/prompt-builder/Conversation'
 import { PreviewPanel } from '@/components/prompt-builder/PreviewPanel'
+import { PromptHistoryPanel } from '@/components/prompt-builder/PromptHistoryPanel'
 import { usePromptSession } from '@/hooks/usePromptSession'
 
 function LoadingSkeleton() {
@@ -26,9 +27,12 @@ export function PromptBuilder() {
     togglePreview,
     closePreview,
     save,
-    reset,
     clearError,
+    newPrompt,
+    loadPrompt,
   } = usePromptSession()
+
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -75,6 +79,14 @@ export function PromptBuilder() {
     console.log('Downloaded prompt.md')
   }, [])
 
+  const handleNewPrompt = useCallback(async () => {
+    await newPrompt()
+  }, [newPrompt])
+
+  const handleLoadPrompt = useCallback(async (id: string) => {
+    await loadPrompt(id)
+  }, [loadPrompt])
+
   // State machine driven rendering
   switch (state.status) {
     case 'loading_context':
@@ -87,6 +99,15 @@ export function PromptBuilder() {
     case 'selecting_work_type':
       return (
         <div className="max-w-3xl mx-auto px-6">
+          {/* History button in top right */}
+          <div className="flex justify-end py-3">
+            <button
+              onClick={() => setHistoryOpen(true)}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              History
+            </button>
+          </div>
           <WorkTypeSelector
             projectName={state.projectName}
             onSelect={selectWorkType}
@@ -96,6 +117,12 @@ export function PromptBuilder() {
               {error}
             </div>
           )}
+          <PromptHistoryPanel
+            isOpen={historyOpen}
+            onClose={() => setHistoryOpen(false)}
+            onSelect={handleLoadPrompt}
+            currentProjectName={state.projectName}
+          />
         </div>
       )
 
@@ -166,10 +193,22 @@ export function PromptBuilder() {
         <div className="flex items-center justify-between px-6 py-3 border-b border-border">
           <div className="flex items-center gap-4">
             <button
-              onClick={reset}
+              onClick={handleNewPrompt}
+              disabled={state.status !== 'ready'}
+              className={cn(
+                'text-sm transition-colors',
+                state.status !== 'ready'
+                  ? 'text-muted-foreground/30 cursor-not-allowed'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              New Prompt
+            </button>
+            <button
+              onClick={() => setHistoryOpen(true)}
               className="text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
-              Start over
+              History
             </button>
             <span className="text-xs text-muted-foreground/50">
               {workType}
@@ -232,6 +271,14 @@ export function PromptBuilder() {
           />
         </div>
       )}
+
+      {/* History panel */}
+      <PromptHistoryPanel
+        isOpen={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        onSelect={handleLoadPrompt}
+        currentProjectName={session.projectName}
+      />
     </div>
   )
 }

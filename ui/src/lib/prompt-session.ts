@@ -1,4 +1,5 @@
 import type { WorkType } from '@/components/prompt-builder/WorkTypeSelector'
+import type { Message } from '@/components/prompt-builder/Conversation'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3100'
 
@@ -13,6 +14,65 @@ export interface CreateSessionResponse {
 
 export interface SavePromptResponse {
   path: string
+}
+
+// ============================================================================
+// Prompt History Types
+// ============================================================================
+
+export interface SessionStatePayload {
+  messages: Message[]
+  promptDraft: string
+  previewOpen: boolean
+}
+
+export interface SavePromptSessionRequest {
+  id: string
+  title?: string
+  workType: string
+  projectPath: string
+  projectName: string
+  content?: string
+  sessionState: SessionStatePayload
+}
+
+export interface SavePromptSessionResponse {
+  id: string
+  updatedAt: string
+}
+
+export interface PromptSummary {
+  id: string
+  title?: string
+  workType: string
+  projectName: string
+  contentPreview?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ListPromptsResponse {
+  prompts: PromptSummary[]
+  projects: string[]
+}
+
+export interface GetPromptResponse {
+  id: string
+  title?: string
+  workType: string
+  projectPath: string
+  projectName: string
+  content?: string
+  sessionState: SessionStatePayload
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ListPromptsParams {
+  projectName?: string
+  search?: string
+  limit?: number
+  offset?: number
 }
 
 export async function getContext(): Promise<ContextResponse> {
@@ -90,4 +150,48 @@ export async function savePrompt(
   })
   if (!res.ok) throw new Error(`Failed to save prompt: ${res.statusText}`)
   return res.json()
+}
+
+// ============================================================================
+// Prompt History API
+// ============================================================================
+
+export async function savePromptSession(
+  request: SavePromptSessionRequest
+): Promise<SavePromptSessionResponse> {
+  const res = await fetch(`${API_BASE}/api/prompts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
+  if (!res.ok) throw new Error(`Failed to save prompt session: ${res.statusText}`)
+  return res.json()
+}
+
+export async function listPrompts(
+  params?: ListPromptsParams
+): Promise<ListPromptsResponse> {
+  const searchParams = new URLSearchParams()
+  if (params?.projectName) searchParams.set('projectName', params.projectName)
+  if (params?.search) searchParams.set('search', params.search)
+  if (params?.limit) searchParams.set('limit', String(params.limit))
+  if (params?.offset) searchParams.set('offset', String(params.offset))
+
+  const url = `${API_BASE}/api/prompts${searchParams.toString() ? `?${searchParams}` : ''}`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Failed to list prompts: ${res.statusText}`)
+  return res.json()
+}
+
+export async function getPromptById(id: string): Promise<GetPromptResponse> {
+  const res = await fetch(`${API_BASE}/api/prompts/${encodeURIComponent(id)}`)
+  if (!res.ok) throw new Error(`Failed to get prompt: ${res.statusText}`)
+  return res.json()
+}
+
+export async function deletePrompt(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/prompts/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok) throw new Error(`Failed to delete prompt: ${res.statusText}`)
 }

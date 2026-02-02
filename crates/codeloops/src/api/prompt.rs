@@ -12,10 +12,11 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use axum::extract::Path;
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::sse::{Event, Sse};
 use axum::response::Json;
+use chrono::Utc;
 use codeloops_agent::{create_agent, AgentConfig, AgentType, OutputCallback, OutputType};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
@@ -23,6 +24,8 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
 
 use super::prompt_instructions::get_system_instructions;
+use super::AppState;
+use crate::db::{PromptFilter, PromptRecord};
 
 // ============================================================================
 // Types
@@ -56,6 +59,94 @@ pub struct SavePromptRequest {
 #[derive(Serialize)]
 pub struct SavePromptResponse {
     pub path: String,
+}
+
+// ============================================================================
+// Prompt History Types
+// ============================================================================
+
+/// Request to save a prompt session to history.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavePromptSessionRequest {
+    pub id: String,
+    pub title: Option<String>,
+    pub work_type: String,
+    pub project_path: String,
+    pub project_name: String,
+    pub content: Option<String>,
+    pub session_state: SessionStatePayload,
+}
+
+/// Session state payload from frontend.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionStatePayload {
+    pub messages: Vec<MessagePayload>,
+    pub prompt_draft: String,
+    pub preview_open: bool,
+}
+
+/// Message payload from frontend.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessagePayload {
+    pub id: String,
+    pub role: String,
+    pub content: String,
+}
+
+/// Response from saving a prompt session.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavePromptSessionResponse {
+    pub id: String,
+    pub updated_at: String,
+}
+
+/// Query parameters for listing prompts.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListPromptsQuery {
+    pub project_name: Option<String>,
+    pub search: Option<String>,
+    pub limit: Option<usize>,
+    pub offset: Option<usize>,
+}
+
+/// Response for listing prompts.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListPromptsResponse {
+    pub prompts: Vec<PromptSummary>,
+    pub projects: Vec<String>,
+}
+
+/// Summary of a prompt for listing.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PromptSummary {
+    pub id: String,
+    pub title: Option<String>,
+    pub work_type: String,
+    pub project_name: String,
+    pub content_preview: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Response for getting a single prompt.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetPromptResponse {
+    pub id: String,
+    pub title: Option<String>,
+    pub work_type: String,
+    pub project_path: String,
+    pub project_name: String,
+    pub content: Option<String>,
+    pub session_state: SessionStatePayload,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 // ============================================================================
@@ -153,6 +244,144 @@ pub async fn save_prompt(
     Ok(Json(SavePromptResponse {
         path: path.to_string_lossy().to_string(),
     }))
+}
+
+// ============================================================================
+// Prompt History Handlers
+// ============================================================================
+
+/// Save or update a prompt session to the database.
+pub async fn save_prompt_session(
+    State(state): State<AppState>,
+    Json(req): Json<SavePromptSessionRequest>,
+) -> Result<Json<SavePromptSessionResponse>, (StatusCode, String)> {
+    let now = Utc::now();
+
+    let session_state_json = serde_json::to_string(&req.session_state)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid session state: {}", e)))?;
+
+    // Check if this is an update or insert
+    let existing = state
+        .prompt_store
+        .get(&req.id)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let created_at = existing.map(|e| e.created_at).unwrap_or(now);
+
+    let record = PromptRecord {
+        id: req.id.clone(),
+        title: req.title,
+        work_type: req.work_type,
+        project_path: req.project_path,
+        project_name: req.project_name,
+        content: req.content,
+        session_state: session_state_json,
+        created_at,
+        updated_at: now,
+    };
+
+    state
+        .prompt_store
+        .save(&record)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(SavePromptSessionResponse {
+        id: req.id,
+        updated_at: now.to_rfc3339(),
+    }))
+}
+
+/// List prompts with optional filtering.
+pub async fn list_prompts(
+    State(state): State<AppState>,
+    Query(query): Query<ListPromptsQuery>,
+) -> Result<Json<ListPromptsResponse>, (StatusCode, String)> {
+    let filter = PromptFilter {
+        project_name: query.project_name,
+        search: query.search,
+        limit: query.limit,
+        offset: query.offset,
+    };
+
+    let records = state
+        .prompt_store
+        .list(&filter)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let projects = state
+        .prompt_store
+        .list_projects()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let prompts: Vec<PromptSummary> = records
+        .into_iter()
+        .map(|r| {
+            let content_preview = r.content.as_ref().map(|c| {
+                let preview: String = c.chars().take(100).collect();
+                if c.len() > 100 {
+                    format!("{}...", preview)
+                } else {
+                    preview
+                }
+            });
+
+            PromptSummary {
+                id: r.id,
+                title: r.title,
+                work_type: r.work_type,
+                project_name: r.project_name,
+                content_preview,
+                created_at: r.created_at.to_rfc3339(),
+                updated_at: r.updated_at.to_rfc3339(),
+            }
+        })
+        .collect();
+
+    Ok(Json(ListPromptsResponse { prompts, projects }))
+}
+
+/// Get a single prompt by ID.
+pub async fn get_prompt(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<GetPromptResponse>, (StatusCode, String)> {
+    let record = state
+        .prompt_store
+        .get(&id)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Prompt not found".to_string()))?;
+
+    let session_state: SessionStatePayload = serde_json::from_str(&record.session_state)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Invalid session state: {}", e)))?;
+
+    Ok(Json(GetPromptResponse {
+        id: record.id,
+        title: record.title,
+        work_type: record.work_type,
+        project_path: record.project_path,
+        project_name: record.project_name,
+        content: record.content,
+        session_state,
+        created_at: record.created_at.to_rfc3339(),
+        updated_at: record.updated_at.to_rfc3339(),
+    }))
+}
+
+/// Delete a prompt by ID.
+pub async fn delete_prompt(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let deleted = state
+        .prompt_store
+        .delete(&id)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err((StatusCode::NOT_FOUND, "Prompt not found".to_string()))
+    }
 }
 
 // ============================================================================

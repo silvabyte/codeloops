@@ -6,6 +6,8 @@ import {
   createPromptSession,
   sendPromptMessage,
   savePrompt,
+  savePromptSession,
+  getPromptById,
 } from '@/lib/prompt-session'
 
 /**
@@ -157,6 +159,8 @@ export function usePromptSession() {
   const [state, setState] = useState<PromptSessionState>({ status: 'loading_context' })
   const [isSaving, setIsSaving] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastSavedRef = useRef<string>('')
 
   // Load context and restore session on mount
   useEffect(() => {
@@ -206,7 +210,57 @@ export function usePromptSession() {
     init()
   }, [])
 
-  // Persist session changes to localStorage
+  // Auto-save session to backend (debounced)
+  useEffect(() => {
+    if (state.status !== 'ready') return
+
+    const { sessionId, workType, workingDir, projectName, messages, promptDraft, previewOpen } = state
+
+    // Create a signature to detect changes
+    const signature = JSON.stringify({ sessionId, messages, promptDraft })
+    if (signature === lastSavedRef.current) return
+
+    // Clear any pending auto-save
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current)
+    }
+
+    // Debounce auto-save by 2 seconds
+    autoSaveTimeoutRef.current = setTimeout(async () => {
+      try {
+        // Generate a title from the first user message or prompt content
+        const firstUserMessage = messages.find((m) => m.role === 'user')
+        const title = firstUserMessage?.content.slice(0, 50) ||
+          (promptDraft ? promptDraft.split('\n')[0].replace(/^#\s*/, '').slice(0, 50) : undefined)
+
+        await savePromptSession({
+          id: sessionId,
+          title,
+          workType,
+          projectPath: workingDir,
+          projectName,
+          content: promptDraft || undefined,
+          sessionState: {
+            messages,
+            promptDraft,
+            previewOpen,
+          },
+        })
+        lastSavedRef.current = signature
+      } catch (e) {
+        // Silent retry on error - don't interrupt user flow
+        console.error('Auto-save failed:', e)
+      }
+    }, 2000)
+
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current)
+      }
+    }
+  }, [state])
+
+  // Also persist to localStorage as backup (for immediate recovery)
   useEffect(() => {
     if (state.status === 'loading_context') return
 
@@ -552,6 +606,79 @@ export function usePromptSession() {
     }
   }, [state])
 
+  // Start a new prompt (save current first, then reset)
+  const newPrompt = useCallback(async () => {
+    if (state.status !== 'ready') return
+
+    const { sessionId, workType, workingDir, projectName, messages, promptDraft, previewOpen } = state
+
+    // Save current session to history before starting new one
+    try {
+      const firstUserMessage = messages.find((m) => m.role === 'user')
+      const title = firstUserMessage?.content.slice(0, 50) ||
+        (promptDraft ? promptDraft.split('\n')[0].replace(/^#\s*/, '').slice(0, 50) : undefined)
+
+      await savePromptSession({
+        id: sessionId,
+        title,
+        workType,
+        projectPath: workingDir,
+        projectName,
+        content: promptDraft || undefined,
+        sessionState: {
+          messages,
+          promptDraft,
+          previewOpen,
+        },
+      })
+    } catch (e) {
+      console.error('Failed to save session before new prompt:', e)
+    }
+
+    // Clear localStorage
+    if (workingDir) {
+      const storageKey = getStorageKey(workingDir)
+      localStorage.removeItem(storageKey)
+    }
+
+    // Reset to work type selection
+    setState({
+      status: 'selecting_work_type',
+      workingDir,
+      projectName,
+    })
+  }, [state])
+
+  // Load a prompt from history
+  const loadPrompt = useCallback(async (promptId: string) => {
+    const workingDir = 'workingDir' in state ? state.workingDir : ''
+    const projectName = 'projectName' in state ? state.projectName : ''
+
+    try {
+      const response = await getPromptById(promptId)
+
+      // Restore to ready state with loaded session
+      setState({
+        status: 'ready',
+        workingDir: response.projectPath,
+        projectName: response.projectName,
+        workType: response.workType as WorkType,
+        sessionId: response.id,
+        messages: response.sessionState.messages,
+        promptDraft: response.sessionState.promptDraft,
+        previewOpen: response.sessionState.previewOpen,
+      })
+    } catch (e) {
+      setState({
+        status: 'error',
+        workingDir,
+        projectName,
+        error: e instanceof Error ? e.message : 'Failed to load prompt',
+        previousState: state.status !== 'error' ? state : undefined,
+      })
+    }
+  }, [state])
+
   // Derive legacy shapes for backwards compatibility
   const session = deriveSession(state)
   const flags = deriveFlags(state)
@@ -579,5 +706,7 @@ export function usePromptSession() {
     save,
     reset,
     clearError,
+    newPrompt,
+    loadPrompt,
   }
 }
