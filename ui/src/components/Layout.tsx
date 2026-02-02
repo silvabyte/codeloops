@@ -20,7 +20,7 @@ export function Layout() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="px-6 py-4 flex items-center justify-between">
           <Link to="/" className="text-lg font-semibold text-foreground hover:text-foreground/80 transition-colors">
             Codeloops
           </Link>
