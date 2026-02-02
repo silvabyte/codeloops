@@ -82,26 +82,35 @@ export function WorkTypeSelector({ projectName, onSelect, onChangeProject }: Wor
           ))}
         </nav>
 
-        {/* Project indicator */}
-        <div
-          className="flex items-center justify-center gap-2 text-xs"
-          style={{ color: 'var(--color-dim)' }}
-        >
-          <span>Working in</span>
+        {/* Project breadcrumb */}
+        <div className="flex items-center justify-center">
           <button
             onClick={onChangeProject}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full transition-all hover:opacity-100"
-            style={{
-              backgroundColor: 'var(--color-elevated)',
-              border: '1px solid var(--color-border)',
-              color: 'var(--color-muted-foreground)',
-            }}
+            className="group inline-flex items-center gap-1 text-xs transition-all"
+            style={{ color: 'var(--color-dim)' }}
           >
+            {/* Folder icon */}
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              className="opacity-50 group-hover:opacity-100 transition-opacity"
+              style={{ color: 'var(--color-amber)' }}
+            >
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+            </svg>
+            {/* Path separator */}
+            <span className="opacity-30">/</span>
+            {/* Project name */}
             <span
-              className="w-1.5 h-1.5 rounded-full"
-              style={{ backgroundColor: 'var(--color-amber)' }}
-            />
-            {projectName}
+              className="group-hover:underline underline-offset-2"
+              style={{ color: 'var(--color-muted-foreground)' }}
+            >
+              {projectName}
+            </span>
           </button>
         </div>
       </div>
