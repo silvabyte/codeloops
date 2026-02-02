@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState, useCallback, type KeyboardEvent } from 'react'
+import ReactMarkdown from 'react-markdown'
 import { cn } from '@/lib/utils'
 import { TypingIndicator } from './TypingIndicator'
 
@@ -61,14 +62,28 @@ export function Conversation({
               message.role === 'user' ? 'ml-auto' : 'mr-auto'
             )}
           >
-            <p
+            <div
               className={cn(
-                'text-sm leading-relaxed whitespace-pre-wrap',
-                message.role === 'assistant' ? 'text-muted-foreground' : 'text-foreground'
+                'text-sm leading-relaxed max-w-none',
+                message.role === 'assistant' ? 'text-muted-foreground' : 'text-foreground',
+                // Markdown element styling
+                '[&_p]:mb-2 [&_p:last-child]:mb-0',
+                '[&_pre]:bg-elevated [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:overflow-x-auto [&_pre]:my-2',
+                '[&_code]:bg-elevated [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-amber [&_code]:text-xs',
+                '[&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-foreground',
+                '[&_a]:text-cyan [&_a]:no-underline hover:[&_a]:underline',
+                '[&_ul]:list-disc [&_ul]:pl-4 [&_ul]:my-2',
+                '[&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:my-2',
+                '[&_li]:mb-1',
+                '[&_strong]:text-foreground [&_strong]:font-semibold',
+                '[&_h1]:text-lg [&_h1]:font-semibold [&_h1]:text-foreground [&_h1]:mb-2',
+                '[&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-foreground [&_h2]:mb-2',
+                '[&_h3]:text-sm [&_h3]:font-semibold [&_h3]:text-foreground [&_h3]:mb-1',
+                '[&_blockquote]:border-l-2 [&_blockquote]:border-amber/50 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:my-2'
               )}
             >
-              {message.content}
-            </p>
+              <ReactMarkdown>{message.content}</ReactMarkdown>
+            </div>
           </div>
         ))}
         {showTypingIndicator && <TypingIndicator />}
