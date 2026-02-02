@@ -1,51 +1,42 @@
 @import "tailwindcss";
+@import "../../shared/design-tokens.css";
 
 @theme {
-  /* ========================================================================
-     AMBER CIRCUIT THEME — from site/src/style.css
-     ======================================================================== */
+  /* Map shared tokens to Tailwind theme */
+  --color-background: var(--color-background);
+  --color-surface: var(--color-surface);
+  --color-elevated: var(--color-elevated);
+  --color-hover: var(--color-hover);
 
-  /* Backgrounds */
-  --color-background: #09090b;
-  --color-surface: #0f0f11;
-  --color-elevated: #18181b;
-  --color-hover: #27272a;
+  --color-foreground: var(--color-foreground);
+  --color-muted-foreground: var(--color-muted);
+  --color-dim: var(--color-dim);
 
-  /* Text */
-  --color-foreground: #fafaf9;
-  --color-muted-foreground: #a1a1aa;
-  --color-dim: #71717a;
+  --color-border: var(--color-border);
+  --color-border-subtle: var(--color-border-subtle);
 
-  /* Borders */
-  --color-border: #27272a;
-  --color-border-subtle: #1f1f23;
+  --color-amber: var(--color-amber);
+  --color-amber-dim: var(--color-amber-dim);
+  --color-amber-glow: var(--color-amber-glow);
+  --color-amber-bright: var(--color-amber-bright);
 
-  /* Amber (primary accent) */
-  --color-amber: #f59e0b;
-  --color-amber-dim: #b45309;
-  --color-amber-glow: rgba(245, 158, 11, 0.15);
-  --color-amber-bright: #fbbf24;
+  --color-cyan: var(--color-cyan);
+  --color-cyan-dim: var(--color-cyan-dim);
+  --color-cyan-glow: var(--color-cyan-glow);
 
-  /* Cyan (secondary accent) */
-  --color-cyan: #06b6d4;
-  --color-cyan-dim: #0891b2;
-  --color-cyan-glow: rgba(6, 182, 212, 0.15);
+  --color-destructive: var(--color-destructive);
+  --color-success: var(--color-success);
 
-  /* Semantic */
-  --color-destructive: #ef4444;
-  --color-success: #22c55e;
-
-  /* Radii */
-  --radius: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
+  --radius: var(--radius);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
 }
 
 body {
   margin: 0;
   background-color: var(--color-background);
   color: var(--color-foreground);
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
 }
 
 /* Typing indicator animation (matches site's amber circuit theme) */

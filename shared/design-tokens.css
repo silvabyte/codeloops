@@ -1,0 +1,49 @@
+/* ==========================================================================
+   CODELOOPS DESIGN TOKENS — "Amber Circuit" Theme
+   Shared between ui/ and site/
+   ========================================================================== */
+
+:root {
+  /* Backgrounds */
+  --color-background: #09090b;
+  --color-surface: #0f0f11;
+  --color-elevated: #18181b;
+  --color-hover: #27272a;
+
+  /* Text */
+  --color-foreground: #fafaf9;
+  --color-muted: #a1a1aa;
+  --color-dim: #71717a;
+
+  /* Borders */
+  --color-border: #27272a;
+  --color-border-subtle: #1f1f23;
+
+  /* Accent - Amber */
+  --color-amber: #f59e0b;
+  --color-amber-dim: #b45309;
+  --color-amber-glow: rgba(245, 158, 11, 0.15);
+  --color-amber-bright: #fbbf24;
+
+  /* Accent - Cyan */
+  --color-cyan: #06b6d4;
+  --color-cyan-dim: #0891b2;
+  --color-cyan-glow: rgba(6, 182, 212, 0.15);
+
+  /* Semantic */
+  --color-destructive: #ef4444;
+  --color-success: #22c55e;
+
+  /* Radii */
+  --radius: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* Typography */
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  --font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* Container (site-specific but shared for consistency) */
+  --container-max: 1200px;
+  --container-padding: 1.5rem;
+}
