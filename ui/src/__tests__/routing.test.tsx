@@ -41,6 +41,29 @@ vi.mock('@/hooks/useStats', () => ({
   }),
 }))
 
+vi.mock('@/hooks/useMetrics', () => ({
+  useMetrics: () => ({
+    metrics: {
+      total_sessions: 10,
+      successful_sessions: 8,
+      success_rate: 0.8,
+      first_try_success_rate: 0.5,
+      avg_iterations_to_success: 1.5,
+      avg_cycle_time_secs: 120,
+      waste_rate: 0.1,
+      total_iterations: 20,
+      critic_approval_rate: 0.6,
+      avg_feedback_length: 150,
+      improvement_rate: 0.75,
+      sessions_over_time: [],
+      by_project: [],
+    },
+    loading: false,
+    error: null,
+    reload: vi.fn(),
+  }),
+}))
+
 vi.mock('@/hooks/useSSE', () => ({
   useSessionEvents: () => {},
 }))
@@ -101,11 +124,11 @@ describe('App Routing', () => {
       })
     })
 
-    it('should show main navigation with New Prompt active', async () => {
+    it('should show main navigation with Prompts active', async () => {
       renderApp('/')
 
       await waitFor(() => {
-        expect(screen.getByRole('link', { name: /new prompt/i })).toBeInTheDocument()
+        expect(screen.getByRole('link', { name: /prompts/i })).toBeInTheDocument()
       })
     })
   })
@@ -146,10 +169,10 @@ describe('App Routing', () => {
       renderApp('/run-insights/status')
 
       await waitFor(() => {
-        // Stats page shows the Run Insights header (h1) and summary cards
+        // Stats page shows the Run Insights header (h1) and DORA-inspired metrics sections
         expect(screen.getByRole('heading', { name: 'Run Insights', level: 1 })).toBeInTheDocument()
-        expect(screen.getByText('Total Sessions')).toBeInTheDocument()
-        expect(screen.getByText('Success Rate')).toBeInTheDocument()
+        expect(screen.getByText('Session Efficacy')).toBeInTheDocument()
+        expect(screen.getByText('Critic Performance')).toBeInTheDocument()
       })
     })
 
@@ -198,7 +221,7 @@ describe('App Routing', () => {
       renderApp('/')
 
       await waitFor(() => {
-        expect(screen.getByRole('link', { name: /new prompt/i })).toBeInTheDocument()
+        expect(screen.getByRole('link', { name: /prompts/i })).toBeInTheDocument()
         expect(screen.getByRole('link', { name: /run insights/i })).toBeInTheDocument()
       })
     })
@@ -207,10 +230,10 @@ describe('App Routing', () => {
       renderApp('/')
 
       await waitFor(() => {
-        const newPromptLink = screen.getByRole('link', { name: /new prompt/i })
+        const promptsLink = screen.getByRole('link', { name: /prompts/i })
         const runInsightsLink = screen.getByRole('link', { name: /run insights/i })
 
-        expect(newPromptLink).toHaveAttribute('href', '/')
+        expect(promptsLink).toHaveAttribute('href', '/')
         expect(runInsightsLink).toHaveAttribute('href', '/run-insights')
       })
     })
