@@ -1,34 +1,44 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #0a0a0a;
-  --color-foreground: #fafafa;
-  --color-muted: #1a1a2e;
+  /* ========================================================================
+     AMBER CIRCUIT THEME — from site/src/style.css
+     ======================================================================== */
+
+  /* Backgrounds */
+  --color-background: #09090b;
+  --color-surface: #0f0f11;
+  --color-elevated: #18181b;
+  --color-hover: #27272a;
+
+  /* Text */
+  --color-foreground: #fafaf9;
   --color-muted-foreground: #a1a1aa;
-  --color-card: #111118;
-  --color-card-foreground: #fafafa;
+  --color-dim: #71717a;
+
+  /* Borders */
   --color-border: #27272a;
   --color-border-subtle: #1f1f23;
-  --color-primary: #6366f1;
-  --color-primary-foreground: #ffffff;
-  --color-secondary: #1e1e2e;
-  --color-secondary-foreground: #fafafa;
-  --color-accent: #1e1e2e;
-  --color-accent-foreground: #fafafa;
-  --color-destructive: #ef4444;
-  --color-success: #22c55e;
-  --color-warning: #eab308;
-  --color-ring: #6366f1;
-  --radius: 0.5rem;
 
-  /* Amber accent (from site design system) */
+  /* Amber (primary accent) */
   --color-amber: #f59e0b;
   --color-amber-dim: #b45309;
   --color-amber-glow: rgba(245, 158, 11, 0.15);
   --color-amber-bright: #fbbf24;
 
-  /* Surface color for typing indicator */
-  --color-surface: #0f0f11;
+  /* Cyan (secondary accent) */
+  --color-cyan: #06b6d4;
+  --color-cyan-dim: #0891b2;
+  --color-cyan-glow: rgba(6, 182, 212, 0.15);
+
+  /* Semantic */
+  --color-destructive: #ef4444;
+  --color-success: #22c55e;
+
+  /* Radii */
+  --radius: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
 }
 
 body {
