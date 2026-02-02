@@ -260,7 +260,7 @@ impl<'a> LoopRunner<'a> {
                     "Error encountered: {}\n\nRecovery suggestion: {}",
                     error_description, recovery_suggestion
                 )),
-                CriticDecision::Done { .. } => None,
+                CriticDecision::Done { summary, .. } => Some(summary.clone()),
             };
             sw.write_iteration(
                 record.iteration_number,
