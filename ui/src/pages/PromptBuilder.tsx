@@ -105,7 +105,7 @@ export function PromptBuilder() {
               onClick={() => setHistoryOpen(true)}
               className="text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
-              History
+              Prompt History
             </button>
           </div>
           <WorkTypeSelector
