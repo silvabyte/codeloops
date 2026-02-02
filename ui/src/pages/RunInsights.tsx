@@ -2,14 +2,14 @@ import { useCallback, useState } from 'react'
 import { StatsBar } from '@/components/StatsBar'
 import { SessionFilters } from '@/components/SessionFilters'
 import { SessionTable } from '@/components/SessionTable'
-import { SubNav } from '@/components/SubNav'
+import { SectionHeader } from '@/components/SectionHeader'
 import { Welcome } from '@/components/Welcome'
 import { useSessions } from '@/hooks/useSessions'
 import { useStats } from '@/hooks/useStats'
 import { useSessionEvents } from '@/hooks/useSSE'
 import type { SessionFilter } from '@/api/types'
 
-const runInsightsNavItems = [
+const runInsightsTabs = [
   { label: 'Overview', path: '/run-insights' },
   { label: 'Status', path: '/run-insights/status' },
 ]
@@ -62,16 +62,16 @@ export function RunInsights() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
-      <h1 className="text-2xl font-bold">Run Insights</h1>
+    <div className="flex flex-col h-[calc(100vh-65px)]">
+      <SectionHeader context="Run Insights" tabs={runInsightsTabs} />
 
-      <SubNav items={runInsightsNavItems} />
-
-      <StatsBar stats={stats} loading={statsLoading} />
-
-      <SessionFilters onFilterChange={handleFilterChange} />
-
-      <SessionTable sessions={sessions} loading={loading} />
+      <div className="flex-1 overflow-auto">
+        <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
+          <StatsBar stats={stats} loading={statsLoading} />
+          <SessionFilters onFilterChange={handleFilterChange} />
+          <SessionTable sessions={sessions} loading={loading} />
+        </div>
+      </div>
     </div>
   )
 }

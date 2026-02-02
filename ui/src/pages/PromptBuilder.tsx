@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import { WorkTypeSelector } from '@/components/prompt-builder/WorkTypeSelector'
 import { Conversation } from '@/components/prompt-builder/Conversation'
 import { PreviewPanel } from '@/components/prompt-builder/PreviewPanel'
 import { PromptHistoryPanel } from '@/components/prompt-builder/PromptHistoryPanel'
+import { SectionHeader } from '@/components/SectionHeader'
 import { usePromptSession } from '@/hooks/usePromptSession'
 
 function LoadingSkeleton() {
@@ -87,6 +88,45 @@ export function PromptBuilder() {
     await loadPrompt(id)
   }, [loadPrompt])
 
+  // Derive values for the chat view (needed before early returns for hooks rules)
+  const workType = 'workType' in state ? state.workType : session.workType
+  const previewOpen = state.status === 'ready' ? (state as { previewOpen: boolean }).previewOpen : false
+  const promptDraft = 'promptDraft' in state ? (state as { promptDraft: string }).promptDraft : session.promptDraft
+  const isReady = state.status === 'ready'
+  const keyboardHint = navigator.platform.includes('Mac') ? '⌘P' : 'Ctrl+P'
+
+  // Build actions for the header (must be before any returns for hooks rules)
+  const headerActions = useMemo(
+    () => [
+      {
+        label: 'New',
+        onClick: handleNewPrompt,
+        disabled: !isReady,
+      },
+      {
+        label: 'History',
+        onClick: () => setHistoryOpen(true),
+      },
+      {
+        label: previewOpen ? 'Hide Preview' : 'Preview',
+        onClick: togglePreview,
+        disabled: !isReady,
+        active: previewOpen,
+        hint: keyboardHint,
+      },
+    ],
+    [handleNewPrompt, isReady, previewOpen, togglePreview, keyboardHint]
+  )
+
+  // Build breadcrumb context
+  const headerContext = useMemo(
+    () => [
+      { label: session.projectName, icon: '📁' },
+      { label: workType },
+    ],
+    [session.projectName, workType]
+  )
+
   // State machine driven rendering
   switch (state.status) {
     case 'loading_context':
@@ -98,22 +138,23 @@ export function PromptBuilder() {
 
     case 'selecting_work_type':
       return (
-        <div className="max-w-3xl mx-auto px-6">
-          {/* History button in top right */}
-          <div className="flex justify-end py-3">
-            <button
-              onClick={() => setHistoryOpen(true)}
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Prompt History
-            </button>
-          </div>
-          <WorkTypeSelector
-            projectName={state.projectName}
-            onSelect={selectWorkType}
+        <div className="flex flex-col h-[calc(100vh-65px)]">
+          <SectionHeader
+            context={[{ label: state.projectName, icon: '📁' }]}
+            actions={[
+              { label: 'History', onClick: () => setHistoryOpen(true) },
+            ]}
           />
+          <div className="flex-1 overflow-auto">
+            <div className="max-w-3xl mx-auto px-6 py-6">
+              <WorkTypeSelector
+                projectName={state.projectName}
+                onSelect={selectWorkType}
+              />
+            </div>
+          </div>
           {error && (
-            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 text-sm text-destructive">
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 text-sm text-destructive bg-background/95 px-4 py-2 rounded-md border border-destructive/20">
               {error}
             </div>
           )}
@@ -130,11 +171,21 @@ export function PromptBuilder() {
       // For errors, show appropriate UI based on previous state
       if (state.previousState?.status === 'selecting_work_type' || !state.previousState) {
         return (
-          <div className="max-w-3xl mx-auto px-6">
-            <WorkTypeSelector
-              projectName={state.projectName}
-              onSelect={selectWorkType}
+          <div className="flex flex-col h-[calc(100vh-65px)]">
+            <SectionHeader
+              context={[{ label: state.projectName, icon: '📁' }]}
+              actions={[
+                { label: 'History', onClick: () => setHistoryOpen(true) },
+              ]}
             />
+            <div className="flex-1 overflow-auto">
+              <div className="max-w-3xl mx-auto px-6 py-6">
+                <WorkTypeSelector
+                  projectName={state.projectName}
+                  onSelect={selectWorkType}
+                />
+              </div>
+            </div>
             <div className="fixed bottom-6 left-1/2 -translate-x-1/2 text-sm text-destructive bg-background/95 px-4 py-2 rounded-md border border-destructive/20">
               {state.error}
               <button
@@ -144,6 +195,12 @@ export function PromptBuilder() {
                 Dismiss
               </button>
             </div>
+            <PromptHistoryPanel
+              isOpen={historyOpen}
+              onClose={() => setHistoryOpen(false)}
+              onSelect={handleLoadPrompt}
+              currentProjectName={state.projectName}
+            />
           </div>
         )
       }
@@ -176,10 +233,6 @@ export function PromptBuilder() {
     )
   }
 
-  const workType = 'workType' in state ? state.workType : session.workType
-  const previewOpen = state.status === 'ready' ? state.previewOpen : false
-  const promptDraft = 'promptDraft' in state ? state.promptDraft : session.promptDraft
-
   return (
     <div className="h-[calc(100vh-65px)] flex">
       {/* Conversation area */}
@@ -189,49 +242,7 @@ export function PromptBuilder() {
           previewOpen ? 'w-[60%]' : 'w-full'
         )}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-3 border-b border-border">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={handleNewPrompt}
-              disabled={state.status !== 'ready'}
-              className={cn(
-                'text-sm transition-colors',
-                state.status !== 'ready'
-                  ? 'text-muted-foreground/30 cursor-not-allowed'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              New Prompt
-            </button>
-            <button
-              onClick={() => setHistoryOpen(true)}
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              History
-            </button>
-            <span className="text-xs text-muted-foreground/50">
-              {workType}
-            </span>
-          </div>
-          <button
-            onClick={togglePreview}
-            disabled={state.status !== 'ready'}
-            className={cn(
-              'text-sm transition-colors',
-              state.status !== 'ready'
-                ? 'text-muted-foreground/30 cursor-not-allowed'
-                : previewOpen
-                  ? 'text-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            {previewOpen ? 'Hide preview' : 'View prompt'}
-            <span className="ml-2 text-xs text-muted-foreground/50">
-              {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+P
-            </span>
-          </button>
-        </div>
+        <SectionHeader context={headerContext} actions={headerActions} />
 
         {/* Conversation */}
         <div className="flex-1 max-w-3xl mx-auto w-full px-6 overflow-hidden">
