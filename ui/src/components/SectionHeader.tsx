@@ -163,7 +163,7 @@ export function SectionHeader({
               action.disabled
                 ? 'text-dim cursor-not-allowed'
                 : action.active
-                  ? 'bg-amber/10 text-amber font-medium'
+                  ? 'text-amber font-medium'
                   : 'text-muted-foreground hover:text-foreground hover:bg-hover/50'
             )}
           >
