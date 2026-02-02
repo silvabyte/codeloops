@@ -1,13 +1,28 @@
+//! Prompt builder API with real AI agent integration.
+//!
+//! This module provides endpoints for creating interactive prompt-building sessions
+//! where users converse with a real AI agent to develop comprehensive prompt.md files.
+//!
+//! The agent dynamically generates questions based on the user's actual answers,
+//! using system instructions that guide the interview process.
+
 use std::collections::HashMap;
 use std::convert::Infallible;
-use std::sync::Mutex;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use axum::extract::Path;
 use axum::http::StatusCode;
 use axum::response::sse::{Event, Sse};
 use axum::response::Json;
+use codeloops_agent::{create_agent, AgentConfig, AgentType, OutputCallback, OutputType};
 use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
+
+use super::prompt_instructions::get_system_instructions;
 
 // ============================================================================
 // Types
@@ -49,10 +64,9 @@ pub struct SavePromptResponse {
 
 #[derive(Debug, Clone)]
 pub struct PromptSession {
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Used for debugging and potential future features
     pub id: String,
     pub work_type: String,
-    #[allow(dead_code)]
     pub working_dir: String,
     pub messages: Vec<ChatMessage>,
     pub prompt_draft: String,
@@ -67,110 +81,6 @@ pub struct ChatMessage {
 // Global session store (simple in-memory for now)
 lazy_static::lazy_static! {
     static ref PROMPT_SESSIONS: Mutex<HashMap<String, PromptSession>> = Mutex::new(HashMap::new());
-}
-
-// ============================================================================
-// Interview Flow Definitions
-// ============================================================================
-
-fn get_initial_prompt(work_type: &str) -> &'static str {
-    match work_type {
-        "feature" => {
-            "Let's design this feature together. I'll ask you some questions to understand what you're building.\n\n\
-            First, **who is this feature for** and **what problem does it solve**? \
-            What should they be able to do that they can't do now?"
-        }
-        "defect" => {
-            "Let's figure out what's going wrong. I'll help you capture the issue clearly.\n\n\
-            **What's happening** that shouldn't be? And **what should be happening** instead?\n\n\
-            If you have specific reproduction steps, share those too."
-        }
-        "risk" => {
-            "Let's identify and document this risk properly.\n\n\
-            **What risk have you identified?** This could be a security vulnerability, \
-            performance issue, or technical concern.\n\n\
-            How did you discover it, and what's the potential impact?"
-        }
-        "debt" => {
-            "Let's tackle this technical debt. I'll help you plan the cleanup.\n\n\
-            **What's the current state** that needs improvement? Why is it problematic now, \
-            and what pain is it causing?"
-        }
-        _ => {
-            "Tell me about what you're working on.\n\n\
-            **What's the goal?** What do you want to accomplish?"
-        }
-    }
-}
-
-fn get_follow_up_prompt(work_type: &str, message_count: usize) -> Option<&'static str> {
-    match work_type {
-        "feature" => match message_count {
-            2 => Some(
-                "Good context. Now let's think about the **technical approach**.\n\n\
-                What components or files will likely need to change? \
-                Are there existing patterns in the codebase we should follow?"
-            ),
-            4 => Some(
-                "Let's get more specific about the **implementation**.\n\n\
-                For each component you mentioned, what's the rough shape of the change? \
-                Are there any edge cases or error conditions to handle?"
-            ),
-            6 => Some(
-                "Almost there. Let's define **done**.\n\n\
-                What are the acceptance criteria? How will you verify it works correctly?"
-            ),
-            _ => None,
-        },
-        "defect" => match message_count {
-            2 => Some(
-                "Let's dig into the **root cause**.\n\n\
-                Where in the code do you think this is happening? \
-                Any theories on why?"
-            ),
-            4 => Some(
-                "What's your **fix strategy**?\n\n\
-                How will you address the root cause? Which files will you modify?"
-            ),
-            6 => Some(
-                "How will you **verify the fix**?\n\n\
-                What tests should pass? How will you prevent regression?"
-            ),
-            _ => None,
-        },
-        "risk" => match message_count {
-            2 => Some(
-                "What's the **current state** of the risk?\n\n\
-                Where does it exist in the code? Are there any mitigations in place?"
-            ),
-            4 => Some(
-                "What's your **remediation plan**?\n\n\
-                How will you address this risk? What files need to change?"
-            ),
-            6 => Some(
-                "How will you **validate** the fix?\n\n\
-                What checks will confirm the risk is mitigated?"
-            ),
-            _ => None,
-        },
-        "debt" => match message_count {
-            2 => Some(
-                "What's the **target state**?\n\n\
-                What should this look like after the cleanup? \
-                What patterns should it follow?"
-            ),
-            4 => Some(
-                "What's your **refactoring plan**?\n\n\
-                Which files will you touch? What's the safe order of operations?"
-            ),
-            6 => Some(
-                "How will you **verify** the refactoring?\n\n\
-                What tests must pass? How will you confirm behavior is preserved?"
-            ),
-            _ => None,
-        },
-        _ => None,
-    }
 }
 
 // ============================================================================
@@ -203,67 +113,33 @@ pub async fn send_message(
     Json(req): Json<SendMessageRequest>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)>
 {
-    // Get session
-    let mut sessions = PROMPT_SESSIONS
-        .lock()
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Lock error".to_string()))?;
+    // Get session state and prepare prompt
+    let (agent_prompt, working_dir) = {
+        let mut sessions = PROMPT_SESSIONS
+            .lock()
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Lock error".to_string()))?;
 
-    let session = sessions
-        .get_mut(&session_id)
-        .ok_or_else(|| (StatusCode::NOT_FOUND, "Session not found".to_string()))?;
+        let session = sessions
+            .get_mut(&session_id)
+            .ok_or_else(|| (StatusCode::NOT_FOUND, "Session not found".to_string()))?;
 
-    // Handle initial message or user message
-    let response_content = if req.content == "__INIT__" {
-        get_initial_prompt(&session.work_type).to_string()
-    } else {
-        // Add user message to history
-        session.messages.push(ChatMessage {
-            role: "user".to_string(),
-            content: req.content.clone(),
-        });
-
-        // Get AI response based on interview flow
-        let message_count = session.messages.len();
-        if let Some(follow_up) = get_follow_up_prompt(&session.work_type, message_count) {
-            follow_up.to_string()
+        // Handle init message vs regular message
+        let agent_prompt = if req.content == "__INIT__" {
+            build_init_prompt(&session.work_type, &session.working_dir)
         } else {
-            // Default response - summarize and build prompt
-            build_summary_response(&session.work_type, &session.messages)
-        }
+            // Add user message to history
+            session.messages.push(ChatMessage {
+                role: "user".to_string(),
+                content: req.content.clone(),
+            });
+            build_agent_prompt(session, &req.content)
+        };
+
+        (agent_prompt, session.working_dir.clone())
     };
 
-    // Add assistant response to history
-    session.messages.push(ChatMessage {
-        role: "assistant".to_string(),
-        content: response_content.clone(),
-    });
-
-    // Build prompt draft
-    let prompt_draft = build_prompt_draft(&session.work_type, &session.messages);
-    session.prompt_draft = prompt_draft.clone();
-
-    // Create SSE stream (simulated streaming for now)
-    let chunks: Vec<String> = response_content
-        .split(' ')
-        .map(|s| s.to_string())
-        .collect();
-
-    let stream = tokio_stream::iter(chunks.into_iter().enumerate())
-        .map(move |(i, chunk)| {
-            let data = if i == 0 {
-                serde_json::json!({ "content": chunk })
-            } else {
-                serde_json::json!({ "content": format!(" {}", chunk) })
-            };
-            Ok(Event::default().data(serde_json::to_string(&data).unwrap_or_default()))
-        })
-        .chain(tokio_stream::once(Ok(Event::default().data(
-            serde_json::to_string(&serde_json::json!({ "promptDraft": prompt_draft }))
-                .unwrap_or_default(),
-        ))))
-        .chain(tokio_stream::once(Ok(Event::default().data("[DONE]"))));
-
-    Ok(Sse::new(stream))
+    // Stream agent response
+    stream_agent_response(session_id, agent_prompt, working_dir).await
 }
 
 pub async fn save_prompt(
@@ -280,167 +156,286 @@ pub async fn save_prompt(
 }
 
 // ============================================================================
-// Prompt Building
+// Agent Integration
 // ============================================================================
 
-fn build_summary_response(work_type: &str, messages: &[ChatMessage]) -> String {
-    let user_messages: Vec<_> = messages.iter().filter(|m| m.role == "user").collect();
-
-    if user_messages.is_empty() {
-        return "Thanks for the details. The prompt is taking shape in the preview panel. \
-                Keep adding context or edit the preview directly when you're ready."
-            .to_string();
-    }
-
+/// Build the initial prompt for when conversation starts.
+fn build_init_prompt(work_type: &str, working_dir: &str) -> String {
+    let system = get_system_instructions(work_type, working_dir);
     format!(
-        "I've captured the key points in the preview panel. You can:\n\n\
-         - **Keep chatting** to add more detail\n\
-         - **Edit the preview** directly to refine it\n\
-         - **Save** when you're happy with it\n\n\
-         Is there anything else important about this {} I should know?",
-        work_type
+        "{}\n\n---\n\n\
+        The user has selected '{}' as the work type and is ready to start.\n\n\
+        Introduce yourself briefly (1-2 sentences) and ask your FIRST question \
+        to understand what they're working on. Remember: ask ONE question only.",
+        system, work_type
     )
 }
 
-fn build_prompt_draft(work_type: &str, messages: &[ChatMessage]) -> String {
-    let user_messages: Vec<_> = messages
-        .iter()
-        .filter(|m| m.role == "user")
-        .map(|m| m.content.as_str())
-        .collect();
+/// Build the complete prompt for the agent including conversation history.
+fn build_agent_prompt(session: &PromptSession, _new_message: &str) -> String {
+    let system = get_system_instructions(&session.work_type, &session.working_dir);
 
-    if user_messages.is_empty() {
-        return String::new();
-    }
+    let mut prompt = String::new();
 
-    let header = match work_type {
-        "feature" => "# Feature: ",
-        "defect" => "# Bug Fix: ",
-        "risk" => "# Risk Mitigation: ",
-        "debt" => "# Technical Debt: ",
-        _ => "# Task: ",
-    };
+    // System instructions
+    prompt.push_str(&system);
+    prompt.push_str("\n\n---\n\n");
 
-    // Extract first line of first message as title
-    let title = user_messages
-        .first()
-        .unwrap_or(&"")
-        .lines()
-        .next()
-        .unwrap_or("Untitled");
-
-    let mut draft = format!("{}{}\n\n", header, title);
-
-    // Add sections based on work type
-    match work_type {
-        "feature" => {
-            draft.push_str("## Problem\n");
-            if let Some(first) = user_messages.first() {
-                draft.push_str(first);
-                draft.push_str("\n\n");
-            }
-
-            if user_messages.len() > 1 {
-                draft.push_str("## Technical Approach\n");
-                draft.push_str(user_messages.get(1).unwrap_or(&""));
-                draft.push_str("\n\n");
-            }
-
-            if user_messages.len() > 2 {
-                draft.push_str("## Implementation Details\n");
-                draft.push_str(user_messages.get(2).unwrap_or(&""));
-                draft.push_str("\n\n");
-            }
-
-            if user_messages.len() > 3 {
-                draft.push_str("## Acceptance Criteria\n");
-                draft.push_str(user_messages.get(3).unwrap_or(&""));
-                draft.push_str("\n\n");
-            }
-        }
-        "defect" => {
-            draft.push_str("## Symptom\n");
-            if let Some(first) = user_messages.first() {
-                draft.push_str(first);
-                draft.push_str("\n\n");
-            }
-
-            if user_messages.len() > 1 {
-                draft.push_str("## Root Cause\n");
-                draft.push_str(user_messages.get(1).unwrap_or(&""));
-                draft.push_str("\n\n");
-            }
-
-            if user_messages.len() > 2 {
-                draft.push_str("## Fix Strategy\n");
-                draft.push_str(user_messages.get(2).unwrap_or(&""));
-                draft.push_str("\n\n");
-            }
-
-            if user_messages.len() > 3 {
-                draft.push_str("## Verification\n");
-                draft.push_str(user_messages.get(3).unwrap_or(&""));
-                draft.push_str("\n\n");
-            }
-        }
-        "risk" => {
-            draft.push_str("## Risk Identified\n");
-            if let Some(first) = user_messages.first() {
-                draft.push_str(first);
-                draft.push_str("\n\n");
-            }
-
-            if user_messages.len() > 1 {
-                draft.push_str("## Current State\n");
-                draft.push_str(user_messages.get(1).unwrap_or(&""));
-                draft.push_str("\n\n");
-            }
-
-            if user_messages.len() > 2 {
-                draft.push_str("## Remediation Plan\n");
-                draft.push_str(user_messages.get(2).unwrap_or(&""));
-                draft.push_str("\n\n");
-            }
-
-            if user_messages.len() > 3 {
-                draft.push_str("## Validation\n");
-                draft.push_str(user_messages.get(3).unwrap_or(&""));
-                draft.push_str("\n\n");
-            }
-        }
-        "debt" => {
-            draft.push_str("## Current State\n");
-            if let Some(first) = user_messages.first() {
-                draft.push_str(first);
-                draft.push_str("\n\n");
-            }
-
-            if user_messages.len() > 1 {
-                draft.push_str("## Target State\n");
-                draft.push_str(user_messages.get(1).unwrap_or(&""));
-                draft.push_str("\n\n");
-            }
-
-            if user_messages.len() > 2 {
-                draft.push_str("## Refactoring Plan\n");
-                draft.push_str(user_messages.get(2).unwrap_or(&""));
-                draft.push_str("\n\n");
-            }
-
-            if user_messages.len() > 3 {
-                draft.push_str("## Verification\n");
-                draft.push_str(user_messages.get(3).unwrap_or(&""));
-                draft.push_str("\n\n");
-            }
-        }
-        _ => {
-            draft.push_str("## Description\n");
-            for msg in user_messages {
-                draft.push_str(msg);
-                draft.push_str("\n\n");
-            }
+    // Conversation history
+    if !session.messages.is_empty() {
+        prompt.push_str("## Conversation so far:\n\n");
+        for msg in &session.messages {
+            let role = if msg.role == "user" {
+                "User"
+            } else {
+                "Assistant"
+            };
+            prompt.push_str(&format!("**{}**: {}\n\n", role, msg.content));
         }
     }
 
-    draft.trim().to_string()
+    // Instructions for this turn
+    prompt.push_str("---\n\n");
+    prompt.push_str(
+        "Continue the interview based on the user's latest message. \
+        Either:\n\
+        1. Ask ONE focused follow-up question to gather more information, OR\n\
+        2. If you have enough information (typically after 4-6 exchanges), \
+           generate the prompt.md content within <prompt></prompt> tags.\n\n\
+        Keep your response concise and conversational.",
+    );
+
+    prompt
+}
+
+/// Stream response from agent to SSE.
+async fn stream_agent_response(
+    session_id: String,
+    prompt: String,
+    working_dir: String,
+) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)>
+{
+    // Create channel for streaming
+    let (tx, rx) = mpsc::channel::<StreamMessage>(1000);
+
+    // Spawn agent execution in background
+    let session_id_clone = session_id.clone();
+    tokio::spawn(async move {
+        let result = execute_agent(prompt, working_dir, tx.clone()).await;
+
+        match result {
+            Ok(full_response) => {
+                // Extract prompt draft before acquiring mutex
+                let maybe_draft = extract_prompt_draft(&full_response);
+
+                // Update session with assistant response (release mutex before awaits)
+                {
+                    if let Ok(mut sessions) = PROMPT_SESSIONS.lock() {
+                        if let Some(session) = sessions.get_mut(&session_id_clone) {
+                            session.messages.push(ChatMessage {
+                                role: "assistant".to_string(),
+                                content: full_response.clone(),
+                            });
+
+                            // Store prompt draft if present
+                            if let Some(ref draft) = maybe_draft {
+                                session.prompt_draft = draft.clone();
+                            }
+                        }
+                    }
+                } // mutex released here
+
+                // Send prompt draft update after releasing mutex
+                if let Some(draft) = maybe_draft {
+                    let _ = tx.send(StreamMessage::PromptDraft(draft)).await;
+                }
+
+                let _ = tx.send(StreamMessage::Done).await;
+            }
+            Err(e) => {
+                let _ = tx
+                    .send(StreamMessage::Error(format!("Agent error: {}", e)))
+                    .await;
+            }
+        }
+    });
+
+    // Convert channel to SSE stream
+    let stream = ReceiverStream::new(rx).map(|msg| match msg {
+        StreamMessage::Content(content) => {
+            let data = serde_json::json!({ "content": content });
+            Ok(Event::default().data(serde_json::to_string(&data).unwrap_or_default()))
+        }
+        StreamMessage::PromptDraft(draft) => {
+            let data = serde_json::json!({ "promptDraft": draft });
+            Ok(Event::default().data(serde_json::to_string(&data).unwrap_or_default()))
+        }
+        StreamMessage::Error(err) => {
+            let data = serde_json::json!({ "error": err });
+            Ok(Event::default().data(serde_json::to_string(&data).unwrap_or_default()))
+        }
+        StreamMessage::Done => Ok(Event::default().data("[DONE]")),
+    });
+
+    Ok(Sse::new(stream).keep_alive(
+        axum::response::sse::KeepAlive::new()
+            .interval(Duration::from_secs(1))
+            .text("keep-alive"),
+    ))
+}
+
+/// Messages sent through the streaming channel.
+#[derive(Debug)]
+enum StreamMessage {
+    Content(String),
+    PromptDraft(String),
+    Error(String),
+    Done,
+}
+
+/// Execute the agent and stream output.
+async fn execute_agent(
+    prompt: String,
+    working_dir: String,
+    tx: mpsc::Sender<StreamMessage>,
+) -> Result<String, String> {
+    let agent = create_agent(AgentType::ClaudeCode);
+    let config = AgentConfig::new(PathBuf::from(&working_dir));
+
+    // Check if agent is available
+    if !agent.is_available().await {
+        return Err(
+            "Claude Code agent not available. Please ensure 'claude' CLI is installed.".to_string(),
+        );
+    }
+
+    // Create callback for streaming output
+    let tx_clone = tx.clone();
+    let accumulated = Arc::new(Mutex::new(String::new()));
+    let accumulated_clone = accumulated.clone();
+
+    let callback: OutputCallback = Arc::new(move |line: &str, output_type: OutputType| {
+        // Only stream stdout (agent's actual response)
+        if output_type == OutputType::Stdout {
+            // Accumulate the full response
+            if let Ok(mut acc) = accumulated_clone.lock() {
+                if !acc.is_empty() {
+                    acc.push('\n');
+                }
+                acc.push_str(line);
+            }
+
+            // Stream the line to frontend
+            let tx = tx_clone.clone();
+            let line = line.to_string();
+            // Use try_send to avoid blocking in the callback
+            let _ = tx.try_send(StreamMessage::Content(format!("{}\n", line)));
+        }
+    });
+
+    // Execute agent
+    let output = agent
+        .execute_with_callback(&prompt, &config, Some(callback))
+        .await
+        .map_err(|e| format!("Agent execution failed: {}", e))?;
+
+    // Return the full response (prefer accumulated, fall back to output.stdout)
+    let full_response = accumulated
+        .lock()
+        .map(|acc| {
+            if acc.is_empty() {
+                output.stdout.clone()
+            } else {
+                acc.clone()
+            }
+        })
+        .unwrap_or(output.stdout);
+
+    Ok(full_response)
+}
+
+// ============================================================================
+// Prompt Draft Extraction
+// ============================================================================
+
+/// Extract prompt.md content from agent response if present.
+///
+/// The agent is instructed to wrap the final prompt in `<prompt>` and `</prompt>` tags
+/// when it has gathered enough information to generate the prompt.md content.
+fn extract_prompt_draft(response: &str) -> Option<String> {
+    let start_tag = "<prompt>";
+    let end_tag = "</prompt>";
+
+    if let Some(start) = response.find(start_tag) {
+        if let Some(end) = response.find(end_tag) {
+            if end > start {
+                let content = &response[start + start_tag.len()..end];
+                return Some(content.trim().to_string());
+            }
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_prompt_draft_found() {
+        let response = "Here's your prompt:\n\n<prompt>\n# Feature: Add login\n\n## Problem\nUsers can't sign in.\n</prompt>\n\nLet me know if you want changes!";
+        let draft = extract_prompt_draft(response);
+        assert!(draft.is_some());
+        let draft = draft.unwrap();
+        assert!(draft.contains("# Feature: Add login"));
+        assert!(draft.contains("Users can't sign in"));
+    }
+
+    #[test]
+    fn test_extract_prompt_draft_not_found() {
+        let response = "What component will this affect?";
+        let draft = extract_prompt_draft(response);
+        assert!(draft.is_none());
+    }
+
+    #[test]
+    fn test_extract_prompt_draft_malformed() {
+        let response = "<prompt>content without closing tag";
+        let draft = extract_prompt_draft(response);
+        assert!(draft.is_none());
+    }
+
+    #[test]
+    fn test_build_init_prompt() {
+        let prompt = build_init_prompt("feature", "/path/to/project");
+        assert!(prompt.contains("feature"));
+        assert!(prompt.contains("/path/to/project"));
+        assert!(prompt.contains("FIRST question"));
+    }
+
+    #[test]
+    fn test_build_agent_prompt_with_history() {
+        let session = PromptSession {
+            id: "test".to_string(),
+            work_type: "feature".to_string(),
+            working_dir: "/project".to_string(),
+            messages: vec![
+                ChatMessage {
+                    role: "user".to_string(),
+                    content: "I want to add a login button".to_string(),
+                },
+                ChatMessage {
+                    role: "assistant".to_string(),
+                    content: "Where should the button appear?".to_string(),
+                },
+            ],
+            prompt_draft: String::new(),
+        };
+
+        let prompt = build_agent_prompt(&session, "On the header");
+        assert!(prompt.contains("Conversation so far"));
+        assert!(prompt.contains("I want to add a login button"));
+        assert!(prompt.contains("Where should the button appear"));
+        assert!(prompt.contains("feature"));
+    }
 }

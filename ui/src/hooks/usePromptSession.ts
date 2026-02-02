@@ -27,6 +27,15 @@ function getStorageKey(projectPath: string): string {
   return `${STORAGE_KEY_PREFIX}${projectPath.replace(/\//g, '-')}`
 }
 
+/**
+ * Strip <prompt></prompt> tags from assistant messages for display.
+ * The prompt content is sent separately via the promptDraft field.
+ */
+function stripPromptTags(content: string): string {
+  // Remove <prompt>...</prompt> blocks from display
+  return content.replace(/<prompt>[\s\S]*?<\/prompt>/g, '').trim()
+}
+
 function generateId(): string {
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 }
@@ -122,7 +131,11 @@ export function usePromptSession() {
       let currentContent = ''
 
       for await (const chunk of sendPromptMessage(sessionId, '__INIT__')) {
-        if (chunk.startsWith('__PROMPT_DRAFT__')) {
+        if (chunk.startsWith('__ERROR__')) {
+          const errorMsg = chunk.slice('__ERROR__'.length)
+          setError(errorMsg)
+          break
+        } else if (chunk.startsWith('__PROMPT_DRAFT__')) {
           const draft = chunk.slice('__PROMPT_DRAFT__'.length)
           setSession((s) => ({ ...s, promptDraft: draft }))
         } else {
@@ -131,11 +144,15 @@ export function usePromptSession() {
       }
 
       if (currentContent) {
-        initialMessages.push({
-          id: generateId(),
-          role: 'assistant',
-          content: currentContent,
-        })
+        // Strip prompt tags for display
+        const displayContent = stripPromptTags(currentContent)
+        if (displayContent) {
+          initialMessages.push({
+            id: generateId(),
+            role: 'assistant',
+            content: displayContent,
+          })
+        }
       }
 
       setSession((s) => ({
@@ -176,19 +193,24 @@ export function usePromptSession() {
 
       // Stream AI response
       for await (const chunk of sendPromptMessage(session.id, content)) {
-        if (chunk.startsWith('__PROMPT_DRAFT__')) {
+        if (chunk.startsWith('__ERROR__')) {
+          const errorMsg = chunk.slice('__ERROR__'.length)
+          setError(errorMsg)
+          break
+        } else if (chunk.startsWith('__PROMPT_DRAFT__')) {
           const draft = chunk.slice('__PROMPT_DRAFT__'.length)
           setSession((s) => ({ ...s, promptDraft: draft }))
         } else {
           assistantContent += chunk
-          // Update message as it streams
+          // Update message as it streams (strip <prompt> tags for display)
+          const displayContent = stripPromptTags(assistantContent)
           setSession((s) => {
             const existingIdx = s.messages.findIndex((m) => m.id === assistantId)
             if (existingIdx >= 0) {
               const updated = [...s.messages]
               updated[existingIdx] = {
                 ...updated[existingIdx],
-                content: assistantContent,
+                content: displayContent,
               }
               return { ...s, messages: updated }
             } else {
@@ -196,7 +218,7 @@ export function usePromptSession() {
                 ...s,
                 messages: [
                   ...s.messages,
-                  { id: assistantId, role: 'assistant', content: assistantContent },
+                  { id: assistantId, role: 'assistant', content: displayContent },
                 ],
               }
             }

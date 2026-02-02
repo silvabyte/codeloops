@@ -65,7 +65,11 @@ export async function* sendPromptMessage(
         if (data === '[DONE]') return
         try {
           const parsed = JSON.parse(data)
-          if (parsed.content) yield parsed.content
+          if (parsed.error) {
+            yield `__ERROR__${parsed.error}`
+          } else if (parsed.content) {
+            yield parsed.content
+          }
           if (parsed.promptDraft) yield `__PROMPT_DRAFT__${parsed.promptDraft}`
         } catch {
           // Skip non-JSON lines

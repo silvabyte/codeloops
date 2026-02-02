@@ -1,5 +1,6 @@
 mod context;
 mod prompt;
+mod prompt_instructions;
 mod sessions;
 mod sse;
 mod stats;
