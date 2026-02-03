@@ -16,7 +16,7 @@ export function HealthPulse({ stats, loading }: HealthPulseProps) {
     )
   }
 
-  const rate = stats.success_rate
+  const rate = stats.successRate
   const percentage = Math.round(rate * 100)
 
   // Determine health status
@@ -43,7 +43,7 @@ export function HealthPulse({ stats, loading }: HealthPulseProps) {
       <div className={dotClasses} />
       <span className={textClasses}>{percentage}%</span>
       <span className="text-muted-foreground text-sm">
-        success rate across {stats.total_sessions} session{stats.total_sessions !== 1 ? 's' : ''}
+        success rate across {stats.totalSessions} session{stats.totalSessions !== 1 ? 's' : ''}
       </span>
     </div>
   )

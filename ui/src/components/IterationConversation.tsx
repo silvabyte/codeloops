@@ -111,11 +111,11 @@ export function IterationConversation({ iterations }: IterationConversationProps
   return (
     <div className="space-y-6">
       {iterations.map((iter) => {
-        const isFinal = iter.iteration_number === finalIteration.iteration_number
+        const isFinal = iter.iterationNumber === finalIteration.iterationNumber
 
         return (
           <div
-            key={iter.iteration_number}
+            key={iter.iterationNumber}
             className="rounded-lg border border-border bg-card overflow-hidden"
           >
             {/* Iteration Header */}
@@ -123,11 +123,11 @@ export function IterationConversation({ iterations }: IterationConversationProps
               <div className="flex items-center gap-2">
                 {isFinal && <span title="Final iteration">★</span>}
                 <span className="text-sm font-medium">
-                  ITERATION {iter.iteration_number}
+                  ITERATION {iter.iterationNumber}
                 </span>
               </div>
               <span className="text-xs text-muted-foreground">
-                {formatDuration(iter.actor_duration_secs)}
+                {formatDuration(iter.actorDurationSecs)}
               </span>
             </div>
 
@@ -136,7 +136,7 @@ export function IterationConversation({ iterations }: IterationConversationProps
               {/* Actor Output */}
               <ContentBlock
                 label="Actor"
-                content={iter.actor_output || '(no output)'}
+                content={iter.actorOutput || '(no output)'}
                 variant="actor"
                 markdown
               />
@@ -153,7 +153,7 @@ export function IterationConversation({ iterations }: IterationConversationProps
                     <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
                       Critic
                     </span>
-                    <DecisionBadge decision={iter.critic_decision} />
+                    <DecisionBadge decision={iter.criticDecision} />
                   </div>
                   {iter.feedback && <CopyButton content={iter.feedback} />}
                 </div>
@@ -171,7 +171,7 @@ export function IterationConversation({ iterations }: IterationConversationProps
               </div>
 
               {/* Expandable Diff */}
-              <DiffPreview diff={iter.git_diff} filesChanged={iter.git_files_changed} />
+              <DiffPreview diff={iter.gitDiff} filesChanged={iter.gitFilesChanged} />
             </div>
           </div>
         )

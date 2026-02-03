@@ -40,7 +40,3 @@ export async function fetchMetrics(): Promise<AgenticMetrics> {
   if (!res.ok) throw new Error(`Failed to fetch metrics: ${res.statusText}`)
   return res.json()
 }
-
-export function getSSEUrl(): string {
-  return `${API_BASE}/api/sessions/live`
-}

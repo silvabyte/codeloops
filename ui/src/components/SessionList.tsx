@@ -78,7 +78,7 @@ export function SessionList({ sessions, loading }: SessionListProps) {
             <StatusDot outcome={s.outcome} />
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-4">
-                <p className="text-foreground leading-snug">{s.prompt_preview}</p>
+                <p className="text-foreground leading-snug">{s.promptPreview}</p>
                 <span
                   className="text-xs text-muted-foreground shrink-0"
                   title={formatDate(s.timestamp)}
@@ -88,10 +88,10 @@ export function SessionList({ sessions, loading }: SessionListProps) {
               </div>
               <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
                 <span>{s.project}</span>
-                {s.duration_secs && (
+                {s.durationSecs && (
                   <>
                     <span className="opacity-50">/</span>
-                    <span>{formatDuration(s.duration_secs)}</span>
+                    <span>{formatDuration(s.durationSecs)}</span>
                   </>
                 )}
               </div>

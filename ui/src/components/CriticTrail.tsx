@@ -27,20 +27,20 @@ export function CriticTrail({ iterations }: CriticTrailProps) {
       <div className="space-y-3">
         {iterations.map((iter) => (
           <div
-            key={iter.iteration_number}
-            className={cn('border-l-2 pl-4 py-2', decisionColor(iter.critic_decision))}
+            key={iter.iterationNumber}
+            className={cn('border-l-2 pl-4 py-2', decisionColor(iter.criticDecision))}
           >
             <div className="flex items-center gap-2 mb-1">
               <span className="text-xs font-medium text-muted-foreground">
-                Iteration {iter.iteration_number}
+                Iteration {iter.iterationNumber}
               </span>
               <span className={cn(
                 'text-xs px-1.5 py-0.5 rounded',
-                iter.critic_decision === 'DONE' && 'bg-success/20 text-success',
-                iter.critic_decision === 'CONTINUE' && 'bg-warning/20 text-warning',
-                !['DONE', 'CONTINUE'].includes(iter.critic_decision) && 'bg-destructive/20 text-destructive',
+                iter.criticDecision === 'DONE' && 'bg-success/20 text-success',
+                iter.criticDecision === 'CONTINUE' && 'bg-warning/20 text-warning',
+                !['DONE', 'CONTINUE'].includes(iter.criticDecision) && 'bg-destructive/20 text-destructive',
               )}>
-                {iter.critic_decision}
+                {iter.criticDecision}
               </span>
             </div>
             {iter.feedback ? (

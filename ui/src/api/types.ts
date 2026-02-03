@@ -1,37 +1,37 @@
 export interface SessionSummary {
   id: string
   timestamp: string
-  prompt_preview: string
-  working_dir: string
+  promptPreview: string
+  workingDir: string
   project: string
   outcome: string | null
   iterations: number
-  duration_secs: number | null
+  durationSecs: number | null
   confidence: number | null
-  actor_agent: string
-  critic_agent: string
+  actorAgent: string
+  criticAgent: string
 }
 
 export interface SessionStart {
   timestamp: string
   prompt: string
-  working_dir: string
-  actor_agent: string
-  critic_agent: string
-  actor_model: string | null
-  critic_model: string | null
-  max_iterations: number | null
+  workingDir: string
+  actorAgent: string
+  criticAgent: string
+  actorModel: string | null
+  criticModel: string | null
+  maxIterations: number | null
 }
 
 export interface Iteration {
-  iteration_number: number
-  actor_output: string
-  actor_stderr: string
-  actor_exit_code: number
-  actor_duration_secs: number
-  git_diff: string
-  git_files_changed: number
-  critic_decision: string
+  iterationNumber: number
+  actorOutput: string
+  actorStderr: string
+  actorExitCode: number
+  actorDurationSecs: number
+  gitDiff: string
+  gitFilesChanged: number
+  criticDecision: string
   feedback: string | null
   timestamp: string
 }
@@ -41,15 +41,27 @@ export interface SessionEnd {
   iterations: number
   summary: string | null
   confidence: number | null
-  duration_secs: number
+  durationSecs: number
   timestamp: string
 }
 
 export interface Session {
   id: string
-  start: SessionStart
+  prompt: string
+  workingDir: string
+  actorAgent: string
+  criticAgent: string
+  actorModel: string | null
+  criticModel: string | null
+  maxIterations: number | null
+  outcome: string | null
+  iterationCount: number | null
+  summary: string | null
+  confidence: number | null
+  durationSecs: number | null
+  startedAt: string
+  endedAt: string | null
   iterations: Iteration[]
-  end: SessionEnd | null
 }
 
 export interface DayCount {
@@ -60,37 +72,37 @@ export interface DayCount {
 export interface ProjectStats {
   project: string
   total: number
-  success_rate: number
+  successRate: number
 }
 
 export interface SessionStats {
-  total_sessions: number
-  success_rate: number
-  avg_iterations: number
-  avg_duration_secs: number
-  sessions_over_time: DayCount[]
-  by_project: ProjectStats[]
+  totalSessions: number
+  successRate: number
+  avgIterations: number
+  avgDurationSecs: number
+  sessionsOverTime: DayCount[]
+  byProject: ProjectStats[]
 }
 
 export interface AgenticMetrics {
   // Session metrics
-  total_sessions: number
-  successful_sessions: number
-  success_rate: number
-  first_try_success_rate: number
-  avg_iterations_to_success: number
-  avg_cycle_time_secs: number
-  waste_rate: number
+  totalSessions: number
+  successfulSessions: number
+  successRate: number
+  firstTrySuccessRate: number
+  avgIterationsToSuccess: number
+  avgCycleTimeSecs: number
+  wasteRate: number
 
   // Critic metrics
-  total_iterations: number
-  critic_approval_rate: number
-  avg_feedback_length: number
-  improvement_rate: number
+  totalIterations: number
+  criticApprovalRate: number
+  avgFeedbackLength: number
+  improvementRate: number
 
   // Breakdowns
-  sessions_over_time: DayCount[]
-  by_project: ProjectStats[]
+  sessionsOverTime: DayCount[]
+  byProject: ProjectStats[]
 }
 
 export interface SessionFilter {
@@ -99,13 +111,4 @@ export interface SessionFilter {
   before?: string
   search?: string
   project?: string
-}
-
-export type SessionEventType = 'session_created' | 'session_updated' | 'session_completed'
-
-export interface SessionEvent {
-  event: SessionEventType
-  id: string
-  iteration?: number
-  outcome?: string
 }

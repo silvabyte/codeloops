@@ -41,7 +41,7 @@ export function SessionDetail() {
     )
   }
 
-  const outcomeLabel = session.end?.outcome || 'active'
+  const outcomeLabel = session.outcome || 'active'
   const outcomeColor: Record<string, string> = {
     success: 'bg-success',
     failed: 'bg-destructive',
@@ -97,9 +97,9 @@ export function SessionDetail() {
             </div>
 
             {/* Duration */}
-            {session.end && (
+            {session.durationSecs && (
               <span className="text-muted-foreground">
-                {formatDuration(session.end.duration_secs)}
+                {formatDuration(session.durationSecs)}
               </span>
             )}
 
@@ -136,7 +136,7 @@ export function SessionDetail() {
         {activeTab === 'prompt' && (
           <ContentBlock
             label="Prompt"
-            content={session.start.prompt}
+            content={session.prompt}
             markdown
           />
         )}
@@ -147,22 +147,22 @@ export function SessionDetail() {
 
         {activeTab === 'summary' && (
           <div>
-            {session.end?.summary ? (
+            {session.summary ? (
               <div className="space-y-4">
                 <ContentBlock
                   label="Summary"
-                  content={session.end.summary}
+                  content={session.summary}
                   markdown
                 />
-                {session.end.confidence != null && (
+                {session.confidence != null && (
                   <div className="text-sm text-muted-foreground">
-                    Confidence: {Math.round(session.end.confidence * 100)}%
+                    Confidence: {Math.round(session.confidence * 100)}%
                   </div>
                 )}
               </div>
             ) : (
               <div className="text-muted-foreground text-sm py-8 text-center">
-                {session.end ? 'No summary available.' : 'Session in progress...'}
+                {session.endedAt ? 'No summary available.' : 'Session in progress...'}
               </div>
             )}
           </div>

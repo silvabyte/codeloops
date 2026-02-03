@@ -51,7 +51,7 @@ export function Stats() {
   }
 
   // Compute waste breakdown
-  const wasteCount = Math.round(metrics.total_sessions * metrics.waste_rate)
+  const wasteCount = Math.round(metrics.totalSessions * metrics.wasteRate)
 
   return (
     <div className="flex flex-col h-[calc(100vh-65px)]">
@@ -67,24 +67,24 @@ export function Stats() {
             <div className="rounded-lg border border-border bg-card p-6">
               <div className="grid grid-cols-4 gap-6">
                 <MetricCard
-                  value={`${Math.round(metrics.success_rate * 100)}%`}
+                  value={`${Math.round(metrics.successRate * 100)}%`}
                   label="Success Rate"
                 />
                 <MetricCard
-                  value={`${Math.round(metrics.first_try_success_rate * 100)}%`}
+                  value={`${Math.round(metrics.firstTrySuccessRate * 100)}%`}
                   label="First-Try Success"
                 />
                 <MetricCard
-                  value={metrics.avg_iterations_to_success.toFixed(1)}
+                  value={metrics.avgIterationsToSuccess.toFixed(1)}
                   label="Iterations to Success"
                 />
                 <MetricCard
-                  value={formatDuration(metrics.avg_cycle_time_secs)}
+                  value={formatDuration(metrics.avgCycleTimeSecs)}
                   label="Cycle Time"
                 />
               </div>
               <div className="text-xs text-muted-foreground mt-4 text-center">
-                {Math.round(metrics.waste_rate * 100)}% waste rate ({wasteCount} failed/interrupted sessions)
+                {Math.round(metrics.wasteRate * 100)}% waste rate ({wasteCount} failed/interrupted sessions)
               </div>
             </div>
           </section>
@@ -97,33 +97,33 @@ export function Stats() {
             <div className="rounded-lg border border-border bg-card p-6">
               <div className="grid grid-cols-3 gap-6">
                 <MetricCard
-                  value={`${Math.round(metrics.critic_approval_rate * 100)}%`}
+                  value={`${Math.round(metrics.criticApprovalRate * 100)}%`}
                   label="Approval Rate"
                 />
                 <MetricCard
-                  value={`${Math.round(metrics.avg_feedback_length)} chars`}
+                  value={`${Math.round(metrics.avgFeedbackLength)} chars`}
                   label="Avg Feedback Length"
                 />
                 <MetricCard
-                  value={`${Math.round(metrics.improvement_rate * 100)}%`}
+                  value={`${Math.round(metrics.improvementRate * 100)}%`}
                   label="Improvement Rate"
                 />
               </div>
               <div className="text-xs text-muted-foreground mt-4 text-center">
-                (across {metrics.total_iterations} iterations)
+                (across {metrics.totalIterations} iterations)
               </div>
             </div>
           </section>
 
           {/* Activity Chart */}
-          {metrics.sessions_over_time.length > 0 && (
+          {metrics.sessionsOverTime.length > 0 && (
             <section>
               <h2 className="text-xs text-muted-foreground uppercase tracking-wider mb-4">
                 Activity
               </h2>
               <div className="rounded-lg border border-border bg-card p-4">
                 <ResponsiveContainer width="100%" height={160}>
-                  <BarChart data={metrics.sessions_over_time}>
+                  <BarChart data={metrics.sessionsOverTime}>
                     <XAxis
                       dataKey="date"
                       tick={{ fontSize: 10, fill: '#a1a1aa' }}
@@ -158,13 +158,13 @@ export function Stats() {
           )}
 
           {/* By Project */}
-          {metrics.by_project.length > 0 && (
+          {metrics.byProject.length > 0 && (
             <section>
               <h2 className="text-xs text-muted-foreground uppercase tracking-wider mb-4">
                 By Project
               </h2>
               <div className="rounded-lg border border-border bg-card p-4">
-                <DotChart projects={metrics.by_project} />
+                <DotChart projects={metrics.byProject} />
               </div>
             </section>
           )}

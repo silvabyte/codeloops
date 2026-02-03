@@ -1,29 +1,28 @@
 import { useEffect, useRef } from 'react'
-import { getSSEUrl } from '@/api/client'
-import type { SessionEvent } from '@/api/types'
 
-export function useSessionEvents(onEvent: (event: SessionEvent) => void) {
-  const onEventRef = useRef(onEvent)
+/**
+ * Hook that triggers a callback at regular intervals for auto-refresh.
+ * This replaces the SSE-based approach since the /api/sessions/live endpoint
+ * is not currently implemented.
+ *
+ * @param onRefresh Callback to trigger on each interval
+ * @param intervalMs Refresh interval in milliseconds (default: 30000ms / 30s)
+ */
+export function useSessionEvents(onRefresh: () => void, intervalMs = 30000) {
+  const onRefreshRef = useRef(onRefresh)
 
   useEffect(() => {
-    onEventRef.current = onEvent
+    onRefreshRef.current = onRefresh
   })
 
   useEffect(() => {
-    const source = new EventSource(getSSEUrl())
+    // Skip polling if interval is 0 or negative
+    if (intervalMs <= 0) return
 
-    const handler = (e: MessageEvent) => {
-      try {
-        onEventRef.current(JSON.parse(e.data))
-      } catch {
-        // ignore parse errors
-      }
-    }
+    const interval = setInterval(() => {
+      onRefreshRef.current()
+    }, intervalMs)
 
-    source.addEventListener('session_created', handler)
-    source.addEventListener('session_updated', handler)
-    source.addEventListener('session_completed', handler)
-
-    return () => source.close()
-  }, [])
+    return () => clearInterval(interval)
+  }, [intervalMs])
 }

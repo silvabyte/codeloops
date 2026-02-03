@@ -18,7 +18,7 @@ export function DotChart({ projects, maxDots = 16 }: DotChartProps) {
   return (
     <div className="space-y-3">
       {projects.map((p) => {
-        const successCount = Math.round(p.total * p.success_rate)
+        const successCount = Math.round(p.total * p.successRate)
         const failCount = p.total - successCount
 
         // Scale dots if total exceeds maxDots
@@ -49,7 +49,7 @@ export function DotChart({ projects, maxDots = 16 }: DotChartProps) {
               ))}
             </div>
             <span className="text-xs text-muted-foreground w-28 text-right tabular-nums">
-              {p.total} runs / {Math.round(p.success_rate * 100)}%
+              {p.total} runs / {Math.round(p.successRate * 100)}%
             </span>
           </div>
         )

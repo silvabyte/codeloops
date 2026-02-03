@@ -5,26 +5,26 @@ import type { Iteration } from '@/api/types'
 
 const mockIterations: Iteration[] = [
   {
-    iteration_number: 0,
-    actor_output: 'First iteration output',
-    actor_stderr: '',
-    actor_exit_code: 0,
-    actor_duration_secs: 120,
-    git_diff: 'diff --git a/file.ts b/file.ts\n+new line',
-    git_files_changed: 2,
-    critic_decision: 'CONTINUE',
+    iterationNumber: 0,
+    actorOutput: 'First iteration output',
+    actorStderr: '',
+    actorExitCode: 0,
+    actorDurationSecs: 120,
+    gitDiff: 'diff --git a/file.ts b/file.ts\n+new line',
+    gitFilesChanged: 2,
+    criticDecision: 'CONTINUE',
     feedback: 'Keep working on the implementation',
     timestamp: '2026-02-02T10:00:00Z',
   },
   {
-    iteration_number: 1,
-    actor_output: 'Second iteration completed',
-    actor_stderr: '',
-    actor_exit_code: 0,
-    actor_duration_secs: 180,
-    git_diff: 'diff --git a/another.ts b/another.ts\n+another line',
-    git_files_changed: 3,
-    critic_decision: 'DONE',
+    iterationNumber: 1,
+    actorOutput: 'Second iteration completed',
+    actorStderr: '',
+    actorExitCode: 0,
+    actorDurationSecs: 180,
+    gitDiff: 'diff --git a/another.ts b/another.ts\n+another line',
+    gitFilesChanged: 3,
+    criticDecision: 'DONE',
     feedback: 'Task completed successfully',
     timestamp: '2026-02-02T10:03:00Z',
   },
@@ -79,7 +79,7 @@ describe('IterationConversation', () => {
       const iterationsWithEmptyOutput: Iteration[] = [
         {
           ...mockIterations[0],
-          actor_output: '',
+          actorOutput: '',
         },
       ]
 
@@ -132,7 +132,7 @@ describe('IterationConversation', () => {
       const rejectIterations: Iteration[] = [
         {
           ...mockIterations[0],
-          critic_decision: 'REJECT',
+          criticDecision: 'REJECT',
         },
       ]
 
@@ -187,8 +187,8 @@ describe('IterationConversation', () => {
       const iterationsWithoutDiff: Iteration[] = [
         {
           ...mockIterations[0],
-          git_diff: '',
-          git_files_changed: 0,
+          gitDiff: '',
+          gitFilesChanged: 0,
         },
       ]
 
