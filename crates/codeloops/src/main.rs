@@ -14,8 +14,9 @@ use colored::Colorize;
 
 use codeloops_agent::{create_agent, AgentType};
 use codeloops_core::{LoopContext, LoopOutcome, LoopRunner};
+use codeloops_db::Database;
 use codeloops_git::DiffCapture;
-use codeloops_logging::{LogFormat, Logger, SessionWriter};
+use codeloops_logging::{LogFormat, Logger};
 
 use config::{GlobalConfig, ProjectConfig};
 
@@ -476,12 +477,12 @@ async fn run_loop(args: RunArgs) -> Result<()> {
         );
     }
 
-    // Create session writer
-    let session_writer = match SessionWriter::new(&prompt) {
-        Ok(sw) => Some(Arc::new(sw)),
+    // Open database for session storage
+    let db = match Database::open() {
+        Ok(db) => Some(Arc::new(db)),
         Err(e) => {
             eprintln!(
-                "{} Failed to create session writer: {}",
+                "{} Failed to open database: {}",
                 "⚠".bright_yellow(),
                 e
             );
@@ -498,12 +499,12 @@ async fn run_loop(args: RunArgs) -> Result<()> {
     // Create loop runner
     let diff_capture = DiffCapture::new();
     let logger = Arc::new(logger);
-    let runner = LoopRunner::new(
+    let mut runner = LoopRunner::new(
         actor.as_ref(),
         critic.as_ref(),
         diff_capture,
         logger,
-        session_writer.clone(),
+        db.clone(),
         actor_model,
         critic_model,
     );
@@ -530,19 +531,15 @@ async fn run_loop(args: RunArgs) -> Result<()> {
         print_outcome(&outcome);
     }
 
-    // Print session log path and hints
-    if let Some(ref sw) = session_writer {
-        eprintln!("{} Session log: {}", "->".dimmed(), sw.path().display());
-
-        // Extract the session ID from the path and show helpful commands
-        if let Some(stem) = sw.path().file_stem().and_then(|s| s.to_str()) {
-            eprintln!();
-            eprintln!(
-                "  View this session: {}",
-                format!("codeloops sessions show {}", stem).bright_cyan()
-            );
-            eprintln!("  Browse all sessions: {}", "codeloops ui".bright_cyan());
-        }
+    // Print session ID and hints
+    if let Some(session_id) = runner.session_id() {
+        eprintln!("{} Session: {}", "->".dimmed(), session_id);
+        eprintln!();
+        eprintln!(
+            "  View this session: {}",
+            format!("codeloops sessions show {}", session_id).bright_cyan()
+        );
+        eprintln!("  Browse all sessions: {}", "codeloops ui".bright_cyan());
     }
 
     // Exit with appropriate code

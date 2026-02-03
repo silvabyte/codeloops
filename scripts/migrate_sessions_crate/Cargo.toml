@@ -1,0 +1,17 @@
+[package]
+name = "migrate-sessions"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "migrate-sessions"
+path = "src/main.rs"
+
+[dependencies]
+codeloops-db = { path = "../../crates/codeloops-db" }
+dirs = "5.0"
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }

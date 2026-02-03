@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Subcommand;
 use colored::Colorize;
 
-use codeloops_sessions::{SessionFilter, SessionStore};
+use codeloops_db::{Database, Session, SessionFilter, SessionStats, SessionSummary};
 
 #[derive(Subcommand, Debug)]
 pub enum SessionsAction {
@@ -58,7 +58,7 @@ pub enum SessionsAction {
 }
 
 pub async fn handle_sessions_command(action: SessionsAction) -> Result<()> {
-    let store = SessionStore::new()?;
+    let db = Database::open()?;
 
     match action {
         SessionsAction::List {
@@ -70,7 +70,7 @@ pub async fn handle_sessions_command(action: SessionsAction) -> Result<()> {
             json,
         } => {
             let filter = build_filter(outcome, after, before, search, project)?;
-            let summaries = store.list(&filter)?;
+            let summaries = db.sessions().list(&filter)?;
 
             if json {
                 println!("{}", serde_json::to_string_pretty(&summaries)?);
@@ -79,18 +79,15 @@ pub async fn handle_sessions_command(action: SessionsAction) -> Result<()> {
                 eprintln!();
                 eprintln!("  Run your first loop to create a session:");
                 eprintln!("    {}", "codeloops --prompt \"Your task\"".bright_cyan());
-                eprintln!();
-                eprintln!(
-                    "  Sessions are saved to {}",
-                    "~/.local/share/codeloops/sessions/".dimmed()
-                );
             } else {
                 print_sessions_table(&summaries);
             }
         }
         SessionsAction::Show { id, json } => {
-            let id = resolve_session_id(&store, id)?;
-            let session = store.get(&id)?;
+            let id = resolve_session_id(&db, id)?;
+            let session = db.sessions().get(&id)?.ok_or_else(|| {
+                anyhow::anyhow!("Session not found: {}", id)
+            })?;
 
             if json {
                 println!("{}", serde_json::to_string_pretty(&session)?);
@@ -99,17 +96,16 @@ pub async fn handle_sessions_command(action: SessionsAction) -> Result<()> {
             }
         }
         SessionsAction::Diff { id } => {
-            let id = resolve_session_id(&store, id)?;
-            let diff = store.get_diff(&id)?;
+            let id = resolve_session_id(&db, id)?;
+            let diff = db.sessions().get_diff(&id)?;
 
-            if diff.is_empty() {
-                println!("{}", "No diffs found for this session.".dimmed());
-            } else {
-                println!("{}", diff);
+            match diff {
+                Some(d) if !d.is_empty() => println!("{}", d),
+                _ => println!("{}", "No diffs found for this session.".dimmed()),
             }
         }
         SessionsAction::Stats { json } => {
-            let stats = store.stats(&SessionFilter::default())?;
+            let stats = db.sessions().stats(&SessionFilter::default())?;
 
             if json {
                 println!("{}", serde_json::to_string_pretty(&stats)?);
@@ -156,13 +152,13 @@ fn build_filter(
     })
 }
 
-fn resolve_session_id(store: &SessionStore, id: Option<String>) -> Result<String> {
+fn resolve_session_id(db: &Database, id: Option<String>) -> Result<String> {
     if let Some(id) = id {
         return Ok(id);
     }
 
     // Interactive picker
-    let summaries = store.list(&SessionFilter::default())?;
+    let summaries = db.sessions().list(&SessionFilter::default())?;
     if summaries.is_empty() {
         anyhow::bail!("No sessions found.");
     }
@@ -197,7 +193,7 @@ fn resolve_session_id(store: &SessionStore, id: Option<String>) -> Result<String
     Ok(summaries[selection].id.clone())
 }
 
-fn print_sessions_table(summaries: &[codeloops_sessions::SessionSummary]) {
+fn print_sessions_table(summaries: &[SessionSummary]) {
     println!(
         "{:<20} {:<10} {:<6} {:<8} {:<12} {}",
         "TIMESTAMP".dimmed(),
@@ -234,52 +230,56 @@ fn print_sessions_table(summaries: &[codeloops_sessions::SessionSummary]) {
     }
 }
 
-fn print_session_detail(session: &codeloops_sessions::Session) {
+fn print_session_detail(session: &Session) {
     println!("{}", "=== Session Detail ===".bright_blue().bold());
     println!("{}  {}", "ID:".dimmed(), session.id);
     println!(
         "{}  {}",
         "Started:".dimmed(),
-        session.start.timestamp.format("%Y-%m-%d %H:%M:%S UTC")
+        session.started_at.format("%Y-%m-%d %H:%M:%S UTC")
     );
     println!(
         "{}  {}",
         "Working Dir:".dimmed(),
-        session.start.working_dir.display()
+        session.working_dir.display()
     );
-    println!("{}  {}", "Actor:".dimmed(), session.start.actor_agent);
-    println!("{}  {}", "Critic:".dimmed(), session.start.critic_agent);
-    if let Some(ref model) = session.start.actor_model {
+    println!("{}  {}", "Actor:".dimmed(), session.actor_agent);
+    println!("{}  {}", "Critic:".dimmed(), session.critic_agent);
+    if let Some(ref model) = session.actor_model {
         println!("{}  {}", "Actor Model:".dimmed(), model);
     }
-    if let Some(ref model) = session.start.critic_model {
+    if let Some(ref model) = session.critic_model {
         println!("{}  {}", "Critic Model:".dimmed(), model);
     }
     println!();
     println!("{}", "Prompt:".dimmed());
-    println!("  {}", session.start.prompt);
+    println!("  {}", session.prompt);
     println!();
 
-    if let Some(ref end) = session.end {
+    if let Some(ref outcome) = session.outcome {
         println!(
             "{}  {}",
             "Outcome:".dimmed(),
-            match end.outcome.as_str() {
-                "success" => end.outcome.bright_green().to_string(),
-                "failed" => end.outcome.bright_red().to_string(),
-                _ => end.outcome.bright_yellow().to_string(),
+            match outcome.as_str() {
+                "success" => outcome.bright_green().to_string(),
+                "failed" => outcome.bright_red().to_string(),
+                _ => outcome.bright_yellow().to_string(),
             }
         );
-        println!("{}  {}", "Iterations:".dimmed(), end.iterations);
-        println!(
-            "{}  {}",
-            "Duration:".dimmed(),
-            format_duration(end.duration_secs)
-        );
-        if let Some(confidence) = end.confidence {
+        if let Some(iterations) = session.iteration_count {
+            println!("{}  {}", "Iterations:".dimmed(), iterations);
+        }
+        if let Some(duration) = session.duration_secs {
+            println!(
+                "{}  {}",
+                "Duration:".dimmed(),
+                format_duration(duration)
+            );
+        }
+        if let Some(confidence) = session.confidence {
             println!("{}  {:.0}%", "Confidence:".dimmed(), confidence * 100.0);
         }
-        if let Some(ref summary) = end.summary {
+        if let Some(ref summary) = session.summary {
             println!("{}  {}", "Summary:".dimmed(), summary);
         }
     } else {
@@ -338,7 +338,7 @@ fn print_session_detail(session: &codeloops_sessions::Session) {
     }
 }
 
-fn print_stats(stats: &codeloops_sessions::SessionStats) {
+fn print_stats(stats: &SessionStats) {
     println!("{}", "=== Session Statistics ===".bright_blue().bold());
     println!("{}  {}", "Total Sessions:".dimmed(), stats.total_sessions);
     println!(

@@ -5,8 +5,9 @@ use tracing::{debug, info, warn};
 
 use codeloops_agent::{Agent, AgentConfig, OutputCallback, OutputType};
 use codeloops_critic::{CriticDecision, CriticEvaluationInput, CriticEvaluator};
+use codeloops_db::{Database, Iteration, SessionEnd, SessionStart};
 use codeloops_git::DiffCapture;
-use codeloops_logging::{AgentRole, LogEvent, Logger, SessionWriter, StreamType};
+use codeloops_logging::{AgentRole, LogEvent, Logger, StreamType};
 
 use crate::context::IterationRecord;
 use crate::error::LoopError;
@@ -19,7 +20,8 @@ pub struct LoopRunner<'a> {
     critic: &'a dyn Agent,
     diff_capture: DiffCapture,
     logger: Arc<Logger>,
-    session_writer: Option<Arc<SessionWriter>>,
+    db: Option<Arc<Database>>,
+    session_id: Option<String>,
     interrupted: Arc<AtomicBool>,
     actor_model: Option<String>,
     critic_model: Option<String>,
@@ -31,7 +33,7 @@ impl<'a> LoopRunner<'a> {
         critic: &'a dyn Agent,
         diff_capture: DiffCapture,
         logger: Arc<Logger>,
-        session_writer: Option<Arc<SessionWriter>>,
+        db: Option<Arc<Database>>,
         actor_model: Option<String>,
         critic_model: Option<String>,
     ) -> Self {
@@ -40,11 +42,17 @@ impl<'a> LoopRunner<'a> {
             critic,
             diff_capture,
             logger,
-            session_writer,
+            db,
+            session_id: None,
             interrupted: Arc::new(AtomicBool::new(false)),
             actor_model,
             critic_model,
         }
+    }
+
+    /// Get the session ID (available after run starts).
+    pub fn session_id(&self) -> Option<&str> {
+        self.session_id.as_deref()
     }
 
     /// Get a handle to signal interruption
@@ -70,22 +78,31 @@ impl<'a> LoopRunner<'a> {
     }
 
     /// Run the actor-critic loop until completion
-    pub async fn run(&self, mut context: LoopContext) -> Result<LoopOutcome, LoopError> {
+    pub async fn run(&mut self, mut context: LoopContext) -> Result<LoopOutcome, LoopError> {
         self.logger.log(&LogEvent::LoopStarted {
             prompt: context.prompt.clone(),
             working_dir: context.working_dir.clone(),
         });
 
-        if let Some(ref sw) = self.session_writer {
-            sw.write_start(
-                &context.prompt,
-                &context.working_dir,
-                self.actor.name(),
-                self.critic.name(),
-                self.actor_model.as_deref(),
-                self.critic_model.as_deref(),
-                context.max_iterations,
-            );
+        // Create session in database
+        if let Some(ref db) = self.db {
+            let start = SessionStart {
+                prompt: context.prompt.clone(),
+                working_dir: context.working_dir.clone(),
+                actor_agent: self.actor.name().to_string(),
+                critic_agent: self.critic.name().to_string(),
+                actor_model: self.actor_model.clone(),
+                critic_model: self.critic_model.clone(),
+                max_iterations: context.max_iterations,
+            };
+            match db.sessions().create(&start) {
+                Ok(id) => {
+                    self.session_id = Some(id);
+                }
+                Err(e) => {
+                    warn!(error = %e, "Failed to create session in database");
+                }
+            }
         }
 
         // Create separate configs for actor and critic
@@ -249,9 +266,9 @@ impl<'a> LoopRunner<'a> {
         };
         context.push_record(record.clone());
 
-        // Write to session log
-        if let Some(ref sw) = self.session_writer {
-            let fb = match &decision {
+        // Write to session in database
+        if let (Some(ref db), Some(ref session_id)) = (&self.db, &self.session_id) {
+            let feedback = match &decision {
                 CriticDecision::Continue { feedback, .. } => Some(feedback.clone()),
                 CriticDecision::Error {
                     error_description,
@@ -262,18 +279,21 @@ impl<'a> LoopRunner<'a> {
                 )),
                 CriticDecision::Done { summary, .. } => Some(summary.clone()),
             };
-            sw.write_iteration(
-                record.iteration_number,
-                &record.actor_output,
-                &record.actor_stderr,
-                record.actor_exit_code,
-                record.actor_duration_secs,
-                &record.git_diff,
-                record.git_files_changed,
-                &record.critic_decision,
-                fb.as_deref(),
-                record.timestamp,
-            );
+            let iter = Iteration {
+                iteration_number: record.iteration_number,
+                actor_output: record.actor_output.clone(),
+                actor_stderr: record.actor_stderr.clone(),
+                actor_exit_code: record.actor_exit_code,
+                actor_duration_secs: record.actor_duration_secs,
+                git_diff: record.git_diff.clone(),
+                git_files_changed: record.git_files_changed,
+                critic_decision: record.critic_decision.clone(),
+                feedback,
+                timestamp: record.timestamp,
+            };
+            if let Err(e) = db.sessions().add_iteration(session_id, &iter) {
+                warn!(error = %e, "Failed to write iteration to database");
+            }
         }
 
         // Process decision
@@ -328,9 +348,9 @@ impl<'a> LoopRunner<'a> {
         }
     }
 
-    /// Write the session end line to the JSONL session log.
+    /// Write the session end to the database.
     fn write_session_end(&self, outcome: &LoopOutcome) {
-        if let Some(ref sw) = self.session_writer {
+        if let (Some(ref db), Some(ref session_id)) = (&self.db, &self.session_id) {
             let (outcome_str, iterations, summary, confidence, duration_secs) = match outcome {
                 LoopOutcome::Success {
                     iterations,
@@ -341,7 +361,7 @@ impl<'a> LoopRunner<'a> {
                 } => (
                     "success",
                     *iterations,
-                    Some(summary.as_str()),
+                    Some(summary.clone()),
                     Some(*confidence),
                     *total_duration_secs,
                 ),
@@ -375,12 +395,21 @@ impl<'a> LoopRunner<'a> {
                 } => (
                     "failed",
                     *iterations,
-                    Some(error.as_str()),
+                    Some(error.clone()),
                     None,
                     *total_duration_secs,
                 ),
             };
-            sw.write_end(outcome_str, iterations, summary, confidence, duration_secs);
+            let end = SessionEnd {
+                outcome: outcome_str.to_string(),
+                iterations,
+                summary,
+                confidence,
+                duration_secs,
+            };
+            if let Err(e) = db.sessions().end(session_id, &end) {
+                warn!(error = %e, "Failed to write session end to database");
+            }
         }
     }
 }

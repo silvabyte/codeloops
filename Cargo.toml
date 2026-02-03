@@ -8,7 +8,9 @@ members = [
     "crates/codeloops-db",
     "crates/codeloops-git",
     "crates/codeloops-logging",
-    "crates/codeloops-sessions",
+]
+exclude = [
+    "scripts/migrate_sessions_crate",
 ]
 
 [workspace.package]
@@ -81,5 +83,4 @@ codeloops-agent = { path = "crates/codeloops-agent" }
 codeloops-critic = { path = "crates/codeloops-critic" }
 codeloops-git = { path = "crates/codeloops-git" }
 codeloops-logging = { path = "crates/codeloops-logging" }
-codeloops-sessions = { path = "crates/codeloops-sessions" }
 codeloops-db = { path = "crates/codeloops-db" }

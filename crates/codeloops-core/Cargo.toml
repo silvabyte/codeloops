@@ -10,6 +10,7 @@ codeloops-agent.workspace = true
 codeloops-critic.workspace = true
 codeloops-git.workspace = true
 codeloops-logging.workspace = true
+codeloops-db.workspace = true
 
 tokio.workspace = true
 async-trait.workspace = true

@@ -3,7 +3,7 @@ use axum::http::StatusCode;
 use axum::response::Json;
 use serde::Deserialize;
 
-use codeloops_sessions::{Session, SessionFilter, SessionSummary};
+use codeloops_db::{Session, SessionFilter, SessionSummary};
 
 use super::AppState;
 
@@ -23,7 +23,8 @@ pub async fn list_sessions(
     let filter = build_filter(params).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
 
     let summaries = state
-        .store
+        .db
+        .sessions()
         .list(&filter)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -35,9 +36,11 @@ pub async fn get_session(
     Path(id): Path<String>,
 ) -> Result<Json<Session>, (StatusCode, String)> {
     let session = state
-        .store
+        .db
+        .sessions()
         .get(&id)
-        .map_err(|e| (StatusCode::NOT_FOUND, e.to_string()))?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Session not found: {}", id)))?;
 
     Ok(Json(session))
 }
@@ -47,9 +50,11 @@ pub async fn get_session_diff(
     Path(id): Path<String>,
 ) -> Result<String, (StatusCode, String)> {
     let diff = state
-        .store
+        .db
+        .sessions()
         .get_diff(&id)
-        .map_err(|e| (StatusCode::NOT_FOUND, e.to_string()))?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .unwrap_or_default();
 
     Ok(diff)
 }

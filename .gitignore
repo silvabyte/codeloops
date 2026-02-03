@@ -1,4 +1,5 @@
 /target
+scripts/migrate_sessions_crate/target
 Cargo.lock
 *.swp
 *.swo

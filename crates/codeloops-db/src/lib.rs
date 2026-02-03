@@ -4,8 +4,13 @@
 //! and provides access to domain-specific stores.
 
 mod prompts;
+mod sessions;
 
 pub use prompts::{PromptFilter, PromptRecord, Prompts};
+pub use sessions::{
+    AgenticMetrics, DayCount, Iteration, ProjectStats, Session, SessionEnd, SessionFilter,
+    SessionStart, SessionStats, SessionSummary, Sessions,
+};
 
 use rusqlite::Connection;
 use std::path::PathBuf;
@@ -63,6 +68,12 @@ impl Database {
         Prompts::new(conn)
     }
 
+    /// Access the sessions store.
+    pub fn sessions(&self) -> Sessions<'_> {
+        let conn = self.conn.lock().expect("Database lock poisoned");
+        Sessions::new(conn)
+    }
+
     /// Initialize the database schema.
     fn init_schema(conn: &Connection) -> Result<(), rusqlite::Error> {
         conn.execute_batch(
@@ -91,6 +102,45 @@ impl Database {
 
             CREATE INDEX IF NOT EXISTS idx_prompt_parents_child ON prompt_parents(child_id);
             CREATE INDEX IF NOT EXISTS idx_prompt_parents_parent ON prompt_parents(parent_id);
+
+            CREATE TABLE IF NOT EXISTS sessions (
+                id TEXT PRIMARY KEY,
+                prompt TEXT NOT NULL,
+                working_dir TEXT NOT NULL,
+                actor_agent TEXT NOT NULL,
+                critic_agent TEXT NOT NULL,
+                actor_model TEXT,
+                critic_model TEXT,
+                max_iterations INTEGER,
+                outcome TEXT,
+                iteration_count INTEGER,
+                summary TEXT,
+                confidence REAL,
+                duration_secs REAL,
+                started_at TEXT NOT NULL,
+                ended_at TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_sessions_started_at ON sessions(started_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_sessions_outcome ON sessions(outcome);
+
+            CREATE TABLE IF NOT EXISTS iterations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                iteration_number INTEGER NOT NULL,
+                actor_output TEXT NOT NULL,
+                actor_stderr TEXT NOT NULL,
+                actor_exit_code INTEGER NOT NULL,
+                actor_duration_secs REAL NOT NULL,
+                git_diff TEXT NOT NULL,
+                git_files_changed INTEGER NOT NULL,
+                critic_decision TEXT NOT NULL,
+                feedback TEXT,
+                timestamp TEXT NOT NULL,
+                UNIQUE(session_id, iteration_number)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_iterations_session_id ON iterations(session_id);
             "#,
         )
     }
@@ -486,5 +536,288 @@ mod tests {
         // But relationship is gone
         let parents = db.prompts().get_parent_ids("child").unwrap();
         assert!(parents.is_empty());
+    }
+
+    // Session tests
+
+    #[test]
+    fn test_session_create_and_get() {
+        let db = Database::open_in_memory().unwrap();
+
+        let start = SessionStart {
+            prompt: "Fix the bug in login".to_string(),
+            working_dir: std::path::PathBuf::from("/home/user/project"),
+            actor_agent: "Claude Code".to_string(),
+            critic_agent: "Claude Code".to_string(),
+            actor_model: Some("claude-3-sonnet".to_string()),
+            critic_model: Some("claude-3-haiku".to_string()),
+            max_iterations: Some(5),
+        };
+
+        let id = db.sessions().create(&start).unwrap();
+        assert!(!id.is_empty());
+
+        let session = db.sessions().get(&id).unwrap().unwrap();
+        assert_eq!(session.id, id);
+        assert_eq!(session.prompt, "Fix the bug in login");
+        assert_eq!(session.actor_agent, "Claude Code");
+        assert!(session.iterations.is_empty());
+        assert!(session.outcome.is_none());
+    }
+
+    #[test]
+    fn test_session_add_iteration() {
+        let db = Database::open_in_memory().unwrap();
+        let now = Utc::now();
+
+        let start = SessionStart {
+            prompt: "Test task".to_string(),
+            working_dir: std::path::PathBuf::from("/home/user/project"),
+            actor_agent: "Actor".to_string(),
+            critic_agent: "Critic".to_string(),
+            actor_model: None,
+            critic_model: None,
+            max_iterations: None,
+        };
+
+        let id = db.sessions().create(&start).unwrap();
+
+        let iter = Iteration {
+            iteration_number: 1,
+            actor_output: "Made changes".to_string(),
+            actor_stderr: "".to_string(),
+            actor_exit_code: 0,
+            actor_duration_secs: 5.5,
+            git_diff: "diff --git a/file.rs".to_string(),
+            git_files_changed: 2,
+            critic_decision: "CONTINUE".to_string(),
+            feedback: Some("Please also fix tests".to_string()),
+            timestamp: now,
+        };
+
+        db.sessions().add_iteration(&id, &iter).unwrap();
+
+        let session = db.sessions().get(&id).unwrap().unwrap();
+        assert_eq!(session.iterations.len(), 1);
+        assert_eq!(session.iterations[0].iteration_number, 1);
+        assert_eq!(session.iterations[0].actor_output, "Made changes");
+        assert_eq!(session.iterations[0].feedback, Some("Please also fix tests".to_string()));
+    }
+
+    #[test]
+    fn test_session_end() {
+        let db = Database::open_in_memory().unwrap();
+
+        let start = SessionStart {
+            prompt: "Complete task".to_string(),
+            working_dir: std::path::PathBuf::from("/project"),
+            actor_agent: "Actor".to_string(),
+            critic_agent: "Critic".to_string(),
+            actor_model: None,
+            critic_model: None,
+            max_iterations: None,
+        };
+
+        let id = db.sessions().create(&start).unwrap();
+
+        let end = SessionEnd {
+            outcome: "success".to_string(),
+            iterations: 2,
+            summary: Some("Fixed the bug successfully".to_string()),
+            confidence: Some(0.95),
+            duration_secs: 120.5,
+        };
+
+        db.sessions().end(&id, &end).unwrap();
+
+        let session = db.sessions().get(&id).unwrap().unwrap();
+        assert_eq!(session.outcome, Some("success".to_string()));
+        assert_eq!(session.iteration_count, Some(2));
+        assert_eq!(session.summary, Some("Fixed the bug successfully".to_string()));
+        assert_eq!(session.confidence, Some(0.95));
+        assert!(session.ended_at.is_some());
+    }
+
+    #[test]
+    fn test_session_list() {
+        let db = Database::open_in_memory().unwrap();
+
+        // Create two sessions
+        let start1 = SessionStart {
+            prompt: "First task".to_string(),
+            working_dir: std::path::PathBuf::from("/project-a"),
+            actor_agent: "Actor".to_string(),
+            critic_agent: "Critic".to_string(),
+            actor_model: None,
+            critic_model: None,
+            max_iterations: None,
+        };
+
+        let start2 = SessionStart {
+            prompt: "Second task".to_string(),
+            working_dir: std::path::PathBuf::from("/project-b"),
+            actor_agent: "Actor".to_string(),
+            critic_agent: "Critic".to_string(),
+            actor_model: None,
+            critic_model: None,
+            max_iterations: None,
+        };
+
+        let id1 = db.sessions().create(&start1).unwrap();
+        let id2 = db.sessions().create(&start2).unwrap();
+
+        // End one with success
+        db.sessions().end(&id1, &SessionEnd {
+            outcome: "success".to_string(),
+            iterations: 1,
+            summary: None,
+            confidence: None,
+            duration_secs: 10.0,
+        }).unwrap();
+
+        // List all
+        let all = db.sessions().list(&SessionFilter::default()).unwrap();
+        assert_eq!(all.len(), 2);
+
+        // Filter by outcome
+        let successful = db.sessions().list(&SessionFilter {
+            outcome: Some("success".to_string()),
+            ..Default::default()
+        }).unwrap();
+        assert_eq!(successful.len(), 1);
+        assert_eq!(successful[0].id, id1);
+
+        // Search by prompt
+        let searched = db.sessions().list(&SessionFilter {
+            search: Some("Second".to_string()),
+            ..Default::default()
+        }).unwrap();
+        assert_eq!(searched.len(), 1);
+        assert_eq!(searched[0].id, id2);
+    }
+
+    #[test]
+    fn test_session_active_sessions() {
+        let db = Database::open_in_memory().unwrap();
+
+        let start = SessionStart {
+            prompt: "Active task".to_string(),
+            working_dir: std::path::PathBuf::from("/project"),
+            actor_agent: "Actor".to_string(),
+            critic_agent: "Critic".to_string(),
+            actor_model: None,
+            critic_model: None,
+            max_iterations: None,
+        };
+
+        let id1 = db.sessions().create(&start).unwrap();
+        let id2 = db.sessions().create(&start).unwrap();
+
+        // End one session
+        db.sessions().end(&id1, &SessionEnd {
+            outcome: "success".to_string(),
+            iterations: 1,
+            summary: None,
+            confidence: None,
+            duration_secs: 10.0,
+        }).unwrap();
+
+        let active = db.sessions().active_sessions().unwrap();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0], id2);
+    }
+
+    #[test]
+    fn test_session_delete_cascades_iterations() {
+        let db = Database::open_in_memory().unwrap();
+        let now = Utc::now();
+
+        let start = SessionStart {
+            prompt: "Task to delete".to_string(),
+            working_dir: std::path::PathBuf::from("/project"),
+            actor_agent: "Actor".to_string(),
+            critic_agent: "Critic".to_string(),
+            actor_model: None,
+            critic_model: None,
+            max_iterations: None,
+        };
+
+        let id = db.sessions().create(&start).unwrap();
+
+        let iter = Iteration {
+            iteration_number: 1,
+            actor_output: "Output".to_string(),
+            actor_stderr: "".to_string(),
+            actor_exit_code: 0,
+            actor_duration_secs: 5.0,
+            git_diff: "".to_string(),
+            git_files_changed: 0,
+            critic_decision: "DONE".to_string(),
+            feedback: None,
+            timestamp: now,
+        };
+
+        db.sessions().add_iteration(&id, &iter).unwrap();
+
+        // Verify iteration exists
+        let session = db.sessions().get(&id).unwrap().unwrap();
+        assert_eq!(session.iterations.len(), 1);
+
+        // Delete session
+        let deleted = db.sessions().delete(&id).unwrap();
+        assert!(deleted);
+
+        // Verify session and iterations are gone
+        assert!(db.sessions().get(&id).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_session_stats() {
+        let db = Database::open_in_memory().unwrap();
+
+        // Create sessions with different outcomes
+        let start = SessionStart {
+            prompt: "Task".to_string(),
+            working_dir: std::path::PathBuf::from("/project"),
+            actor_agent: "Actor".to_string(),
+            critic_agent: "Critic".to_string(),
+            actor_model: None,
+            critic_model: None,
+            max_iterations: None,
+        };
+
+        let id1 = db.sessions().create(&start).unwrap();
+        let id2 = db.sessions().create(&start).unwrap();
+        let id3 = db.sessions().create(&start).unwrap();
+
+        db.sessions().end(&id1, &SessionEnd {
+            outcome: "success".to_string(),
+            iterations: 2,
+            summary: None,
+            confidence: None,
+            duration_secs: 60.0,
+        }).unwrap();
+
+        db.sessions().end(&id2, &SessionEnd {
+            outcome: "success".to_string(),
+            iterations: 1,
+            summary: None,
+            confidence: None,
+            duration_secs: 30.0,
+        }).unwrap();
+
+        db.sessions().end(&id3, &SessionEnd {
+            outcome: "failed".to_string(),
+            iterations: 3,
+            summary: None,
+            confidence: None,
+            duration_secs: 90.0,
+        }).unwrap();
+
+        let stats = db.sessions().stats(&SessionFilter::default()).unwrap();
+        assert_eq!(stats.total_sessions, 3);
+        assert!((stats.success_rate - 2.0/3.0).abs() < 0.001);
+        assert!((stats.avg_iterations - 2.0).abs() < 0.001);
+        assert!((stats.avg_duration_secs - 60.0).abs() < 0.001);
     }
 }

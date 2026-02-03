@@ -2,7 +2,6 @@ mod context;
 mod prompt;
 mod prompt_instructions;
 mod sessions;
-mod sse;
 mod stats;
 
 use std::path::PathBuf;
@@ -13,33 +12,19 @@ use axum::Router;
 use tower_http::cors::CorsLayer;
 
 use codeloops_db::Database;
-use codeloops_sessions::{SessionStore, SessionWatcher};
 
 #[derive(Clone)]
 pub struct AppState {
-    pub store: Arc<SessionStore>,
-    pub watcher: Arc<SessionWatcher>,
-    pub working_dir: PathBuf,
     pub db: Arc<Database>,
+    pub working_dir: PathBuf,
 }
 
-pub fn create_router(
-    store: Arc<SessionStore>,
-    watcher: Arc<SessionWatcher>,
-    working_dir: PathBuf,
-    db: Arc<Database>,
-) -> Router {
-    let state = AppState {
-        store,
-        watcher,
-        working_dir,
-        db,
-    };
+pub fn create_router(db: Arc<Database>, working_dir: PathBuf) -> Router {
+    let state = AppState { db, working_dir };
 
     Router::new()
         // Session browsing
         .route("/api/sessions", get(sessions::list_sessions))
-        .route("/api/sessions/live", get(sse::session_events))
         .route("/api/sessions/{id}", get(sessions::get_session))
         .route("/api/sessions/{id}/diff", get(sessions::get_session_diff))
         .route("/api/stats", get(stats::get_stats))
