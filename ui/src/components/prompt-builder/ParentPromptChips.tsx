@@ -49,7 +49,7 @@ export function ParentPromptChips({ parentIds, onRemove, onAdd }: ParentPromptCh
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="text-xs text-muted-foreground">Extends:</span>
+      <span className="text-xs text-muted-foreground">References:</span>
       {parentInfo.map((parent) => (
         <div
           key={parent.id}
@@ -81,7 +81,7 @@ export function ParentPromptChips({ parentIds, onRemove, onAdd }: ParentPromptCh
         )}
       >
         <Plus className="w-3 h-3" />
-        <span>Add Parent</span>
+        <span>Add Prompt Reference</span>
       </button>
     </div>
   )

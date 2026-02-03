@@ -88,7 +88,7 @@ export function PreviewPanel({
         </div>
       </div>
 
-      {/* Parent Prompts Section */}
+      {/* Referenced Prompts Section */}
       {onParentIdsChange && (
         <div className="px-4 py-3 border-b border-border">
           <ParentPromptChips
@@ -186,7 +186,7 @@ export function PreviewPanel({
         </button>
       </div>
 
-      {/* Parent Prompt Selector Modal */}
+      {/* Reference Selector Modal */}
       <ParentPromptSelector
         isOpen={showParentSelector}
         onClose={() => setShowParentSelector(false)}

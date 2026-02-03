@@ -126,7 +126,7 @@ export function ParentPromptSelector({
         {/* Header + Search */}
         <div className="p-6 pb-0">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold tracking-tight">Select Parent Prompt</h2>
+            <h2 className="text-xl font-semibold tracking-tight">Select Prompt Reference</h2>
             <button
               onClick={onClose}
               className="p-1 -mr-1 text-dim hover:text-foreground transition-colors"
