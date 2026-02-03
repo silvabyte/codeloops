@@ -617,7 +617,7 @@ fn build_agent_prompt_from_messages(
 
 /// Stream response from agent to SSE.
 ///
-/// After the agent responds, messages are persisted to the database.
+/// Stream agent response. User message is persisted before streaming starts.
 async fn stream_agent_response(
     db: Arc<Database>,
     session_id: String,
@@ -626,6 +626,13 @@ async fn stream_agent_response(
     working_dir: String,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)>
 {
+    // IMPORTANT: Save user message BEFORE streaming starts.
+    // This ensures the message survives page refresh during agent processing.
+    if let Err(e) = save_user_message_to_prompt(&db, &session_id, &user_message) {
+        eprintln!("Failed to save user message before streaming: {}", e);
+        // Continue anyway - the message will still be visible in the UI
+    }
+
     // Create channel for streaming
     let (tx, rx) = mpsc::channel::<StreamMessage>(1000);
 
@@ -765,14 +772,15 @@ async fn execute_agent(
 // Database Persistence
 // ============================================================================
 
-/// Save messages to the prompt record in the database.
+/// Save assistant response to the prompt record in the database.
 ///
-/// Updates the prompt record with the new user and assistant messages.
-/// Auto-generates a title from the first user message if not already set.
+/// Updates the prompt record with the assistant message. The user message
+/// should already be persisted by `save_user_message_to_prompt` before
+/// streaming starts.
 fn save_messages_to_prompt(
     db: &Database,
     prompt_id: &str,
-    user_message: &str,
+    _user_message: &str, // Kept for signature compatibility, but user message already saved
     assistant_message: &str,
     prompt_draft: &str,
 ) -> Result<(), String> {
@@ -785,26 +793,7 @@ fn save_messages_to_prompt(
     let mut session_state: SessionStatePayload =
         serde_json::from_str(&record.session_state).map_err(|e| e.to_string())?;
 
-    // Add user message (if not the init message)
-    if user_message != "__INIT__" {
-        session_state.messages.push(MessagePayload {
-            id: format!("msg-{}", uuid::Uuid::new_v4()),
-            role: "user".to_string(),
-            content: user_message.to_string(),
-        });
-
-        // Auto-generate title from first user message (if no title yet)
-        if record.title.is_none() {
-            let title = user_message
-                .lines()
-                .next()
-                .unwrap_or(user_message)
-                .chars()
-                .take(50)
-                .collect::<String>();
-            record.title = Some(title);
-        }
-    }
+    // Note: User message is already saved by save_user_message_to_prompt before streaming
 
     // Add assistant message
     session_state.messages.push(MessagePayload {
@@ -817,6 +806,58 @@ fn save_messages_to_prompt(
     if !prompt_draft.is_empty() {
         session_state.prompt_draft = prompt_draft.to_string();
         record.content = Some(prompt_draft.to_string());
+    }
+
+    // Save back
+    record.session_state = serde_json::to_string(&session_state).map_err(|e| e.to_string())?;
+    record.updated_at = Utc::now();
+
+    db.prompts().save(&record).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+/// Save user message immediately before streaming starts.
+///
+/// This ensures the user's message is persisted even if the page is refreshed
+/// or the connection is lost during agent processing. The assistant message
+/// will be added later by `save_messages_to_prompt` when the response completes.
+fn save_user_message_to_prompt(
+    db: &Database,
+    prompt_id: &str,
+    user_message: &str,
+) -> Result<(), String> {
+    // Skip init messages - they don't need persistence
+    if user_message == "__INIT__" {
+        return Ok(());
+    }
+
+    let mut record = db
+        .prompts()
+        .get(prompt_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Prompt not found".to_string())?;
+
+    let mut session_state: SessionStatePayload =
+        serde_json::from_str(&record.session_state).map_err(|e| e.to_string())?;
+
+    // Add user message
+    session_state.messages.push(MessagePayload {
+        id: format!("msg-{}", uuid::Uuid::new_v4()),
+        role: "user".to_string(),
+        content: user_message.to_string(),
+    });
+
+    // Auto-generate title from first user message (if no title yet)
+    if record.title.is_none() {
+        let title = user_message
+            .lines()
+            .next()
+            .unwrap_or(user_message)
+            .chars()
+            .take(50)
+            .collect::<String>();
+        record.title = Some(title);
     }
 
     // Save back

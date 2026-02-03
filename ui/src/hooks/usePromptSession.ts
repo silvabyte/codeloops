@@ -153,6 +153,8 @@ interface StoredSession {
   workType: WorkType | null
   messages: Message[]
   promptDraft: string
+  /** Whether the session was in streaming state when last persisted */
+  wasStreaming?: boolean
 }
 
 export function usePromptSession() {
@@ -173,7 +175,40 @@ export function usePromptSession() {
           try {
             const parsed: StoredSession = JSON.parse(stored)
             if (parsed.id && parsed.workType) {
-              // Restore to ready state
+              // If the session was streaming when we last persisted,
+              // fetch the latest state from backend to check if the response completed
+              if (parsed.wasStreaming) {
+                try {
+                  const backendState = await getPromptById(parsed.id)
+                  // Use backend state which has the most up-to-date messages
+                  // (including any assistant response that completed while we were away)
+                  setState({
+                    status: 'ready',
+                    workingDir: backendState.projectPath,
+                    projectName: backendState.projectName,
+                    workType: backendState.workType as WorkType,
+                    sessionId: backendState.id,
+                    messages: backendState.sessionState.messages,
+                    promptDraft: backendState.sessionState.promptDraft,
+                    parentIds: backendState.parentIds || [],
+                  })
+                  // Update localStorage with the reconciled state
+                  const reconciledStore: StoredSession = {
+                    id: backendState.id,
+                    workType: backendState.workType as WorkType,
+                    messages: backendState.sessionState.messages,
+                    promptDraft: backendState.sessionState.promptDraft,
+                    wasStreaming: false,
+                  }
+                  localStorage.setItem(storageKey, JSON.stringify(reconciledStore))
+                  return
+                } catch {
+                  // Backend fetch failed, fall back to localStorage state
+                  // This preserves at least the user's message
+                  console.warn('Failed to fetch backend state for recovery, using localStorage')
+                }
+              }
+              // Restore to ready state from localStorage
               setState({
                 status: 'ready',
                 workingDir: context.workingDir,
@@ -213,6 +248,8 @@ export function usePromptSession() {
   // We only keep localStorage as a backup for immediate recovery on page refresh.
 
   // Persist to localStorage as backup (for immediate recovery)
+  // IMPORTANT: Persist during both 'streaming' and 'ready' states.
+  // This ensures user messages survive page refresh during agent processing.
   useEffect(() => {
     if (state.status === 'loading_context') return
 
@@ -221,14 +258,15 @@ export function usePromptSession() {
 
     const storageKey = getStorageKey(workingDir)
 
-    // Only persist ready state
-    if (state.status === 'ready') {
+    // Persist during streaming (to save user message) and ready states
+    if (state.status === 'streaming' || state.status === 'ready') {
       try {
         const toStore: StoredSession = {
           id: state.sessionId,
           workType: state.workType,
           messages: state.messages,
           promptDraft: state.promptDraft,
+          wasStreaming: state.status === 'streaming',
         }
         localStorage.setItem(storageKey, JSON.stringify(toStore))
       } catch {
