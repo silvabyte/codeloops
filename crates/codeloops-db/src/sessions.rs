@@ -22,6 +22,7 @@ pub struct SessionStart {
 
 /// Data for a single iteration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Iteration {
     pub iteration_number: usize,
     pub actor_output: String,
