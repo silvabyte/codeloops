@@ -22,7 +22,7 @@ export type PromptSessionState =
   | { status: 'creating_session'; workingDir: string; projectName: string; workType: WorkType }
   | { status: 'awaiting_agent'; workingDir: string; projectName: string; workType: WorkType; sessionId: string }
   | { status: 'streaming'; workingDir: string; projectName: string; workType: WorkType; sessionId: string; messages: Message[]; promptDraft: string; parentIds: string[] }
-  | { status: 'ready'; workingDir: string; projectName: string; workType: WorkType; sessionId: string; messages: Message[]; promptDraft: string; previewOpen: boolean; parentIds: string[] }
+  | { status: 'ready'; workingDir: string; projectName: string; workType: WorkType; sessionId: string; messages: Message[]; promptDraft: string; parentIds: string[] }
   | { status: 'error'; workingDir: string; projectName: string; error: string; previousState?: PromptSessionState }
 
 export interface PromptSession {
@@ -33,7 +33,6 @@ export interface PromptSession {
   messages: Message[]
   promptDraft: string
   status: 'selecting' | 'chatting' | 'complete'
-  previewOpen: boolean
   parentIds: string[]
 }
 
@@ -69,7 +68,6 @@ function deriveSession(state: PromptSessionState): PromptSession {
         messages: [],
         promptDraft: '',
         status: 'selecting',
-        previewOpen: false,
         parentIds: [],
       }
     case 'selecting_work_type':
@@ -81,7 +79,6 @@ function deriveSession(state: PromptSessionState): PromptSession {
         messages: [],
         promptDraft: '',
         status: 'selecting',
-        previewOpen: false,
         parentIds: [],
       }
     case 'creating_session':
@@ -94,7 +91,6 @@ function deriveSession(state: PromptSessionState): PromptSession {
         messages: [],
         promptDraft: '',
         status: 'chatting',
-        previewOpen: false,
         parentIds: [],
       }
     case 'streaming':
@@ -106,7 +102,6 @@ function deriveSession(state: PromptSessionState): PromptSession {
         messages: state.messages,
         promptDraft: state.promptDraft,
         status: 'chatting',
-        previewOpen: false,
         parentIds: state.parentIds,
       }
     case 'ready':
@@ -118,7 +113,6 @@ function deriveSession(state: PromptSessionState): PromptSession {
         messages: state.messages,
         promptDraft: state.promptDraft,
         status: 'chatting',
-        previewOpen: state.previewOpen,
         parentIds: state.parentIds,
       }
     case 'error':
@@ -135,7 +129,6 @@ function deriveSession(state: PromptSessionState): PromptSession {
         messages: [],
         promptDraft: '',
         status: 'selecting',
-        previewOpen: false,
         parentIds: [],
       }
   }
@@ -160,7 +153,6 @@ interface StoredSession {
   workType: WorkType | null
   messages: Message[]
   promptDraft: string
-  previewOpen: boolean
 }
 
 export function usePromptSession() {
@@ -190,7 +182,6 @@ export function usePromptSession() {
                 sessionId: parsed.id,
                 messages: parsed.messages || [],
                 promptDraft: parsed.promptDraft || '',
-                previewOpen: parsed.previewOpen || false,
                 parentIds: [],
               })
               return
@@ -238,7 +229,6 @@ export function usePromptSession() {
           workType: state.workType,
           messages: state.messages,
           promptDraft: state.promptDraft,
-          previewOpen: state.previewOpen,
         }
         localStorage.setItem(storageKey, JSON.stringify(toStore))
       } catch {
@@ -334,7 +324,6 @@ export function usePromptSession() {
           content: displayContent,
         }] : [],
         promptDraft: currentDraft,
-        previewOpen: false,
         parentIds: [],
       })
     } catch (e) {
@@ -356,7 +345,7 @@ export function usePromptSession() {
     // Guard: only send from ready state
     if (state.status !== 'ready') return
 
-    const { workingDir, projectName, workType, sessionId, messages, promptDraft, previewOpen, parentIds } = state
+    const { workingDir, projectName, workType, sessionId, messages, promptDraft, parentIds } = state
 
     // Add user message immediately
     const userMessage: Message = {
@@ -400,7 +389,6 @@ export function usePromptSession() {
               sessionId,
               messages: updatedMessages,
               promptDraft: currentDraft,
-              previewOpen,
               parentIds,
             },
           })
@@ -463,7 +451,6 @@ export function usePromptSession() {
           sessionId: prev.sessionId,
           messages: finalMessages,
           promptDraft: currentDraft,
-          previewOpen,
           parentIds: prev.parentIds,
         }
       })
@@ -481,7 +468,6 @@ export function usePromptSession() {
           sessionId,
           messages: updatedMessages,
           promptDraft,
-          previewOpen,
           parentIds,
         },
       })
@@ -500,23 +486,6 @@ export function usePromptSession() {
     })
   }, [])
 
-  const togglePreview = useCallback(() => {
-    setState((prev) => {
-      if (prev.status === 'ready') {
-        return { ...prev, previewOpen: !prev.previewOpen }
-      }
-      return prev
-    })
-  }, [])
-
-  const closePreview = useCallback(() => {
-    setState((prev) => {
-      if (prev.status === 'ready') {
-        return { ...prev, previewOpen: false }
-      }
-      return prev
-    })
-  }, [])
 
   const setParentIds = useCallback(
     async (newParentIds: string[]) => {
@@ -602,7 +571,7 @@ export function usePromptSession() {
   const newPrompt = useCallback(async () => {
     if (state.status !== 'ready') return
 
-    const { sessionId, workType, workingDir, projectName, messages, promptDraft, previewOpen } = state
+    const { sessionId, workType, workingDir, projectName, messages, promptDraft } = state
 
     // Save current session to history before starting new one
     try {
@@ -620,7 +589,6 @@ export function usePromptSession() {
         sessionState: {
           messages,
           promptDraft,
-          previewOpen,
         },
       })
     } catch (e) {
@@ -658,7 +626,6 @@ export function usePromptSession() {
         sessionId: response.id,
         messages: response.sessionState.messages,
         promptDraft: response.sessionState.promptDraft,
-        previewOpen: response.sessionState.previewOpen,
         parentIds: response.parentIds || [],
       })
     } catch (e) {
@@ -694,8 +661,6 @@ export function usePromptSession() {
     selectWorkType,
     sendMessage,
     updatePromptDraft,
-    togglePreview,
-    closePreview,
     setParentIds,
     save,
     reset,

@@ -93,7 +93,6 @@ pub struct SavePromptSessionRequest {
 pub struct SessionStatePayload {
     pub messages: Vec<MessagePayload>,
     pub prompt_draft: String,
-    pub preview_open: bool,
 }
 
 /// Message payload from frontend.
@@ -199,7 +198,6 @@ pub async fn create_session(
     let session_state = SessionStatePayload {
         messages: vec![],
         prompt_draft: String::new(),
-        preview_open: false,
     };
 
     let record = PromptRecord {

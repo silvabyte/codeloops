@@ -23,7 +23,6 @@ export interface SavePromptResponse {
 export interface SessionStatePayload {
   messages: Message[]
   promptDraft: string
-  previewOpen: boolean
 }
 
 export interface SavePromptSessionRequest {

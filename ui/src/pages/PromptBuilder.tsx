@@ -25,8 +25,6 @@ export function PromptBuilder() {
     selectWorkType,
     sendMessage,
     updatePromptDraft,
-    togglePreview,
-    closePreview,
     setParentIds,
     save,
     clearError,
@@ -35,6 +33,7 @@ export function PromptBuilder() {
   } = usePromptSession()
 
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [previewOpen, setPreviewOpen] = useState(true)
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -42,15 +41,15 @@ export function PromptBuilder() {
       // Cmd/Ctrl + P: Toggle preview (only in ready state)
       if ((e.metaKey || e.ctrlKey) && e.key === 'p') {
         e.preventDefault()
-        togglePreview()
+        setPreviewOpen(prev => !prev)
         return
       }
 
       // Escape: Close preview or clear error
       if (e.key === 'Escape') {
-        if (session.previewOpen) {
+        if (previewOpen) {
           e.preventDefault()
-          closePreview()
+          setPreviewOpen(false)
         } else if (error) {
           e.preventDefault()
           clearError()
@@ -61,7 +60,7 @@ export function PromptBuilder() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [session.previewOpen, togglePreview, closePreview, error, clearError])
+  }, [previewOpen, error, clearError])
 
   const handleSave = useCallback(async () => {
     const path = await save()
@@ -90,7 +89,6 @@ export function PromptBuilder() {
   }, [loadPrompt])
 
   // Derive values for the chat view (needed before early returns for hooks rules)
-  const previewOpen = state.status === 'ready' ? (state as { previewOpen: boolean }).previewOpen : false
   const promptDraft = 'promptDraft' in state ? (state as { promptDraft: string }).promptDraft : session.promptDraft
   const isReady = state.status === 'ready'
   const keyboardHint = navigator.platform.includes('Mac') ? '⌘P' : 'Ctrl+P'
@@ -109,13 +107,13 @@ export function PromptBuilder() {
       },
       {
         label: previewOpen ? 'Hide Preview' : 'Preview',
-        onClick: togglePreview,
+        onClick: () => setPreviewOpen(prev => !prev),
         disabled: !isReady,
         active: previewOpen,
         hint: keyboardHint,
       },
     ],
-    [handleNewPrompt, isReady, previewOpen, togglePreview, keyboardHint]
+    [handleNewPrompt, isReady, previewOpen, keyboardHint]
   )
 
   // Build header context - show prompt title if available, truncated with ellipsis

@@ -47,7 +47,6 @@ describe('usePromptSession', () => {
       expect(result.current.session.workType).toBeNull()
       expect(result.current.session.messages).toEqual([])
       expect(result.current.session.promptDraft).toBe('')
-      expect(result.current.session.previewOpen).toBe(false)
       expect(result.current.session.workingDir).toBe('/test/project')
       expect(result.current.session.projectName).toBe('Test Project')
     })
@@ -209,92 +208,6 @@ describe('usePromptSession', () => {
     })
   })
 
-  describe('preview toggle', () => {
-    it('should toggle preview panel when in ready state', async () => {
-      const mockSessionId = 'test-session-123'
-      mockCreatePromptSession.mockResolvedValue({ sessionId: mockSessionId })
-
-      async function* mockMessages() {
-        yield 'Welcome!'
-      }
-      mockSendPromptMessage.mockReturnValue(mockMessages())
-
-      const { result } = renderHook(() => usePromptSession())
-
-      await waitFor(() => {
-        expect(result.current.contextLoading).toBe(false)
-      })
-
-      // First establish a session to get to ready state
-      await act(async () => {
-        await result.current.selectWorkType('feature')
-      })
-
-      expect(result.current.session.previewOpen).toBe(false)
-
-      act(() => {
-        result.current.togglePreview()
-      })
-
-      expect(result.current.session.previewOpen).toBe(true)
-
-      act(() => {
-        result.current.togglePreview()
-      })
-
-      expect(result.current.session.previewOpen).toBe(false)
-    })
-
-    it('should close preview when in ready state', async () => {
-      const mockSessionId = 'test-session-123'
-      mockCreatePromptSession.mockResolvedValue({ sessionId: mockSessionId })
-
-      async function* mockMessages() {
-        yield 'Welcome!'
-      }
-      mockSendPromptMessage.mockReturnValue(mockMessages())
-
-      const { result } = renderHook(() => usePromptSession())
-
-      await waitFor(() => {
-        expect(result.current.contextLoading).toBe(false)
-      })
-
-      // First establish a session to get to ready state
-      await act(async () => {
-        await result.current.selectWorkType('feature')
-      })
-
-      act(() => {
-        result.current.togglePreview()
-      })
-
-      expect(result.current.session.previewOpen).toBe(true)
-
-      act(() => {
-        result.current.closePreview()
-      })
-
-      expect(result.current.session.previewOpen).toBe(false)
-    })
-
-    it('should not toggle preview when not in ready state', async () => {
-      const { result } = renderHook(() => usePromptSession())
-
-      await waitFor(() => {
-        expect(result.current.contextLoading).toBe(false)
-      })
-
-      // Try to toggle without a session (selecting_work_type state)
-      act(() => {
-        result.current.togglePreview()
-      })
-
-      // Should remain false because we're not in ready state
-      expect(result.current.session.previewOpen).toBe(false)
-    })
-  })
-
   describe('localStorage persistence', () => {
     it('should save session to localStorage', async () => {
       mockCreatePromptSession.mockResolvedValue({ sessionId: 'test-123' })
@@ -324,7 +237,6 @@ describe('usePromptSession', () => {
         messages: [{ id: '1', role: 'assistant', content: 'Hello' }],
         promptDraft: '# Test',
         status: 'chatting',
-        previewOpen: true,
       }
 
       vi.mocked(localStorage.getItem).mockReturnValue(JSON.stringify(storedSession))
@@ -338,7 +250,6 @@ describe('usePromptSession', () => {
       expect(result.current.session.id).toBe('stored-123')
       expect(result.current.session.workType).toBe('feature')
       expect(result.current.session.status).toBe('chatting')
-      expect(result.current.session.previewOpen).toBe(true)
     })
 
     it('should handle invalid localStorage data', async () => {
