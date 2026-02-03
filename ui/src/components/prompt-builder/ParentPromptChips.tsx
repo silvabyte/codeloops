@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { cn } from '@/lib/utils'
-import type { PromptSummary } from '@/lib/prompt-session'
 import { getPromptById } from '@/lib/prompt-session'
 import { X, Plus } from 'lucide-react'
 

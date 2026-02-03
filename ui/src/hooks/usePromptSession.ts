@@ -191,6 +191,7 @@ export function usePromptSession() {
                 messages: parsed.messages || [],
                 promptDraft: parsed.promptDraft || '',
                 previewOpen: parsed.previewOpen || false,
+                parentIds: [],
               })
               return
             }

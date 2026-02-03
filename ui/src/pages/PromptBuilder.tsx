@@ -90,7 +90,6 @@ export function PromptBuilder() {
   }, [loadPrompt])
 
   // Derive values for the chat view (needed before early returns for hooks rules)
-  const workType = 'workType' in state ? state.workType : session.workType
   const previewOpen = state.status === 'ready' ? (state as { previewOpen: boolean }).previewOpen : false
   const promptDraft = 'promptDraft' in state ? (state as { promptDraft: string }).promptDraft : session.promptDraft
   const isReady = state.status === 'ready'
