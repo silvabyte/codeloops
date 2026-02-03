@@ -8,7 +8,7 @@ mod stats;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, put};
 use axum::Router;
 use tower_http::cors::CorsLayer;
 
@@ -57,6 +57,9 @@ pub fn create_router(
         .route("/api/prompts", post(prompt::save_prompt_session))
         .route("/api/prompts/{id}", get(prompt::get_prompt))
         .route("/api/prompts/{id}", delete(prompt::delete_prompt))
+        // Prompt inheritance
+        .route("/api/prompts/{id}/parents", put(prompt::update_prompt_parents))
+        .route("/api/prompts/{id}/resolved", get(prompt::get_resolved_prompt))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }

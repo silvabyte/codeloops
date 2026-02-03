@@ -8,6 +8,7 @@ import {
   savePrompt,
   savePromptSession,
   getPromptById,
+  updatePromptParents,
 } from '@/lib/prompt-session'
 
 /**
@@ -20,8 +21,8 @@ export type PromptSessionState =
   | { status: 'selecting_work_type'; workingDir: string; projectName: string }
   | { status: 'creating_session'; workingDir: string; projectName: string; workType: WorkType }
   | { status: 'awaiting_agent'; workingDir: string; projectName: string; workType: WorkType; sessionId: string }
-  | { status: 'streaming'; workingDir: string; projectName: string; workType: WorkType; sessionId: string; messages: Message[]; promptDraft: string }
-  | { status: 'ready'; workingDir: string; projectName: string; workType: WorkType; sessionId: string; messages: Message[]; promptDraft: string; previewOpen: boolean }
+  | { status: 'streaming'; workingDir: string; projectName: string; workType: WorkType; sessionId: string; messages: Message[]; promptDraft: string; parentIds: string[] }
+  | { status: 'ready'; workingDir: string; projectName: string; workType: WorkType; sessionId: string; messages: Message[]; promptDraft: string; previewOpen: boolean; parentIds: string[] }
   | { status: 'error'; workingDir: string; projectName: string; error: string; previousState?: PromptSessionState }
 
 export interface PromptSession {
@@ -33,6 +34,7 @@ export interface PromptSession {
   promptDraft: string
   status: 'selecting' | 'chatting' | 'complete'
   previewOpen: boolean
+  parentIds: string[]
 }
 
 const STORAGE_KEY_PREFIX = 'codeloops-prompt-session-'
@@ -68,6 +70,7 @@ function deriveSession(state: PromptSessionState): PromptSession {
         promptDraft: '',
         status: 'selecting',
         previewOpen: false,
+        parentIds: [],
       }
     case 'selecting_work_type':
       return {
@@ -79,6 +82,7 @@ function deriveSession(state: PromptSessionState): PromptSession {
         promptDraft: '',
         status: 'selecting',
         previewOpen: false,
+        parentIds: [],
       }
     case 'creating_session':
     case 'awaiting_agent':
@@ -91,6 +95,7 @@ function deriveSession(state: PromptSessionState): PromptSession {
         promptDraft: '',
         status: 'chatting',
         previewOpen: false,
+        parentIds: [],
       }
     case 'streaming':
       return {
@@ -102,6 +107,7 @@ function deriveSession(state: PromptSessionState): PromptSession {
         promptDraft: state.promptDraft,
         status: 'chatting',
         previewOpen: false,
+        parentIds: state.parentIds,
       }
     case 'ready':
       return {
@@ -113,6 +119,7 @@ function deriveSession(state: PromptSessionState): PromptSession {
         promptDraft: state.promptDraft,
         status: 'chatting',
         previewOpen: state.previewOpen,
+        parentIds: state.parentIds,
       }
     case 'error':
       // Preserve what we can from the previous state
@@ -129,6 +136,7 @@ function deriveSession(state: PromptSessionState): PromptSession {
         promptDraft: '',
         status: 'selecting',
         previewOpen: false,
+        parentIds: [],
       }
   }
 }
@@ -305,6 +313,7 @@ export function usePromptSession() {
                 content: displayContent,
               }],
               promptDraft: currentDraft,
+              parentIds: [],
             })
           }
         }
@@ -325,6 +334,7 @@ export function usePromptSession() {
         }] : [],
         promptDraft: currentDraft,
         previewOpen: false,
+        parentIds: [],
       })
     } catch (e) {
       setState({
@@ -345,7 +355,7 @@ export function usePromptSession() {
     // Guard: only send from ready state
     if (state.status !== 'ready') return
 
-    const { workingDir, projectName, workType, sessionId, messages, promptDraft, previewOpen } = state
+    const { workingDir, projectName, workType, sessionId, messages, promptDraft, previewOpen, parentIds } = state
 
     // Add user message immediately
     const userMessage: Message = {
@@ -365,6 +375,7 @@ export function usePromptSession() {
       sessionId,
       messages: updatedMessages,
       promptDraft,
+      parentIds,
     })
 
     try {
@@ -389,6 +400,7 @@ export function usePromptSession() {
               messages: updatedMessages,
               promptDraft: currentDraft,
               previewOpen,
+              parentIds,
             },
           })
           return
@@ -451,6 +463,7 @@ export function usePromptSession() {
           messages: finalMessages,
           promptDraft: currentDraft,
           previewOpen,
+          parentIds: prev.parentIds,
         }
       })
     } catch (e) {
@@ -468,6 +481,7 @@ export function usePromptSession() {
           messages: updatedMessages,
           promptDraft,
           previewOpen,
+          parentIds,
         },
       })
     }
@@ -502,6 +516,31 @@ export function usePromptSession() {
       return prev
     })
   }, [])
+
+  const setParentIds = useCallback(
+    async (newParentIds: string[]) => {
+      if (state.status !== 'ready' && state.status !== 'streaming') return
+
+      const sessionId = state.sessionId
+
+      // Optimistically update local state
+      setState((prev) => {
+        if (prev.status === 'ready' || prev.status === 'streaming') {
+          return { ...prev, parentIds: newParentIds }
+        }
+        return prev
+      })
+
+      // Persist to backend
+      try {
+        await updatePromptParents(sessionId, newParentIds)
+      } catch (e) {
+        console.error('Failed to update parent IDs:', e)
+        // Revert on error (could add better error handling)
+      }
+    },
+    [state]
+  )
 
   const save = useCallback(async () => {
     if (state.status !== 'ready' || isSaving) return null
@@ -619,6 +658,7 @@ export function usePromptSession() {
         messages: response.sessionState.messages,
         promptDraft: response.sessionState.promptDraft,
         previewOpen: response.sessionState.previewOpen,
+        parentIds: response.parentIds || [],
       })
     } catch (e) {
       setState({
@@ -655,6 +695,7 @@ export function usePromptSession() {
     updatePromptDraft,
     togglePreview,
     closePreview,
+    setParentIds,
     save,
     reset,
     clearError,

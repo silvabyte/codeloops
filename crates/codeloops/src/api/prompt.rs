@@ -154,8 +154,18 @@ pub struct GetPromptResponse {
     pub project_name: String,
     pub content: Option<String>,
     pub session_state: SessionStatePayload,
+    pub parent_ids: Vec<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+/// Response for resolved prompt with inheritance chain.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedPromptResponse {
+    pub id: String,
+    pub resolved_content: String,
+    pub chain: Vec<PromptSummary>,
 }
 
 // ============================================================================
@@ -421,6 +431,12 @@ pub async fn get_prompt(
             )
         })?;
 
+    let parent_ids = state
+        .db
+        .prompts()
+        .get_parent_ids(&id)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
     Ok(Json(GetPromptResponse {
         id: record.id,
         title: record.title,
@@ -429,6 +445,7 @@ pub async fn get_prompt(
         project_name: record.project_name,
         content: record.content,
         session_state,
+        parent_ids,
         created_at: record.created_at.to_rfc3339(),
         updated_at: record.updated_at.to_rfc3339(),
     }))
@@ -450,6 +467,90 @@ pub async fn delete_prompt(
     } else {
         Err((StatusCode::NOT_FOUND, "Prompt not found".to_string()))
     }
+}
+
+/// Update parent IDs for a prompt.
+pub async fn update_prompt_parents(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(parent_ids): Json<Vec<String>>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    // Verify the prompt exists
+    state
+        .db
+        .prompts()
+        .get(&id)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Prompt not found".to_string()))?;
+
+    // Set the parent IDs
+    state
+        .db
+        .prompts()
+        .set_parent_ids(&id, &parent_ids)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Get resolved prompt content with inheritance chain.
+pub async fn get_resolved_prompt(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<ResolvedPromptResponse>, (StatusCode, String)> {
+    // Verify the prompt exists
+    state
+        .db
+        .prompts()
+        .get(&id)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Prompt not found".to_string()))?;
+
+    // Resolve the inheritance chain
+    let chain = state
+        .db
+        .prompts()
+        .resolve_chain(&id)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Concatenate content from all prompts in the chain
+    let resolved_content = chain
+        .iter()
+        .filter_map(|r| r.content.as_ref())
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    // Build chain summaries
+    let chain_summaries: Vec<PromptSummary> = chain
+        .into_iter()
+        .map(|r| {
+            let content_preview = r.content.as_ref().map(|c| {
+                let preview: String = c.chars().take(100).collect();
+                if c.len() > 100 {
+                    format!("{}...", preview)
+                } else {
+                    preview
+                }
+            });
+
+            PromptSummary {
+                id: r.id,
+                title: r.title,
+                work_type: r.work_type,
+                project_name: r.project_name,
+                content_preview,
+                created_at: r.created_at.to_rfc3339(),
+                updated_at: r.updated_at.to_rfc3339(),
+            }
+        })
+        .collect();
+
+    Ok(Json(ResolvedPromptResponse {
+        id,
+        resolved_content,
+        chain: chain_summaries,
+    }))
 }
 
 // ============================================================================

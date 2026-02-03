@@ -81,6 +81,16 @@ impl Database {
 
             CREATE INDEX IF NOT EXISTS idx_prompts_project_name ON prompts(project_name);
             CREATE INDEX IF NOT EXISTS idx_prompts_updated_at ON prompts(updated_at DESC);
+
+            CREATE TABLE IF NOT EXISTS prompt_parents (
+                child_id TEXT NOT NULL REFERENCES prompts(id) ON DELETE CASCADE,
+                parent_id TEXT NOT NULL REFERENCES prompts(id) ON DELETE CASCADE,
+                position INTEGER NOT NULL,
+                PRIMARY KEY (child_id, parent_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_prompt_parents_child ON prompt_parents(child_id);
+            CREATE INDEX IF NOT EXISTS idx_prompt_parents_parent ON prompt_parents(parent_id);
             "#,
         )
     }
@@ -241,5 +251,240 @@ mod tests {
         assert_eq!(projects.len(), 2);
         assert!(projects.contains(&"project-a".to_string()));
         assert!(projects.contains(&"project-b".to_string()));
+    }
+
+    #[test]
+    fn test_parent_ids() {
+        let db = Database::open_in_memory().unwrap();
+        let now = Utc::now();
+
+        // Create parent and child prompts
+        let parent1 = PromptRecord {
+            id: "parent-1".to_string(),
+            title: Some("Parent 1".to_string()),
+            work_type: "feature".to_string(),
+            project_path: "/path".to_string(),
+            project_name: "project".to_string(),
+            content: Some("Parent 1 content".to_string()),
+            session_state: "{}".to_string(),
+            created_at: now,
+            updated_at: now,
+        };
+
+        let parent2 = PromptRecord {
+            id: "parent-2".to_string(),
+            title: Some("Parent 2".to_string()),
+            work_type: "feature".to_string(),
+            project_path: "/path".to_string(),
+            project_name: "project".to_string(),
+            content: Some("Parent 2 content".to_string()),
+            session_state: "{}".to_string(),
+            created_at: now,
+            updated_at: now,
+        };
+
+        let child = PromptRecord {
+            id: "child-1".to_string(),
+            title: Some("Child".to_string()),
+            work_type: "feature".to_string(),
+            project_path: "/path".to_string(),
+            project_name: "project".to_string(),
+            content: Some("Child content".to_string()),
+            session_state: "{}".to_string(),
+            created_at: now,
+            updated_at: now,
+        };
+
+        db.prompts().save(&parent1).unwrap();
+        db.prompts().save(&parent2).unwrap();
+        db.prompts().save(&child).unwrap();
+
+        // Initially no parents
+        let parents = db.prompts().get_parent_ids("child-1").unwrap();
+        assert!(parents.is_empty());
+
+        // Set parents
+        db.prompts()
+            .set_parent_ids("child-1", &["parent-1".to_string(), "parent-2".to_string()])
+            .unwrap();
+
+        // Verify parents in order
+        let parents = db.prompts().get_parent_ids("child-1").unwrap();
+        assert_eq!(parents, vec!["parent-1", "parent-2"]);
+
+        // Update parents (change order)
+        db.prompts()
+            .set_parent_ids("child-1", &["parent-2".to_string(), "parent-1".to_string()])
+            .unwrap();
+
+        let parents = db.prompts().get_parent_ids("child-1").unwrap();
+        assert_eq!(parents, vec!["parent-2", "parent-1"]);
+
+        // Clear parents
+        db.prompts().set_parent_ids("child-1", &[]).unwrap();
+        let parents = db.prompts().get_parent_ids("child-1").unwrap();
+        assert!(parents.is_empty());
+    }
+
+    #[test]
+    fn test_resolve_chain_simple() {
+        let db = Database::open_in_memory().unwrap();
+        let now = Utc::now();
+
+        // Create A -> B -> C chain
+        let a = PromptRecord {
+            id: "a".to_string(),
+            title: Some("A".to_string()),
+            work_type: "feature".to_string(),
+            project_path: "/path".to_string(),
+            project_name: "project".to_string(),
+            content: Some("A content".to_string()),
+            session_state: "{}".to_string(),
+            created_at: now,
+            updated_at: now,
+        };
+
+        let b = PromptRecord {
+            id: "b".to_string(),
+            title: Some("B".to_string()),
+            work_type: "feature".to_string(),
+            project_path: "/path".to_string(),
+            project_name: "project".to_string(),
+            content: Some("B content".to_string()),
+            session_state: "{}".to_string(),
+            created_at: now,
+            updated_at: now,
+        };
+
+        let c = PromptRecord {
+            id: "c".to_string(),
+            title: Some("C".to_string()),
+            work_type: "feature".to_string(),
+            project_path: "/path".to_string(),
+            project_name: "project".to_string(),
+            content: Some("C content".to_string()),
+            session_state: "{}".to_string(),
+            created_at: now,
+            updated_at: now,
+        };
+
+        db.prompts().save(&a).unwrap();
+        db.prompts().save(&b).unwrap();
+        db.prompts().save(&c).unwrap();
+
+        // B extends A
+        db.prompts()
+            .set_parent_ids("b", &["a".to_string()])
+            .unwrap();
+        // C extends B
+        db.prompts()
+            .set_parent_ids("c", &["b".to_string()])
+            .unwrap();
+
+        // Resolve C's chain: should be A, B, C
+        let chain = db.prompts().resolve_chain("c").unwrap();
+        let ids: Vec<&str> = chain.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(ids, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn test_resolve_chain_diamond() {
+        let db = Database::open_in_memory().unwrap();
+        let now = Utc::now();
+
+        // Diamond: D extends B and C, both B and C extend A
+        //      A
+        //     / \
+        //    B   C
+        //     \ /
+        //      D
+        let create_record = |id: &str| PromptRecord {
+            id: id.to_string(),
+            title: Some(id.to_string()),
+            work_type: "feature".to_string(),
+            project_path: "/path".to_string(),
+            project_name: "project".to_string(),
+            content: Some(format!("{} content", id)),
+            session_state: "{}".to_string(),
+            created_at: now,
+            updated_at: now,
+        };
+
+        db.prompts().save(&create_record("a")).unwrap();
+        db.prompts().save(&create_record("b")).unwrap();
+        db.prompts().save(&create_record("c")).unwrap();
+        db.prompts().save(&create_record("d")).unwrap();
+
+        db.prompts()
+            .set_parent_ids("b", &["a".to_string()])
+            .unwrap();
+        db.prompts()
+            .set_parent_ids("c", &["a".to_string()])
+            .unwrap();
+        db.prompts()
+            .set_parent_ids("d", &["b".to_string(), "c".to_string()])
+            .unwrap();
+
+        // Resolve D: A should only appear once
+        let chain = db.prompts().resolve_chain("d").unwrap();
+        let ids: Vec<&str> = chain.iter().map(|r| r.id.as_str()).collect();
+
+        // With depth-first and dedup: A, B, C, D (A appears once, before B)
+        assert_eq!(ids.len(), 4);
+        assert_eq!(ids[0], "a"); // A first (root)
+        assert_eq!(ids[3], "d"); // D last (target)
+                                 // B and C are in between (order depends on D's parent order)
+        assert!(ids.contains(&"b"));
+        assert!(ids.contains(&"c"));
+    }
+
+    #[test]
+    fn test_delete_cascade_parent() {
+        let db = Database::open_in_memory().unwrap();
+        let now = Utc::now();
+
+        let parent = PromptRecord {
+            id: "parent".to_string(),
+            title: Some("Parent".to_string()),
+            work_type: "feature".to_string(),
+            project_path: "/path".to_string(),
+            project_name: "project".to_string(),
+            content: Some("Parent content".to_string()),
+            session_state: "{}".to_string(),
+            created_at: now,
+            updated_at: now,
+        };
+
+        let child = PromptRecord {
+            id: "child".to_string(),
+            title: Some("Child".to_string()),
+            work_type: "feature".to_string(),
+            project_path: "/path".to_string(),
+            project_name: "project".to_string(),
+            content: Some("Child content".to_string()),
+            session_state: "{}".to_string(),
+            created_at: now,
+            updated_at: now,
+        };
+
+        db.prompts().save(&parent).unwrap();
+        db.prompts().save(&child).unwrap();
+        db.prompts()
+            .set_parent_ids("child", &["parent".to_string()])
+            .unwrap();
+
+        // Verify relationship exists
+        let parents = db.prompts().get_parent_ids("child").unwrap();
+        assert_eq!(parents, vec!["parent"]);
+
+        // Delete parent - CASCADE should remove relationship
+        db.prompts().delete("parent").unwrap();
+
+        // Child still exists
+        assert!(db.prompts().get("child").unwrap().is_some());
+
+        // But relationship is gone
+        let parents = db.prompts().get_parent_ids("child").unwrap();
+        assert!(parents.is_empty());
     }
 }

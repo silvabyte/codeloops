@@ -27,6 +27,7 @@ export function PromptBuilder() {
     updatePromptDraft,
     togglePreview,
     closePreview,
+    setParentIds,
     save,
     clearError,
     newPrompt,
@@ -280,6 +281,9 @@ export function PromptBuilder() {
             onCopy={handleCopy}
             onDownload={handleDownload}
             isSaving={isSaving}
+            promptId={session.id || undefined}
+            parentIds={session.parentIds}
+            onParentIdsChange={setParentIds}
           />
         </div>
       )}

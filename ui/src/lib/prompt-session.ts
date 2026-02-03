@@ -64,8 +64,15 @@ export interface GetPromptResponse {
   projectName: string
   content?: string
   sessionState: SessionStatePayload
+  parentIds: string[]
   createdAt: string
   updatedAt: string
+}
+
+export interface ResolvedPromptResponse {
+  id: string
+  resolvedContent: string
+  chain: PromptSummary[]
 }
 
 export interface ListPromptsParams {
@@ -194,4 +201,23 @@ export async function deletePrompt(id: string): Promise<void> {
     method: 'DELETE',
   })
   if (!res.ok) throw new Error(`Failed to delete prompt: ${res.statusText}`)
+}
+
+// ============================================================================
+// Prompt Inheritance API
+// ============================================================================
+
+export async function updatePromptParents(id: string, parentIds: string[]): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/prompts/${encodeURIComponent(id)}/parents`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(parentIds),
+  })
+  if (!res.ok) throw new Error(`Failed to update prompt parents: ${res.statusText}`)
+}
+
+export async function getResolvedPrompt(id: string): Promise<ResolvedPromptResponse> {
+  const res = await fetch(`${API_BASE}/api/prompts/${encodeURIComponent(id)}/resolved`)
+  if (!res.ok) throw new Error(`Failed to get resolved prompt: ${res.statusText}`)
+  return res.json()
 }

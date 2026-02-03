@@ -1,6 +1,9 @@
 import { useState, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { cn } from '@/lib/utils'
+import { ParentPromptChips } from './ParentPromptChips'
+import { ParentPromptSelector } from './ParentPromptSelector'
+import { InheritedContentPreview } from './InheritedContentPreview'
 
 interface PreviewPanelProps {
   content: string
@@ -9,6 +12,9 @@ interface PreviewPanelProps {
   onCopy: () => void
   onDownload: () => void
   isSaving?: boolean
+  promptId?: string
+  parentIds?: string[]
+  onParentIdsChange?: (parentIds: string[]) => void
 }
 
 export function PreviewPanel({
@@ -18,8 +24,30 @@ export function PreviewPanel({
   onCopy,
   onDownload,
   isSaving,
+  promptId,
+  parentIds = [],
+  onParentIdsChange,
 }: PreviewPanelProps) {
   const [isEditing, setIsEditing] = useState(false)
+  const [showParentSelector, setShowParentSelector] = useState(false)
+
+  const handleAddParent = useCallback(
+    (id: string) => {
+      if (onParentIdsChange && !parentIds.includes(id)) {
+        onParentIdsChange([...parentIds, id])
+      }
+    },
+    [parentIds, onParentIdsChange]
+  )
+
+  const handleRemoveParent = useCallback(
+    (id: string) => {
+      if (onParentIdsChange) {
+        onParentIdsChange(parentIds.filter((pid) => pid !== id))
+      }
+    },
+    [parentIds, onParentIdsChange]
+  )
 
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(content)
@@ -36,6 +64,9 @@ export function PreviewPanel({
     URL.revokeObjectURL(url)
     onDownload()
   }, [content, onDownload])
+
+  // Calculate exclude IDs for parent selector (current prompt + already selected parents)
+  const excludeIds = promptId ? [promptId, ...parentIds] : parentIds
 
   return (
     <div className="h-full flex flex-col border-l border-border bg-card">
@@ -56,6 +87,22 @@ export function PreviewPanel({
           </button>
         </div>
       </div>
+
+      {/* Parent Prompts Section */}
+      {onParentIdsChange && (
+        <div className="px-4 py-3 border-b border-border">
+          <ParentPromptChips
+            parentIds={parentIds}
+            onRemove={handleRemoveParent}
+            onAdd={() => setShowParentSelector(true)}
+          />
+        </div>
+      )}
+
+      {/* Inherited Content Preview */}
+      {promptId && parentIds.length > 0 && (
+        <InheritedContentPreview promptId={promptId} parentIds={parentIds} />
+      )}
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4">
@@ -138,6 +185,14 @@ export function PreviewPanel({
           Download
         </button>
       </div>
+
+      {/* Parent Prompt Selector Modal */}
+      <ParentPromptSelector
+        isOpen={showParentSelector}
+        onClose={() => setShowParentSelector(false)}
+        onSelect={handleAddParent}
+        excludeIds={excludeIds}
+      />
     </div>
   )
 }

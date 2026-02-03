@@ -3,6 +3,7 @@
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::sync::MutexGuard;
 
 /// A stored prompt record.
@@ -166,5 +167,80 @@ impl<'db> Prompts<'db> {
                 .map(|dt| dt.with_timezone(&Utc))
                 .unwrap_or_else(|_| Utc::now()),
         })
+    }
+
+    /// Get parent IDs for a prompt, ordered by position.
+    pub fn get_parent_ids(&self, id: &str) -> Result<Vec<String>, rusqlite::Error> {
+        let mut stmt = self.conn.prepare(
+            "SELECT parent_id FROM prompt_parents WHERE child_id = ?1 ORDER BY position",
+        )?;
+        let rows = stmt.query_map(params![id], |row| row.get::<_, String>(0))?;
+
+        let mut parent_ids = Vec::new();
+        for row in rows {
+            parent_ids.push(row?);
+        }
+
+        Ok(parent_ids)
+    }
+
+    /// Set parent IDs for a prompt, replacing existing relationships.
+    pub fn set_parent_ids(&self, id: &str, parent_ids: &[String]) -> Result<(), rusqlite::Error> {
+        // Delete existing parent relationships
+        self.conn.execute(
+            "DELETE FROM prompt_parents WHERE child_id = ?1",
+            params![id],
+        )?;
+
+        // Insert new parent relationships with position
+        let mut stmt = self.conn.prepare(
+            "INSERT INTO prompt_parents (child_id, parent_id, position) VALUES (?1, ?2, ?3)",
+        )?;
+
+        for (position, parent_id) in parent_ids.iter().enumerate() {
+            stmt.execute(params![id, parent_id, position as i32])?;
+        }
+
+        Ok(())
+    }
+
+    /// Resolve full inheritance chain for a prompt.
+    /// Returns prompts in resolution order (parents first, self last).
+    /// Handles cycles and duplicates by tracking visited IDs.
+    pub fn resolve_chain(&self, id: &str) -> Result<Vec<PromptRecord>, rusqlite::Error> {
+        let mut visited: HashSet<String> = HashSet::new();
+        let mut result: Vec<PromptRecord> = Vec::new();
+
+        self.visit_chain(id, &mut visited, &mut result)?;
+
+        Ok(result)
+    }
+
+    /// Helper function for depth-first traversal of inheritance chain.
+    fn visit_chain(
+        &self,
+        id: &str,
+        visited: &mut HashSet<String>,
+        result: &mut Vec<PromptRecord>,
+    ) -> Result<(), rusqlite::Error> {
+        // Skip if already visited (handles cycles and duplicates)
+        if visited.contains(id) {
+            return Ok(());
+        }
+        visited.insert(id.to_string());
+
+        // Get the record
+        if let Some(record) = self.get(id)? {
+            // Visit parents first (depth-first)
+            let parent_ids = self.get_parent_ids(id)?;
+            for parent_id in parent_ids {
+                self.visit_chain(&parent_id, visited, result)?;
+            }
+
+            // Add this record after its parents
+            result.push(record);
+        }
+
+        Ok(())
     }
 }
