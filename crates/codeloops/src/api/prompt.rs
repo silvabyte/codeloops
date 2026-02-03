@@ -27,6 +27,7 @@ use axum::response::sse::{Event, Sse};
 use axum::response::Json;
 use chrono::Utc;
 use codeloops_agent::{create_agent, AgentConfig, AgentType, OutputCallback, OutputType};
+use codeloops_db::{Database, PromptFilter, PromptRecord};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -34,7 +35,6 @@ use tokio_stream::StreamExt;
 
 use super::prompt_instructions::get_system_instructions;
 use super::AppState;
-use crate::db::{PromptFilter, PromptRecord, PromptStore};
 
 // ============================================================================
 // Types
@@ -210,7 +210,8 @@ pub async fn create_session(
     };
 
     state
-        .prompt_store
+        .db
+        .prompts()
         .save(&record)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -238,7 +239,8 @@ pub async fn send_message(
 {
     // Load prompt from DB
     let record = state
-        .prompt_store
+        .db
+        .prompts()
         .get(&session_id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Prompt not found".to_string()))?;
@@ -275,7 +277,7 @@ pub async fn send_message(
 
     // Stream agent response with DB persistence
     stream_agent_response(
-        state.prompt_store.clone(),
+        state.db.clone(),
         session_id,
         req.content,
         agent_prompt,
@@ -317,7 +319,8 @@ pub async fn save_prompt_session(
 
     // Check if this is an update or insert
     let existing = state
-        .prompt_store
+        .db
+        .prompts()
         .get(&req.id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -336,7 +339,8 @@ pub async fn save_prompt_session(
     };
 
     state
-        .prompt_store
+        .db
+        .prompts()
         .save(&record)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -359,12 +363,14 @@ pub async fn list_prompts(
     };
 
     let records = state
-        .prompt_store
+        .db
+        .prompts()
         .list(&filter)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let projects = state
-        .prompt_store
+        .db
+        .prompts()
         .list_projects()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -401,7 +407,8 @@ pub async fn get_prompt(
     Path(id): Path<String>,
 ) -> Result<Json<GetPromptResponse>, (StatusCode, String)> {
     let record = state
-        .prompt_store
+        .db
+        .prompts()
         .get(&id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Prompt not found".to_string()))?;
@@ -433,7 +440,8 @@ pub async fn delete_prompt(
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
     let deleted = state
-        .prompt_store
+        .db
+        .prompts()
         .delete(&id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -512,7 +520,7 @@ fn build_agent_prompt_from_messages(
 ///
 /// After the agent responds, messages are persisted to the database.
 async fn stream_agent_response(
-    prompt_store: Arc<PromptStore>,
+    db: Arc<Database>,
     session_id: String,
     user_message: String,
     prompt: String,
@@ -524,7 +532,7 @@ async fn stream_agent_response(
 
     // Spawn agent execution in background
     let session_id_clone = session_id.clone();
-    let prompt_store_clone = prompt_store.clone();
+    let db_clone = db.clone();
     let user_message_clone = user_message.clone();
     tokio::spawn(async move {
         let result = execute_agent(prompt, working_dir, tx.clone()).await;
@@ -536,7 +544,7 @@ async fn stream_agent_response(
 
                 // Save messages to database
                 if let Err(e) = save_messages_to_prompt(
-                    &prompt_store_clone,
+                    &db_clone,
                     &session_id_clone,
                     &user_message_clone,
                     &full_response,
@@ -663,13 +671,14 @@ async fn execute_agent(
 /// Updates the prompt record with the new user and assistant messages.
 /// Auto-generates a title from the first user message if not already set.
 fn save_messages_to_prompt(
-    prompt_store: &PromptStore,
+    db: &Database,
     prompt_id: &str,
     user_message: &str,
     assistant_message: &str,
     prompt_draft: &str,
 ) -> Result<(), String> {
-    let mut record = prompt_store
+    let mut record = db
+        .prompts()
         .get(prompt_id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "Prompt not found".to_string())?;
@@ -715,7 +724,7 @@ fn save_messages_to_prompt(
     record.session_state = serde_json::to_string(&session_state).map_err(|e| e.to_string())?;
     record.updated_at = Utc::now();
 
-    prompt_store.save(&record).map_err(|e| e.to_string())?;
+    db.prompts().save(&record).map_err(|e| e.to_string())?;
 
     Ok(())
 }

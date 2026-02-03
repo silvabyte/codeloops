@@ -118,9 +118,15 @@ export function PromptBuilder() {
     [handleNewPrompt, isReady, previewOpen, togglePreview, keyboardHint]
   )
 
-  // Build header context - simple "Planning: Feature" format
-  const capitalizedWorkType = workType ? workType.charAt(0).toUpperCase() + workType.slice(1) : ''
-  const headerContext = workType ? `Planning: ${capitalizedWorkType}` : 'Prompt Planner'
+  // Build header context - show prompt title if available, truncated with ellipsis
+  const firstUserMessage = session.messages.find((m) => m.role === 'user')
+  const promptTitle = firstUserMessage?.content.slice(0, 80) ||
+    (promptDraft ? promptDraft.split('\n')[0].replace(/^#\s*/, '').slice(0, 80) : null)
+  const headerContext = promptTitle ? (
+    <h1 className="text-sm font-medium text-foreground truncate max-w-md" title={promptTitle}>
+      {promptTitle}
+    </h1>
+  ) : 'Prompt Planner'
 
   // State machine driven rendering
   switch (state.status) {

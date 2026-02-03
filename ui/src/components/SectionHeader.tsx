@@ -81,7 +81,7 @@ export function SectionHeader({
   const renderContext = () => {
     if (isString(context)) {
       return (
-        <h1 className="text-lg font-semibold text-foreground tracking-tight">
+        <h1 className="text-lg font-semibold text-foreground tracking-tight truncate">
           {context}
         </h1>
       )

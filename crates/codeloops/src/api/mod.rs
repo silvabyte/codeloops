@@ -12,29 +12,28 @@ use axum::routing::{delete, get, post};
 use axum::Router;
 use tower_http::cors::CorsLayer;
 
+use codeloops_db::Database;
 use codeloops_sessions::{SessionStore, SessionWatcher};
-
-use crate::db::PromptStore;
 
 #[derive(Clone)]
 pub struct AppState {
     pub store: Arc<SessionStore>,
     pub watcher: Arc<SessionWatcher>,
     pub working_dir: PathBuf,
-    pub prompt_store: Arc<PromptStore>,
+    pub db: Arc<Database>,
 }
 
 pub fn create_router(
     store: Arc<SessionStore>,
     watcher: Arc<SessionWatcher>,
     working_dir: PathBuf,
-    prompt_store: Arc<PromptStore>,
+    db: Arc<Database>,
 ) -> Router {
     let state = AppState {
         store,
         watcher,
         working_dir,
-        prompt_store,
+        db,
     };
 
     Router::new()

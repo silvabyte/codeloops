@@ -1,6 +1,5 @@
 mod api;
 mod config;
-mod db;
 mod init;
 mod sessions;
 mod ui;

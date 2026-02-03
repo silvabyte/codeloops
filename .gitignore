@@ -6,6 +6,7 @@ Cargo.lock
 
 # Ignore prompt files (but not docs)
 /prompt*.md
+prompts/
 !/docs/
 a.out
 ui/codeloops-ui

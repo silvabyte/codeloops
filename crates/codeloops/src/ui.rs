@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 
+use codeloops_db::Database;
 use codeloops_sessions::{SessionStore, SessionWatcher};
 
 use crate::api;
-use crate::db::PromptStore;
 
 pub async fn handle_ui_command(dev: bool, api_port: u16, ui_port: u16) -> Result<()> {
     use colored::Colorize;
@@ -13,10 +13,9 @@ pub async fn handle_ui_command(dev: bool, api_port: u16, ui_port: u16) -> Result
     let store = Arc::new(SessionStore::new()?);
     let watcher = Arc::new(SessionWatcher::new().context("Failed to start session watcher")?);
     let working_dir = std::env::current_dir().context("Failed to get current directory")?;
-    let prompt_store =
-        Arc::new(PromptStore::new().context("Failed to initialize prompt database")?);
+    let db = Arc::new(Database::open().context("Failed to initialize database")?);
 
-    let router = api::create_router(store, watcher, working_dir, prompt_store);
+    let router = api::create_router(store, watcher, working_dir, db);
 
     // Start the API server
     let api_addr = format!("0.0.0.0:{}", api_port);

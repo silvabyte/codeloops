@@ -1,0 +1,12 @@
+[package]
+name = "codeloops-db"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Database layer for codeloops"
+
+[dependencies]
+rusqlite.workspace = true
+chrono.workspace = true
+serde.workspace = true
+dirs.workspace = true

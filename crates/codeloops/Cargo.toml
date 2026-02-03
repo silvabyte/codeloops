@@ -16,6 +16,7 @@ codeloops-critic.workspace = true
 codeloops-git.workspace = true
 codeloops-logging.workspace = true
 codeloops-sessions.workspace = true
+codeloops-db.workspace = true
 
 tokio.workspace = true
 clap.workspace = true
@@ -34,7 +35,6 @@ tokio-stream.workspace = true
 open.workspace = true
 uuid.workspace = true
 lazy_static.workspace = true
-rusqlite.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
