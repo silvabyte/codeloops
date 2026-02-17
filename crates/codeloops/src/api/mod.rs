@@ -31,6 +31,7 @@ pub fn create_router(db: Arc<Database>, working_dir: PathBuf) -> Router {
         .route("/api/metrics", get(stats::get_metrics))
         // Prompt builder
         .route("/api/context", get(context::get_context))
+        .route("/api/skills", get(prompt::list_skills))
         .route("/api/prompt-session", post(prompt::create_session))
         .route(
             "/api/prompt-session/{session_id}/message",
@@ -43,8 +44,14 @@ pub fn create_router(db: Arc<Database>, working_dir: PathBuf) -> Router {
         .route("/api/prompts/{id}", get(prompt::get_prompt))
         .route("/api/prompts/{id}", delete(prompt::delete_prompt))
         // Prompt inheritance
-        .route("/api/prompts/{id}/parents", put(prompt::update_prompt_parents))
-        .route("/api/prompts/{id}/resolved", get(prompt::get_resolved_prompt))
+        .route(
+            "/api/prompts/{id}/parents",
+            put(prompt::update_prompt_parents),
+        )
+        .route(
+            "/api/prompts/{id}/resolved",
+            get(prompt::get_resolved_prompt),
+        )
         .layer(CorsLayer::permissive())
         .with_state(state)
 }

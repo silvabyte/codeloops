@@ -35,6 +35,7 @@ use tokio_stream::StreamExt;
 
 use super::prompt_instructions::get_system_instructions;
 use super::AppState;
+use crate::skills;
 
 // ============================================================================
 // Types
@@ -54,8 +55,10 @@ pub struct CreateSessionResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SendMessageRequest {
     pub content: String,
+    pub enabled_skills: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -93,6 +96,8 @@ pub struct SavePromptSessionRequest {
 pub struct SessionStatePayload {
     pub messages: Vec<MessagePayload>,
     pub prompt_draft: String,
+    #[serde(default)]
+    pub enabled_skills: Vec<String>,
 }
 
 /// Message payload from frontend.
@@ -168,6 +173,26 @@ pub struct ResolvedPromptResponse {
 }
 
 // ============================================================================
+// Skills Types
+// ============================================================================
+
+/// Response for listing available skills.
+#[derive(Serialize)]
+pub struct ListSkillsResponse {
+    pub skills: Vec<SkillInfoResponse>,
+}
+
+/// A discovered skill.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillInfoResponse {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub source_dir: String,
+}
+
+// ============================================================================
 // Internal Types
 // ============================================================================
 
@@ -198,6 +223,7 @@ pub async fn create_session(
     let session_state = SessionStatePayload {
         messages: vec![],
         prompt_draft: String::new(),
+        enabled_skills: vec![],
     };
 
     let record = PromptRecord {
@@ -224,6 +250,21 @@ pub async fn create_session(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(CreateSessionResponse { session_id }))
+}
+
+/// List available skills from the filesystem.
+pub async fn list_skills() -> Json<ListSkillsResponse> {
+    let discovered = skills::discover_skills();
+    let skills = discovered
+        .into_iter()
+        .map(|s| SkillInfoResponse {
+            id: s.id,
+            name: s.name,
+            description: s.description,
+            source_dir: s.source_dir,
+        })
+        .collect();
+    Json(ListSkillsResponse { skills })
 }
 
 /// Extract project name from a path.
@@ -254,8 +295,8 @@ pub async fn send_message(
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Prompt not found".to_string()))?;
 
     // Parse session state
-    let session_state: SessionStatePayload = serde_json::from_str(&record.session_state)
-        .map_err(|e| {
+    let session_state: SessionStatePayload =
+        serde_json::from_str(&record.session_state).map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to parse session state: {}", e),
@@ -264,6 +305,17 @@ pub async fn send_message(
 
     let working_dir = record.project_path.clone();
     let work_type = record.work_type.clone();
+
+    // Resolve enabled skills
+    let enabled_skill_ids = req
+        .enabled_skills
+        .as_deref()
+        .unwrap_or(session_state.enabled_skills.as_slice());
+    let all_skills = skills::discover_skills();
+    let enabled_skills: Vec<&skills::SkillInfo> = all_skills
+        .iter()
+        .filter(|s| enabled_skill_ids.contains(&s.id))
+        .collect();
 
     // Convert session messages to ChatMessage format
     let messages: Vec<ChatMessage> = session_state
@@ -277,10 +329,16 @@ pub async fn send_message(
 
     // Build agent prompt
     let agent_prompt = if req.content == "__INIT__" {
-        build_init_prompt(&work_type, &working_dir)
+        build_init_prompt(&work_type, &working_dir, &enabled_skills)
     } else {
         // Build prompt with existing history plus new user message
-        build_agent_prompt_from_messages(&work_type, &working_dir, &messages, &req.content)
+        build_agent_prompt_from_messages(
+            &work_type,
+            &working_dir,
+            &messages,
+            &req.content,
+            &enabled_skills,
+        )
     };
 
     // Stream agent response with DB persistence
@@ -556,8 +614,12 @@ pub async fn get_resolved_prompt(
 // ============================================================================
 
 /// Build the initial prompt for when conversation starts.
-fn build_init_prompt(work_type: &str, working_dir: &str) -> String {
-    let system = get_system_instructions(work_type, working_dir);
+fn build_init_prompt(
+    work_type: &str,
+    working_dir: &str,
+    enabled_skills: &[&skills::SkillInfo],
+) -> String {
+    let system = get_system_instructions(work_type, working_dir, enabled_skills);
     format!(
         "{}\n\n---\n\n\
         The user has selected '{}' as the work type and is ready to start.\n\n\
@@ -575,8 +637,9 @@ fn build_agent_prompt_from_messages(
     working_dir: &str,
     messages: &[ChatMessage],
     new_message: &str,
+    enabled_skills: &[&skills::SkillInfo],
 ) -> String {
-    let system = get_system_instructions(work_type, working_dir);
+    let system = get_system_instructions(work_type, working_dir, enabled_skills);
 
     let mut prompt = String::new();
 
@@ -922,7 +985,7 @@ mod tests {
 
     #[test]
     fn test_build_init_prompt() {
-        let prompt = build_init_prompt("feature", "/path/to/project");
+        let prompt = build_init_prompt("feature", "/path/to/project", &[]);
         assert!(prompt.contains("feature"));
         assert!(prompt.contains("/path/to/project"));
         assert!(prompt.contains("FIRST question"));
@@ -941,13 +1004,18 @@ mod tests {
             },
         ];
 
-        let prompt =
-            build_agent_prompt_from_messages("feature", "/project", &messages, "On the header");
+        let prompt = build_agent_prompt_from_messages(
+            "feature",
+            "/project",
+            &messages,
+            "On the header",
+            &[],
+        );
         assert!(prompt.contains("Conversation so far"));
         assert!(prompt.contains("I want to add a login button"));
         assert!(prompt.contains("Where should the button appear"));
         assert!(prompt.contains("On the header"));
-        assert!(prompt.contains("feature"));
+        assert!(prompt.contains("FEATURE"));
     }
 
     #[test]

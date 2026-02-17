@@ -387,7 +387,10 @@ impl<'db> Sessions<'db> {
     }
 
     /// Compute agentic efficacy metrics (DORA-inspired).
-    pub fn agentic_metrics(&self, filter: &SessionFilter) -> Result<AgenticMetrics, rusqlite::Error> {
+    pub fn agentic_metrics(
+        &self,
+        filter: &SessionFilter,
+    ) -> Result<AgenticMetrics, rusqlite::Error> {
         let summaries = self.list(filter)?;
         let total_sessions = summaries.len();
 

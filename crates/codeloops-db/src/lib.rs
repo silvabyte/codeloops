@@ -601,7 +601,10 @@ mod tests {
         assert_eq!(session.iterations.len(), 1);
         assert_eq!(session.iterations[0].iteration_number, 1);
         assert_eq!(session.iterations[0].actor_output, "Made changes");
-        assert_eq!(session.iterations[0].feedback, Some("Please also fix tests".to_string()));
+        assert_eq!(
+            session.iterations[0].feedback,
+            Some("Please also fix tests".to_string())
+        );
     }
 
     #[test]
@@ -633,7 +636,10 @@ mod tests {
         let session = db.sessions().get(&id).unwrap().unwrap();
         assert_eq!(session.outcome, Some("success".to_string()));
         assert_eq!(session.iteration_count, Some(2));
-        assert_eq!(session.summary, Some("Fixed the bug successfully".to_string()));
+        assert_eq!(
+            session.summary,
+            Some("Fixed the bug successfully".to_string())
+        );
         assert_eq!(session.confidence, Some(0.95));
         assert!(session.ended_at.is_some());
     }
@@ -667,31 +673,42 @@ mod tests {
         let id2 = db.sessions().create(&start2).unwrap();
 
         // End one with success
-        db.sessions().end(&id1, &SessionEnd {
-            outcome: "success".to_string(),
-            iterations: 1,
-            summary: None,
-            confidence: None,
-            duration_secs: 10.0,
-        }).unwrap();
+        db.sessions()
+            .end(
+                &id1,
+                &SessionEnd {
+                    outcome: "success".to_string(),
+                    iterations: 1,
+                    summary: None,
+                    confidence: None,
+                    duration_secs: 10.0,
+                },
+            )
+            .unwrap();
 
         // List all
         let all = db.sessions().list(&SessionFilter::default()).unwrap();
         assert_eq!(all.len(), 2);
 
         // Filter by outcome
-        let successful = db.sessions().list(&SessionFilter {
-            outcome: Some("success".to_string()),
-            ..Default::default()
-        }).unwrap();
+        let successful = db
+            .sessions()
+            .list(&SessionFilter {
+                outcome: Some("success".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
         assert_eq!(successful.len(), 1);
         assert_eq!(successful[0].id, id1);
 
         // Search by prompt
-        let searched = db.sessions().list(&SessionFilter {
-            search: Some("Second".to_string()),
-            ..Default::default()
-        }).unwrap();
+        let searched = db
+            .sessions()
+            .list(&SessionFilter {
+                search: Some("Second".to_string()),
+                ..Default::default()
+            })
+            .unwrap();
         assert_eq!(searched.len(), 1);
         assert_eq!(searched[0].id, id2);
     }
@@ -714,13 +731,18 @@ mod tests {
         let id2 = db.sessions().create(&start).unwrap();
 
         // End one session
-        db.sessions().end(&id1, &SessionEnd {
-            outcome: "success".to_string(),
-            iterations: 1,
-            summary: None,
-            confidence: None,
-            duration_secs: 10.0,
-        }).unwrap();
+        db.sessions()
+            .end(
+                &id1,
+                &SessionEnd {
+                    outcome: "success".to_string(),
+                    iterations: 1,
+                    summary: None,
+                    confidence: None,
+                    duration_secs: 10.0,
+                },
+            )
+            .unwrap();
 
         let active = db.sessions().active_sessions().unwrap();
         assert_eq!(active.len(), 1);
@@ -790,33 +812,48 @@ mod tests {
         let id2 = db.sessions().create(&start).unwrap();
         let id3 = db.sessions().create(&start).unwrap();
 
-        db.sessions().end(&id1, &SessionEnd {
-            outcome: "success".to_string(),
-            iterations: 2,
-            summary: None,
-            confidence: None,
-            duration_secs: 60.0,
-        }).unwrap();
+        db.sessions()
+            .end(
+                &id1,
+                &SessionEnd {
+                    outcome: "success".to_string(),
+                    iterations: 2,
+                    summary: None,
+                    confidence: None,
+                    duration_secs: 60.0,
+                },
+            )
+            .unwrap();
 
-        db.sessions().end(&id2, &SessionEnd {
-            outcome: "success".to_string(),
-            iterations: 1,
-            summary: None,
-            confidence: None,
-            duration_secs: 30.0,
-        }).unwrap();
+        db.sessions()
+            .end(
+                &id2,
+                &SessionEnd {
+                    outcome: "success".to_string(),
+                    iterations: 1,
+                    summary: None,
+                    confidence: None,
+                    duration_secs: 30.0,
+                },
+            )
+            .unwrap();
 
-        db.sessions().end(&id3, &SessionEnd {
-            outcome: "failed".to_string(),
-            iterations: 3,
-            summary: None,
-            confidence: None,
-            duration_secs: 90.0,
-        }).unwrap();
+        db.sessions()
+            .end(
+                &id3,
+                &SessionEnd {
+                    outcome: "failed".to_string(),
+                    iterations: 3,
+                    summary: None,
+                    confidence: None,
+                    duration_secs: 90.0,
+                },
+            )
+            .unwrap();
 
         let stats = db.sessions().stats(&SessionFilter::default()).unwrap();
         assert_eq!(stats.total_sessions, 3);
-        assert!((stats.success_rate - 2.0/3.0).abs() < 0.001);
+        assert!((stats.success_rate - 2.0 / 3.0).abs() < 0.001);
         assert!((stats.avg_iterations - 2.0).abs() < 0.001);
         assert!((stats.avg_duration_secs - 60.0).abs() < 0.001);
     }
