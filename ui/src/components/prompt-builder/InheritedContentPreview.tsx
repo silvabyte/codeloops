@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { cn } from '@/lib/utils'
+import { markdownInherited } from '@/lib/markdown-styles'
 import type { ResolvedPromptResponse } from '@/lib/prompt-session'
 import { getResolvedPrompt } from '@/lib/prompt-session'
 import ReactMarkdown from 'react-markdown'
@@ -90,18 +91,7 @@ export function InheritedContentPreview({ promptId, parentIds }: InheritedConten
                   className={cn(
                     'text-sm leading-relaxed max-w-none text-foreground/70',
                     'bg-surface/50 rounded-lg p-3 max-h-48 overflow-y-auto',
-                    // Markdown element styling (same as PreviewPanel)
-                    '[&_p]:mb-2 [&_p:last-child]:mb-0',
-                    '[&_pre]:bg-elevated [&_pre]:p-2 [&_pre]:rounded-lg [&_pre]:overflow-x-auto [&_pre]:my-2',
-                    '[&_code]:bg-elevated [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-amber [&_code]:text-xs [&_code]:font-mono',
-                    '[&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-foreground',
-                    '[&_ul]:list-disc [&_ul]:pl-4 [&_ul]:my-2',
-                    '[&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:my-2',
-                    '[&_li]:mb-0.5',
-                    '[&_strong]:text-foreground/90 [&_strong]:font-semibold',
-                    '[&_h1]:text-base [&_h1]:font-semibold [&_h1]:text-foreground/90 [&_h1]:mb-2 [&_h1]:mt-3 first:[&_h1]:mt-0',
-                    '[&_h2]:text-sm [&_h2]:font-semibold [&_h2]:text-foreground/90 [&_h2]:mb-1 [&_h2]:mt-3 first:[&_h2]:mt-0',
-                    '[&_h3]:text-sm [&_h3]:font-semibold [&_h3]:text-foreground/90 [&_h3]:mb-1 [&_h3]:mt-2 first:[&_h3]:mt-0'
+                    markdownInherited
                   )}
                 >
                   <ReactMarkdown>{resolved.resolvedContent}</ReactMarkdown>

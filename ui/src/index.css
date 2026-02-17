@@ -107,3 +107,91 @@ body {
   background: var(--color-amber-dim);
   color: var(--color-foreground);
 }
+
+/* Toast entrance */
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.toast-enter {
+  animation: toastIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* WorkTypeSelector entrance */
+@keyframes fadeSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* WorkTypeSelector exit */
+@keyframes fadeSlideDown {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+.work-type-card {
+  animation: fadeSlideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+
+.work-type-exit {
+  animation: fadeSlideDown 0.25s ease-in forwards;
+}
+
+/* Chat message entrance */
+@keyframes messageSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.message-enter {
+  animation: messageSlideIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Chat view entrance */
+@keyframes chatEnter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.chat-enter {
+  animation: chatEnter 0.3s ease-out forwards;
+}
+
+/* Streaming progress bar */
+@keyframes indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(200%);
+  }
+}

@@ -20,7 +20,8 @@ describe('Conversation', () => {
     it('should render empty state', () => {
       render(<Conversation {...defaultProps} />)
 
-      expect(screen.getByPlaceholderText('Type here...')).toBeInTheDocument()
+      expect(screen.getByPlaceholderText("Describe what you're building...")).toBeInTheDocument()
+      expect(screen.getByText('Start a conversation to build your prompt')).toBeInTheDocument()
     })
 
     it('should render user messages', () => {
@@ -65,12 +66,10 @@ describe('Conversation', () => {
       expect(indicator).toBeInTheDocument()
     })
 
-    it('should show keyboard shortcut hint', () => {
+    it('should show hint text', () => {
       render(<Conversation {...defaultProps} />)
 
-      const hint = screen.getByText('↵')
-      expect(hint).toBeInTheDocument()
-      expect(hint).toHaveAttribute('title', 'Enter to send')
+      expect(screen.getByText('Shift+Enter for new line')).toBeInTheDocument()
     })
   })
 
@@ -78,7 +77,7 @@ describe('Conversation', () => {
     it('should update input value on change', () => {
       render(<Conversation {...defaultProps} />)
 
-      const textarea = screen.getByPlaceholderText('Type here...')
+      const textarea = screen.getByPlaceholderText("Describe what you're building...")
       fireEvent.change(textarea, { target: { value: 'Test message' } })
 
       expect(textarea).toHaveValue('Test message')
@@ -87,7 +86,7 @@ describe('Conversation', () => {
     it('should call onSend with Enter', () => {
       render(<Conversation {...defaultProps} />)
 
-      const textarea = screen.getByPlaceholderText('Type here...')
+      const textarea = screen.getByPlaceholderText("Describe what you're building...")
       fireEvent.change(textarea, { target: { value: 'Test message' } })
       fireEvent.keyDown(textarea, { key: 'Enter' })
 
@@ -97,7 +96,7 @@ describe('Conversation', () => {
     it('should not call onSend with Shift+Enter (allows newline)', () => {
       render(<Conversation {...defaultProps} />)
 
-      const textarea = screen.getByPlaceholderText('Type here...')
+      const textarea = screen.getByPlaceholderText("Describe what you're building...")
       fireEvent.change(textarea, { target: { value: 'Test message' } })
       fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: true })
 
@@ -107,7 +106,7 @@ describe('Conversation', () => {
     it('should clear input after sending', () => {
       render(<Conversation {...defaultProps} />)
 
-      const textarea = screen.getByPlaceholderText('Type here...')
+      const textarea = screen.getByPlaceholderText("Describe what you're building...")
       fireEvent.change(textarea, { target: { value: 'Test message' } })
       fireEvent.keyDown(textarea, { key: 'Enter' })
 
@@ -117,7 +116,7 @@ describe('Conversation', () => {
     it('should not send empty messages', () => {
       render(<Conversation {...defaultProps} />)
 
-      const textarea = screen.getByPlaceholderText('Type here...')
+      const textarea = screen.getByPlaceholderText("Describe what you're building...")
       fireEvent.keyDown(textarea, { key: 'Enter' })
 
       expect(mockOnSend).not.toHaveBeenCalled()
@@ -126,7 +125,7 @@ describe('Conversation', () => {
     it('should not send whitespace-only messages', () => {
       render(<Conversation {...defaultProps} />)
 
-      const textarea = screen.getByPlaceholderText('Type here...')
+      const textarea = screen.getByPlaceholderText("Describe what you're building...")
       fireEvent.change(textarea, { target: { value: '   ' } })
       fireEvent.keyDown(textarea, { key: 'Enter' })
 
@@ -136,9 +135,19 @@ describe('Conversation', () => {
     it('should trim message before sending', () => {
       render(<Conversation {...defaultProps} />)
 
-      const textarea = screen.getByPlaceholderText('Type here...')
+      const textarea = screen.getByPlaceholderText("Describe what you're building...")
       fireEvent.change(textarea, { target: { value: '  Test message  ' } })
       fireEvent.keyDown(textarea, { key: 'Enter' })
+
+      expect(mockOnSend).toHaveBeenCalledWith('Test message')
+    })
+
+    it('should send via send button click', () => {
+      render(<Conversation {...defaultProps} />)
+
+      const textarea = screen.getByPlaceholderText("Describe what you're building...")
+      fireEvent.change(textarea, { target: { value: 'Test message' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
 
       expect(mockOnSend).toHaveBeenCalledWith('Test message')
     })
@@ -148,21 +157,21 @@ describe('Conversation', () => {
     it('should disable textarea when disabled prop is true', () => {
       render(<Conversation {...defaultProps} disabled={true} />)
 
-      const textarea = screen.getByPlaceholderText('Type here...')
+      const textarea = screen.getByPlaceholderText("Describe what you're building...")
       expect(textarea).toBeDisabled()
     })
 
     it('should disable textarea when isLoading is true', () => {
       render(<Conversation {...defaultProps} isLoading={true} />)
 
-      const textarea = screen.getByPlaceholderText('Type here...')
+      const textarea = screen.getByPlaceholderText("Describe what you're building...")
       expect(textarea).toBeDisabled()
     })
 
     it('should not send message when disabled', () => {
       render(<Conversation {...defaultProps} disabled={true} />)
 
-      const textarea = screen.getByPlaceholderText('Type here...')
+      const textarea = screen.getByPlaceholderText("Describe what you're building...")
       fireEvent.change(textarea, { target: { value: 'Test' } })
       fireEvent.keyDown(textarea, { key: 'Enter' })
 
@@ -172,7 +181,7 @@ describe('Conversation', () => {
     it('should not send message when loading', () => {
       render(<Conversation {...defaultProps} isLoading={true} />)
 
-      const textarea = screen.getByPlaceholderText('Type here...')
+      const textarea = screen.getByPlaceholderText("Describe what you're building...")
       fireEvent.change(textarea, { target: { value: 'Test' } })
       fireEvent.keyDown(textarea, { key: 'Enter' })
 
@@ -181,26 +190,28 @@ describe('Conversation', () => {
   })
 
   describe('message styling', () => {
-    it('should apply correct alignment for user messages', () => {
+    it('should render user messages with user avatar', () => {
       const messages: Message[] = [
         { id: '1', role: 'user', content: 'User message' },
       ]
 
       render(<Conversation {...defaultProps} messages={messages} />)
 
-      const messageContainer = screen.getByText('User message').parentElement
-      expect(messageContainer).toHaveClass('ml-auto')
+      // User messages have ml-auto for right alignment
+      const messageRow = screen.getByText('User message').closest('.flex.gap-3')
+      expect(messageRow).toHaveClass('ml-auto')
     })
 
-    it('should apply correct alignment for assistant messages', () => {
+    it('should render assistant messages with bot avatar', () => {
       const messages: Message[] = [
         { id: '1', role: 'assistant', content: 'Assistant message' },
       ]
 
       render(<Conversation {...defaultProps} messages={messages} />)
 
-      const messageContainer = screen.getByText('Assistant message').parentElement
-      expect(messageContainer).toHaveClass('mr-auto')
+      // Assistant messages have mr-auto for left alignment
+      const messageRow = screen.getByText('Assistant message').closest('.flex.gap-3')
+      expect(messageRow).toHaveClass('mr-auto')
     })
   })
 })

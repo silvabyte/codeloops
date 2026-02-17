@@ -1,6 +1,8 @@
 import { useState, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { cn } from '@/lib/utils'
+import { markdownPreview } from '@/lib/markdown-styles'
+import { FileText, Save, Copy, Download } from 'lucide-react'
 import { ParentPromptChips } from './ParentPromptChips'
 import { ParentPromptSelector } from './ParentPromptSelector'
 import { InheritedContentPreview } from './InheritedContentPreview'
@@ -12,6 +14,7 @@ interface PreviewPanelProps {
   onCopy: () => void
   onDownload: () => void
   isSaving?: boolean
+  isStreaming?: boolean
   promptId?: string
   parentIds?: string[]
   onParentIdsChange?: (parentIds: string[]) => void
@@ -24,6 +27,7 @@ export function PreviewPanel({
   onCopy,
   onDownload,
   isSaving,
+  isStreaming,
   promptId,
   parentIds = [],
   onParentIdsChange,
@@ -72,20 +76,40 @@ export function PreviewPanel({
     <div className="h-full flex flex-col border-l border-border bg-card">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <span className="text-sm text-muted-foreground">prompt.md</span>
+        {/* Left: file icon + name */}
         <div className="flex items-center gap-2">
+          <FileText className="w-4 h-4 text-dim" />
+          <span className="text-sm font-mono font-medium text-muted-foreground">prompt.md</span>
+        </div>
+
+        {/* Center: Segmented toggle */}
+        <div className="flex items-center rounded-lg border border-border bg-background p-0.5">
           <button
-            onClick={() => setIsEditing(!isEditing)}
+            onClick={() => setIsEditing(false)}
             className={cn(
-              'text-xs px-2 py-1 rounded transition-colors',
-              isEditing
-                ? 'text-foreground bg-secondary'
+              'text-xs px-3 py-1 rounded-md transition-all',
+              !isEditing
+                ? 'bg-elevated shadow-sm text-foreground'
                 : 'text-muted-foreground hover:text-foreground'
             )}
           >
-            {isEditing ? 'Preview' : 'Edit'}
+            Preview
+          </button>
+          <button
+            onClick={() => setIsEditing(true)}
+            className={cn(
+              'text-xs px-3 py-1 rounded-md transition-all',
+              isEditing
+                ? 'bg-elevated shadow-sm text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            Edit
           </button>
         </div>
+
+        {/* Right: spacer for balance */}
+        <div className="w-20" />
       </div>
 
       {/* Referenced Prompts Section */}
@@ -104,6 +128,18 @@ export function PreviewPanel({
         <InheritedContentPreview promptId={promptId} parentIds={parentIds} />
       )}
 
+      {/* Streaming indicator */}
+      {isStreaming && (
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-amber/5">
+          <div className="flex gap-1">
+            <div className="w-1.5 h-1.5 rounded-full bg-amber animate-pulse" />
+            <div className="w-1.5 h-1.5 rounded-full bg-amber animate-pulse" style={{ animationDelay: '0.2s' }} />
+            <div className="w-1.5 h-1.5 rounded-full bg-amber animate-pulse" style={{ animationDelay: '0.4s' }} />
+          </div>
+          <span className="text-xs text-amber">Generating prompt...</span>
+        </div>
+      )}
+
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4">
         {isEditing ? (
@@ -120,28 +156,19 @@ export function PreviewPanel({
           <div
             className={cn(
               'text-sm leading-relaxed max-w-none text-foreground/90',
-              // Markdown element styling
-              '[&_p]:mb-3 [&_p:last-child]:mb-0',
-              '[&_pre]:bg-elevated [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:overflow-x-auto [&_pre]:my-3',
-              '[&_code]:bg-elevated [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-amber [&_code]:text-xs [&_code]:font-mono',
-              '[&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-foreground',
-              '[&_a]:text-cyan [&_a]:no-underline hover:[&_a]:underline',
-              '[&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-3',
-              '[&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-3',
-              '[&_li]:mb-1',
-              '[&_strong]:text-foreground [&_strong]:font-semibold',
-              '[&_h1]:text-xl [&_h1]:font-semibold [&_h1]:text-foreground [&_h1]:mb-3 [&_h1]:mt-4 first:[&_h1]:mt-0',
-              '[&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-foreground [&_h2]:mb-2 [&_h2]:mt-4 first:[&_h2]:mt-0',
-              '[&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-foreground [&_h3]:mb-2 [&_h3]:mt-3 first:[&_h3]:mt-0',
-              '[&_blockquote]:border-l-2 [&_blockquote]:border-amber/50 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:my-3',
-              '[&_hr]:border-border [&_hr]:my-4'
+              markdownPreview
             )}
           >
             <ReactMarkdown>{content}</ReactMarkdown>
           </div>
         ) : (
-          <div className="text-sm text-muted-foreground/50 italic">
-            Prompt will appear here as you chat...
+          <div className="flex flex-col items-center justify-center h-full gap-3 text-center">
+            <div className="w-12 h-12 rounded-lg border border-border flex items-center justify-center">
+              <FileText className="w-6 h-6 text-dim" />
+            </div>
+            <p className="text-sm text-muted-foreground/50">
+              Prompt will appear here as you chat...
+            </p>
           </div>
         )}
       </div>
@@ -152,37 +179,40 @@ export function PreviewPanel({
           onClick={onSave}
           disabled={isSaving || !content}
           className={cn(
-            'flex-1 text-sm py-2 rounded transition-colors',
-            'bg-primary text-primary-foreground',
-            'hover:bg-primary/90',
+            'flex-1 inline-flex items-center justify-center gap-2 text-sm py-2 rounded-lg transition-colors',
+            'bg-amber text-background font-medium',
+            'hover:bg-amber-bright',
             'disabled:opacity-50 disabled:cursor-not-allowed'
           )}
         >
+          <Save className="w-4 h-4" />
           {isSaving ? 'Saving...' : 'Save'}
         </button>
         <button
           onClick={handleCopy}
           disabled={!content}
           className={cn(
-            'text-sm px-3 py-2 rounded transition-colors',
-            'text-muted-foreground hover:text-foreground',
-            'hover:bg-secondary',
+            'p-2 rounded-lg transition-colors',
+            'text-muted-foreground hover:text-foreground hover:bg-elevated',
             'disabled:opacity-50 disabled:cursor-not-allowed'
           )}
+          aria-label="Copy to clipboard"
+          title="Copy to clipboard"
         >
-          Copy
+          <Copy className="w-4 h-4" />
         </button>
         <button
           onClick={handleDownload}
           disabled={!content}
           className={cn(
-            'text-sm px-3 py-2 rounded transition-colors',
-            'text-muted-foreground hover:text-foreground',
-            'hover:bg-secondary',
+            'p-2 rounded-lg transition-colors',
+            'text-muted-foreground hover:text-foreground hover:bg-elevated',
             'disabled:opacity-50 disabled:cursor-not-allowed'
           )}
+          aria-label="Download as file"
+          title="Download as file"
         >
-          Download
+          <Download className="w-4 h-4" />
         </button>
       </div>
 

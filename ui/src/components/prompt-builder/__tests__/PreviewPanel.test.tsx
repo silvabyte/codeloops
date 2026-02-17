@@ -37,20 +37,21 @@ describe('PreviewPanel', () => {
     it('should render content when provided', () => {
       render(<PreviewPanel {...defaultProps} content="# Test Content" />)
 
-      expect(screen.getByText('# Test Content')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Test Content' })).toBeInTheDocument()
     })
 
     it('should render action buttons', () => {
       render(<PreviewPanel {...defaultProps} />)
 
-      expect(screen.getByText('Save')).toBeInTheDocument()
-      expect(screen.getByText('Copy')).toBeInTheDocument()
-      expect(screen.getByText('Download')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /copy/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument()
     })
 
-    it('should render Edit button', () => {
+    it('should render segmented toggle with Preview and Edit', () => {
       render(<PreviewPanel {...defaultProps} />)
 
+      expect(screen.getByText('Preview')).toBeInTheDocument()
       expect(screen.getByText('Edit')).toBeInTheDocument()
     })
   })
@@ -61,8 +62,6 @@ describe('PreviewPanel', () => {
 
       fireEvent.click(screen.getByText('Edit'))
 
-      // In edit mode, button should show "Preview"
-      expect(screen.getByText('Preview')).toBeInTheDocument()
       expect(screen.getByRole('textbox')).toBeInTheDocument()
     })
 
@@ -71,11 +70,11 @@ describe('PreviewPanel', () => {
 
       // Enter edit mode
       fireEvent.click(screen.getByText('Edit'))
-      expect(screen.getByText('Preview')).toBeInTheDocument()
+      expect(screen.getByRole('textbox')).toBeInTheDocument()
 
       // Exit edit mode
       fireEvent.click(screen.getByText('Preview'))
-      expect(screen.getByText('Edit')).toBeInTheDocument()
+      expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
     })
 
     it('should show content in textarea when editing', () => {
@@ -102,7 +101,7 @@ describe('PreviewPanel', () => {
     it('should call onSave when clicking Save', () => {
       render(<PreviewPanel {...defaultProps} content="Some content" />)
 
-      fireEvent.click(screen.getByText('Save'))
+      fireEvent.click(screen.getByRole('button', { name: /save/i }))
 
       expect(mockOnSave).toHaveBeenCalledTimes(1)
     })
@@ -110,7 +109,7 @@ describe('PreviewPanel', () => {
     it('should disable Save button when isSaving', () => {
       render(<PreviewPanel {...defaultProps} content="Content" isSaving={true} />)
 
-      const saveButton = screen.getByText('Saving...')
+      const saveButton = screen.getByRole('button', { name: /saving/i })
       expect(saveButton).toBeDisabled()
     })
 
@@ -123,7 +122,7 @@ describe('PreviewPanel', () => {
     it('should disable Save button when no content', () => {
       render(<PreviewPanel {...defaultProps} content="" />)
 
-      const saveButton = screen.getByText('Save')
+      const saveButton = screen.getByRole('button', { name: /save/i })
       expect(saveButton).toBeDisabled()
     })
   })
@@ -132,9 +131,8 @@ describe('PreviewPanel', () => {
     it('should call onCopy when clicking Copy', async () => {
       render(<PreviewPanel {...defaultProps} content="Copy me" />)
 
-      fireEvent.click(screen.getByText('Copy'))
+      fireEvent.click(screen.getByRole('button', { name: /copy/i }))
 
-      // Wait for async clipboard operation
       await vi.waitFor(() => {
         expect(mockOnCopy).toHaveBeenCalledTimes(1)
       })
@@ -143,7 +141,7 @@ describe('PreviewPanel', () => {
     it('should copy content to clipboard', async () => {
       render(<PreviewPanel {...defaultProps} content="Clipboard content" />)
 
-      fireEvent.click(screen.getByText('Copy'))
+      fireEvent.click(screen.getByRole('button', { name: /copy/i }))
 
       await vi.waitFor(() => {
         expect(navigator.clipboard.writeText).toHaveBeenCalledWith('Clipboard content')
@@ -153,7 +151,7 @@ describe('PreviewPanel', () => {
     it('should disable Copy button when no content', () => {
       render(<PreviewPanel {...defaultProps} content="" />)
 
-      const copyButton = screen.getByText('Copy')
+      const copyButton = screen.getByRole('button', { name: /copy/i })
       expect(copyButton).toBeDisabled()
     })
   })
@@ -162,7 +160,7 @@ describe('PreviewPanel', () => {
     it('should call onDownload when clicking Download', () => {
       render(<PreviewPanel {...defaultProps} content="Download me" />)
 
-      fireEvent.click(screen.getByText('Download'))
+      fireEvent.click(screen.getByRole('button', { name: /download/i }))
 
       expect(mockOnDownload).toHaveBeenCalledTimes(1)
     })
@@ -170,7 +168,7 @@ describe('PreviewPanel', () => {
     it('should disable Download button when no content', () => {
       render(<PreviewPanel {...defaultProps} content="" />)
 
-      const downloadButton = screen.getByText('Download')
+      const downloadButton = screen.getByRole('button', { name: /download/i })
       expect(downloadButton).toBeDisabled()
     })
 
@@ -179,7 +177,7 @@ describe('PreviewPanel', () => {
 
       render(<PreviewPanel {...defaultProps} content="Download content" />)
 
-      fireEvent.click(screen.getByText('Download'))
+      fireEvent.click(screen.getByRole('button', { name: /download/i }))
 
       expect(URL.createObjectURL).toHaveBeenCalled()
       expect(createElementSpy).toHaveBeenCalledWith('a')
@@ -189,21 +187,35 @@ describe('PreviewPanel', () => {
     })
   })
 
+  describe('streaming indicator', () => {
+    it('should show streaming indicator when isStreaming is true', () => {
+      render(<PreviewPanel {...defaultProps} content="Content" isStreaming={true} />)
+
+      expect(screen.getByText('Generating prompt...')).toBeInTheDocument()
+    })
+
+    it('should not show streaming indicator when isStreaming is false', () => {
+      render(<PreviewPanel {...defaultProps} content="Content" isStreaming={false} />)
+
+      expect(screen.queryByText('Generating prompt...')).not.toBeInTheDocument()
+    })
+  })
+
   describe('button states', () => {
     it('should enable all buttons when content is present', () => {
       render(<PreviewPanel {...defaultProps} content="Content" />)
 
-      expect(screen.getByText('Save')).not.toBeDisabled()
-      expect(screen.getByText('Copy')).not.toBeDisabled()
-      expect(screen.getByText('Download')).not.toBeDisabled()
+      expect(screen.getByRole('button', { name: /save/i })).not.toBeDisabled()
+      expect(screen.getByRole('button', { name: /copy/i })).not.toBeDisabled()
+      expect(screen.getByRole('button', { name: /download/i })).not.toBeDisabled()
     })
 
     it('should disable all action buttons when no content', () => {
       render(<PreviewPanel {...defaultProps} content="" />)
 
-      expect(screen.getByText('Save')).toBeDisabled()
-      expect(screen.getByText('Copy')).toBeDisabled()
-      expect(screen.getByText('Download')).toBeDisabled()
+      expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
+      expect(screen.getByRole('button', { name: /copy/i })).toBeDisabled()
+      expect(screen.getByRole('button', { name: /download/i })).toBeDisabled()
     })
   })
 })

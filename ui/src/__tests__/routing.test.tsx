@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { ToastProvider } from '../components/Toast'
 import App from '../App'
 
 // Mock session data for RunInsights to show SubNav (requires at least one session)
@@ -86,6 +87,7 @@ vi.mock('@/hooks/usePromptSession', () => ({
       projectName: 'test-project',
       messages: [],
       promptDraft: '',
+      parentIds: [],
       status: 'selecting',
     },
     isSaving: false,
@@ -94,6 +96,7 @@ vi.mock('@/hooks/usePromptSession', () => ({
     selectWorkType: vi.fn(),
     sendMessage: vi.fn(),
     updatePromptDraft: vi.fn(),
+    setParentIds: vi.fn(),
     save: vi.fn(),
     clearError: vi.fn(),
     newPrompt: vi.fn(),
@@ -104,7 +107,9 @@ vi.mock('@/hooks/usePromptSession', () => ({
 function renderApp(initialRoute: string) {
   return render(
     <MemoryRouter initialEntries={[initialRoute]}>
-      <App />
+      <ToastProvider>
+        <App />
+      </ToastProvider>
     </MemoryRouter>
   )
 }

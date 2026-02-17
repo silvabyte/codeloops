@@ -1,16 +1,20 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { cn } from '@/lib/utils'
+import { Loader2 } from 'lucide-react'
+import { useToast } from '@/components/Toast'
 import { WorkTypeSelector } from '@/components/prompt-builder/WorkTypeSelector'
 import { Conversation } from '@/components/prompt-builder/Conversation'
 import { PreviewPanel } from '@/components/prompt-builder/PreviewPanel'
+import { ResizableDivider } from '@/components/prompt-builder/ResizableDivider'
 import { PromptHistoryPanel } from '@/components/prompt-builder/PromptHistoryPanel'
 import { SectionHeader } from '@/components/SectionHeader'
 import { usePromptSession } from '@/hooks/usePromptSession'
 
 function LoadingSkeleton() {
   return (
-    <div className="flex items-center justify-center min-h-[60vh]">
-      <div className="text-muted-foreground/50">Loading...</div>
+    <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+      <Loader2 className="w-8 h-8 text-amber animate-spin" />
+      <span className="text-sm text-dim animate-pulse">Loading workspace...</span>
     </div>
   )
 }
@@ -32,8 +36,12 @@ export function PromptBuilder() {
     loadPrompt,
   } = usePromptSession()
 
+  const { addToast } = useToast()
   const [historyOpen, setHistoryOpen] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(true)
+  const [splitPercent, setSplitPercent] = useState(50)
+  const [isExiting, setIsExiting] = useState(false)
+  const chatEnteredRef = useRef(false)
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -65,20 +73,17 @@ export function PromptBuilder() {
   const handleSave = useCallback(async () => {
     const path = await save()
     if (path) {
-      // TODO: Show toast notification
-      console.log(`Saved to ${path}`)
+      addToast(`Saved to ${path}`, 'success')
     }
-  }, [save])
+  }, [save, addToast])
 
   const handleCopy = useCallback(() => {
-    // TODO: Show toast notification
-    console.log('Copied to clipboard')
-  }, [])
+    addToast('Copied to clipboard', 'success')
+  }, [addToast])
 
   const handleDownload = useCallback(() => {
-    // TODO: Show toast notification
-    console.log('Downloaded prompt.md')
-  }, [])
+    addToast('Downloaded prompt.md', 'success')
+  }, [addToast])
 
   const handleNewPrompt = useCallback(async () => {
     await newPrompt()
@@ -148,7 +153,15 @@ export function PromptBuilder() {
             <div className="max-w-3xl mx-auto px-6 py-6">
               <WorkTypeSelector
                 projectName={state.projectName}
-                onSelect={selectWorkType}
+                onSelect={(type) => {
+                  setIsExiting(true)
+                  setTimeout(() => {
+                    setIsExiting(false)
+                    chatEnteredRef.current = false
+                    selectWorkType(type)
+                  }, 250)
+                }}
+                isExiting={isExiting}
               />
             </div>
           </div>
@@ -182,6 +195,7 @@ export function PromptBuilder() {
                 <WorkTypeSelector
                   projectName={state.projectName}
                   onSelect={selectWorkType}
+                  isExiting={isExiting}
                 />
               </div>
             </div>
@@ -232,16 +246,30 @@ export function PromptBuilder() {
     )
   }
 
+  // Track chat entrance animation (play once)
+  const showChatEnter = !chatEnteredRef.current
+  if (isInChatState) chatEnteredRef.current = true
+
+  const isStreamingOrAwaiting = state.status === 'streaming' || state.status === 'awaiting_agent' || state.status === 'creating_session'
+
   return (
-    <div className="h-[calc(100vh-65px)] flex">
+    <div className={cn('h-[calc(100vh-65px)] flex', showChatEnter && 'chat-enter')}>
       {/* Conversation area */}
       <div
-        className={cn(
-          'flex flex-col transition-all duration-200',
-          previewOpen ? 'w-1/2' : 'w-full'
-        )}
+        className="flex flex-col transition-all duration-300 min-w-0"
+        style={{ width: previewOpen ? `${splitPercent}%` : '100%' }}
       >
         <SectionHeader context={headerContext} actions={headerActions} />
+
+        {/* Streaming progress bar */}
+        {isStreamingOrAwaiting && (
+          <div className="h-0.5 w-full bg-border overflow-hidden">
+            <div
+              className="h-full w-1/2 bg-amber"
+              style={{ animation: 'indeterminate 1.5s ease-in-out infinite' }}
+            />
+          </div>
+        )}
 
         {/* Conversation */}
         <div className="flex-1 max-w-3xl mx-auto w-full px-6 overflow-hidden">
@@ -268,9 +296,19 @@ export function PromptBuilder() {
         )}
       </div>
 
-      {/* Preview panel */}
+      {/* Resizable divider */}
       {previewOpen && (
-        <div className="w-1/2">
+        <ResizableDivider
+          onResize={(percent) => setSplitPercent(Math.max(30, Math.min(80, percent)))}
+        />
+      )}
+
+      {/* Preview panel */}
+      <div
+        className="transition-all duration-300 overflow-hidden"
+        style={{ width: previewOpen ? `${100 - splitPercent}%` : '0%' }}
+      >
+        {previewOpen && (
           <PreviewPanel
             content={promptDraft}
             onContentChange={updatePromptDraft}
@@ -278,12 +316,13 @@ export function PromptBuilder() {
             onCopy={handleCopy}
             onDownload={handleDownload}
             isSaving={isSaving}
+            isStreaming={isStreaming}
             promptId={session.id || undefined}
             parentIds={session.parentIds}
             onParentIdsChange={setParentIds}
           />
-        </div>
-      )}
+        )}
+      </div>
 
       {/* History panel */}
       <PromptHistoryPanel

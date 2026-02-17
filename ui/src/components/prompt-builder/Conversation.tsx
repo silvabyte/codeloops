@@ -1,6 +1,8 @@
 import { useRef, useEffect, useState, useCallback, type KeyboardEvent } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { cn } from '@/lib/utils'
+import { markdownChat } from '@/lib/markdown-styles'
+import { Bot, User, ArrowUp, MessageSquare } from 'lucide-react'
 import { TypingIndicator } from './TypingIndicator'
 
 export interface Message {
@@ -27,6 +29,7 @@ export function Conversation({
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const initialMessageCountRef = useRef(messages.length)
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -35,6 +38,14 @@ export function Conversation({
   useEffect(() => {
     scrollToBottom()
   }, [messages, showTypingIndicator, scrollToBottom])
+
+  // Auto-resize textarea
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = Math.min(el.scrollHeight, 128) + 'px'
+  }, [input])
 
   const handleSend = useCallback(() => {
     const trimmed = input.trim()
@@ -50,70 +61,107 @@ export function Conversation({
     }
   }, [handleSend])
 
+  const isEmpty = messages.length === 0 && !showTypingIndicator
+
   return (
     <div className="flex flex-col h-full">
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto py-8 space-y-6">
-        {messages.map((message) => (
-          <div
-            key={message.id}
-            className={cn(
-              'max-w-[85%]',
-              message.role === 'user' ? 'ml-auto' : 'mr-auto'
-            )}
-          >
-            <div
-              className={cn(
-                'text-sm leading-relaxed max-w-none',
-                message.role === 'assistant' ? 'text-muted-foreground' : 'text-foreground',
-                // Markdown element styling
-                '[&_p]:mb-2 [&_p:last-child]:mb-0',
-                '[&_pre]:bg-elevated [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:overflow-x-auto [&_pre]:my-2',
-                '[&_code]:bg-elevated [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-amber [&_code]:text-xs',
-                '[&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:text-foreground',
-                '[&_a]:text-cyan [&_a]:no-underline hover:[&_a]:underline',
-                '[&_ul]:list-disc [&_ul]:pl-4 [&_ul]:my-2',
-                '[&_ol]:list-decimal [&_ol]:pl-4 [&_ol]:my-2',
-                '[&_li]:mb-1',
-                '[&_strong]:text-foreground [&_strong]:font-semibold',
-                '[&_h1]:text-lg [&_h1]:font-semibold [&_h1]:text-foreground [&_h1]:mb-2',
-                '[&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-foreground [&_h2]:mb-2',
-                '[&_h3]:text-sm [&_h3]:font-semibold [&_h3]:text-foreground [&_h3]:mb-1',
-                '[&_blockquote]:border-l-2 [&_blockquote]:border-amber/50 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:my-2'
-              )}
-            >
-              <ReactMarkdown>{message.content}</ReactMarkdown>
+      <div className="flex-1 overflow-y-auto py-8 space-y-4">
+        {isEmpty && (
+          <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
+            <div className="w-12 h-12 rounded-full bg-amber/10 flex items-center justify-center">
+              <MessageSquare className="w-6 h-6 text-amber" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Start a conversation to build your prompt</p>
+              <p className="text-xs text-dim mt-1">Describe what you're working on and the agent will help structure it</p>
             </div>
           </div>
-        ))}
+        )}
+
+        {messages.map((message, index) => {
+          const isNew = index >= initialMessageCountRef.current
+          const isUser = message.role === 'user'
+
+          return (
+            <div
+              key={message.id}
+              className={cn(
+                'flex gap-3 max-w-[85%]',
+                isUser ? 'ml-auto flex-row-reverse' : 'mr-auto',
+                isNew && 'message-enter'
+              )}
+            >
+              {/* Avatar */}
+              <div
+                className={cn(
+                  'w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5',
+                  isUser ? 'bg-amber/10' : 'bg-cyan/10'
+                )}
+              >
+                {isUser ? (
+                  <User className="w-3.5 h-3.5 text-amber" />
+                ) : (
+                  <Bot className="w-3.5 h-3.5 text-cyan" />
+                )}
+              </div>
+
+              {/* Bubble */}
+              <div
+                className={cn(
+                  'rounded-lg px-3.5 py-2.5 text-sm leading-relaxed max-w-none',
+                  isUser
+                    ? 'bg-amber/5 border border-amber/10 text-foreground'
+                    : 'bg-surface border border-border-subtle text-muted-foreground',
+                  markdownChat
+                )}
+              >
+                <ReactMarkdown>{message.content}</ReactMarkdown>
+              </div>
+            </div>
+          )
+        })}
         {showTypingIndicator && <TypingIndicator />}
         <div ref={messagesEndRef} />
       </div>
 
       {/* Input */}
-      <div className="border-t border-border pt-4 pb-2">
-        <div className="relative">
+      <div className="pb-3 pt-2">
+        <div
+          className={cn(
+            'flex items-end gap-2 rounded-lg border bg-surface px-3 py-2 transition-colors',
+            'border-border focus-within:border-amber-dim focus-within:ring-1 focus-within:ring-amber/20'
+          )}
+        >
           <textarea
             ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type here..."
+            placeholder="Describe what you're building..."
             disabled={disabled || isLoading || showTypingIndicator}
-            rows={3}
+            rows={1}
             className={cn(
-              'w-full bg-transparent text-foreground placeholder:text-muted-foreground/50',
-              'resize-none outline-none text-sm leading-relaxed',
+              'flex-1 bg-transparent text-foreground placeholder:text-muted-foreground/50',
+              'resize-none outline-none text-sm leading-relaxed max-h-32',
               'disabled:opacity-50'
             )}
           />
-          <span
-            className="absolute bottom-0 right-0 text-xs text-muted-foreground/40"
-            title="Enter to send"
+          <button
+            onClick={handleSend}
+            disabled={!input.trim() || disabled || isLoading || showTypingIndicator}
+            className={cn(
+              'p-1.5 rounded-md transition-colors shrink-0',
+              input.trim() && !disabled
+                ? 'bg-amber text-background hover:bg-amber-bright'
+                : 'text-dim'
+            )}
+            aria-label="Send message"
           >
-            ↵
-          </span>
+            <ArrowUp className="w-4 h-4" />
+          </button>
         </div>
+        <p className="text-[10px] text-dim/50 mt-1 ml-1">Shift+Enter for new line</p>
       </div>
     </div>
   )
