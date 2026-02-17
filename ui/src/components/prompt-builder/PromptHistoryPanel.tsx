@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { cn, formatDate } from '@/lib/utils'
 import type { PromptSummary, ListPromptsResponse } from '@/lib/prompt-session'
 import { listPrompts, deletePrompt } from '@/lib/prompt-session'
-import { X } from 'lucide-react'
+import { workTypeMap } from '@/lib/work-type-config'
+import { X, Search, Trash2 } from 'lucide-react'
 
 interface PromptHistoryPanelProps {
   isOpen: boolean
@@ -95,6 +96,13 @@ export function PromptHistoryPanel({ isOpen, onClose, onSelect }: PromptHistoryP
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [isOpen, focusedIndex, prompts, onClose])
 
+  // Auto-cancel delete confirmation after 3s
+  useEffect(() => {
+    if (!deleteConfirm) return
+    const timer = setTimeout(() => setDeleteConfirm(null), 3000)
+    return () => clearTimeout(timer)
+  }, [deleteConfirm])
+
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
 
@@ -159,14 +167,17 @@ export function PromptHistoryPanel({ isOpen, onClose, onSelect }: PromptHistoryP
           </div>
 
           <div className="flex gap-3">
-            <input
-              ref={searchRef}
-              type="text"
-              placeholder="Search..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1 px-0 py-2 bg-transparent text-sm placeholder:text-dim border-b border-border focus:border-foreground focus:outline-none transition-colors"
-            />
+            <div className="flex-1 flex items-center gap-2 border-b border-border focus-within:border-foreground transition-colors">
+              <Search className="w-4 h-4 text-dim shrink-0" />
+              <input
+                ref={searchRef}
+                type="text"
+                placeholder="Search..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="flex-1 px-0 py-2 bg-transparent text-sm placeholder:text-dim focus:outline-none"
+              />
+            </div>
             {projects.length > 1 && (
               <select
                 value={selectedProject}
@@ -185,11 +196,17 @@ export function PromptHistoryPanel({ isOpen, onClose, onSelect }: PromptHistoryP
         {/* Content */}
         <div ref={listRef} className="flex-1 overflow-auto px-6 py-6">
           {loading ? (
-            <div className="space-y-6">
+            <div className="space-y-4">
               {[...Array(4)].map((_, i) => (
-                <div key={i} className="space-y-2">
-                  <div className="h-4 w-48 bg-border/50 rounded animate-pulse" />
-                  <div className="h-3 w-32 bg-border/30 rounded animate-pulse" />
+                <div key={i} className="flex items-start gap-3 py-3">
+                  <div className="space-y-2 flex-1">
+                    <div className="h-4 w-48 bg-border/50 rounded animate-pulse" />
+                    <div className="flex items-center gap-2">
+                      <div className="h-3 w-16 bg-border/30 rounded animate-pulse" />
+                      <div className="h-3 w-24 bg-border/30 rounded animate-pulse" />
+                    </div>
+                  </div>
+                  <div className="h-3 w-12 bg-border/20 rounded animate-pulse" />
                 </div>
               ))}
             </div>
@@ -201,48 +218,69 @@ export function PromptHistoryPanel({ isOpen, onClose, onSelect }: PromptHistoryP
               </button>
             </div>
           ) : prompts.length === 0 ? (
-            <div className="text-center py-12 text-dim">
-              <p>No prompts yet</p>
+            <div className="flex flex-col items-center justify-center py-12 text-center gap-3">
+              {debouncedSearch ? (
+                <>
+                  <Search className="w-8 h-8 text-dim/50" />
+                  <p className="text-dim">No prompts matching &ldquo;{debouncedSearch}&rdquo;</p>
+                </>
+              ) : (
+                <p className="text-dim">No prompts yet</p>
+              )}
             </div>
           ) : (
             <div className="space-y-1">
-              {prompts.map((prompt, index) => (
-                <div
-                  key={prompt.id}
-                  onClick={() => handleSelect(prompt.id)}
-                  onMouseEnter={() => setFocusedIndex(index)}
-                  className={cn(
-                    'group -mx-3 px-3 py-3 rounded-lg cursor-pointer transition-colors',
-                    focusedIndex === index ? 'bg-hover' : 'hover:bg-hover/50'
-                  )}
-                >
-                  <div className="flex items-baseline justify-between gap-4 mb-1">
-                    <span className="font-medium truncate">
-                      {prompt.title || 'Untitled'}
-                    </span>
-                    <span className="text-xs text-dim shrink-0">
-                      {formatDate(prompt.updatedAt)}
-                    </span>
-                  </div>
+              {prompts.map((prompt, index) => {
+                const wtConfig = prompt.workType ? workTypeMap[prompt.workType as keyof typeof workTypeMap] : null
+                const WtIcon = wtConfig?.icon
 
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="text-sm text-dim">
-                      {prompt.projectName}
-                    </span>
-                    <button
-                      onClick={(e) => handleDelete(prompt.id, e)}
-                      className={cn(
-                        'text-xs transition-all',
-                        deleteConfirm === prompt.id
-                          ? 'text-destructive'
-                          : 'text-dim/0 group-hover:text-dim hover:text-destructive'
-                      )}
-                    >
-                      {deleteConfirm === prompt.id ? 'confirm?' : 'delete'}
-                    </button>
+                return (
+                  <div
+                    key={prompt.id}
+                    onClick={() => handleSelect(prompt.id)}
+                    onMouseEnter={() => setFocusedIndex(index)}
+                    className={cn(
+                      'group -mx-3 px-3 py-3 rounded-lg cursor-pointer transition-colors',
+                      focusedIndex === index ? 'bg-hover' : 'hover:bg-hover/50'
+                    )}
+                  >
+                    <div className="flex items-baseline justify-between gap-4 mb-1">
+                      <span className="font-medium truncate">
+                        {prompt.title || 'Untitled'}
+                      </span>
+                      <span className="text-xs text-dim shrink-0">
+                        {formatDate(prompt.updatedAt)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-2">
+                        {wtConfig && WtIcon && (
+                          <span className="inline-flex items-center gap-1 text-xs text-amber/70 bg-amber/5 px-1.5 py-0.5 rounded">
+                            <WtIcon className="w-3 h-3" />
+                            {wtConfig.label}
+                          </span>
+                        )}
+                        <span className="text-sm text-dim">
+                          {prompt.projectName}
+                        </span>
+                      </div>
+                      <button
+                        onClick={(e) => handleDelete(prompt.id, e)}
+                        className={cn(
+                          'inline-flex items-center gap-1 text-xs transition-all rounded px-1.5 py-0.5',
+                          deleteConfirm === prompt.id
+                            ? 'text-destructive bg-destructive/10'
+                            : 'text-dim/0 group-hover:text-dim hover:text-destructive'
+                        )}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        {deleteConfirm === prompt.id ? 'confirm?' : 'delete'}
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>

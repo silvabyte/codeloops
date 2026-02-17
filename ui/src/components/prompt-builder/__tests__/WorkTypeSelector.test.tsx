@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import { WorkTypeSelector, type WorkType } from '../WorkTypeSelector'
+import { WorkTypeSelector } from '../WorkTypeSelector'
+import type { WorkType } from '@/lib/work-type-config'
 
 describe('WorkTypeSelector', () => {
   const mockOnSelect = vi.fn()
@@ -90,12 +91,11 @@ describe('WorkTypeSelector', () => {
     expect(mockOnChangeProject).toHaveBeenCalledTimes(1)
   })
 
-  it('should render all work type buttons', () => {
+  it('should render all work type buttons as radio roles', () => {
     render(<WorkTypeSelector {...defaultProps} />)
 
-    const buttons = screen.getAllByRole('button')
-    // 5 work type buttons + 1 project name button
-    expect(buttons).toHaveLength(6)
+    const radios = screen.getAllByRole('radio')
+    expect(radios).toHaveLength(5)
   })
 
   it('should handle each work type correctly', () => {
@@ -110,5 +110,32 @@ describe('WorkTypeSelector', () => {
     })
 
     expect(mockOnSelect).toHaveBeenCalledTimes(5)
+  })
+
+  it('should apply exit animation class when isExiting is true', () => {
+    const { container } = render(<WorkTypeSelector {...defaultProps} isExiting={true} />)
+
+    const wrapper = container.firstChild
+    expect(wrapper).toHaveClass('work-type-exit')
+  })
+
+  it('should support keyboard navigation with ArrowRight', () => {
+    render(<WorkTypeSelector {...defaultProps} />)
+
+    const radios = screen.getAllByRole('radio')
+    radios[0].focus()
+    fireEvent.keyDown(radios[0], { key: 'ArrowRight' })
+
+    expect(document.activeElement).toBe(radios[1])
+  })
+
+  it('should select with number keys', () => {
+    render(<WorkTypeSelector {...defaultProps} />)
+
+    fireEvent.keyDown(document, { key: '1' })
+    expect(mockOnSelect).toHaveBeenCalledWith('feature')
+
+    fireEvent.keyDown(document, { key: '3' })
+    expect(mockOnSelect).toHaveBeenCalledWith('risk')
   })
 })
