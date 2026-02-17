@@ -1,12 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { PreviewPanel } from '../PreviewPanel'
+
+// Mock fetchSkills
+vi.mock('@/lib/prompt-session', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/prompt-session')>()
+  return {
+    ...actual,
+    fetchSkills: vi.fn(),
+  }
+})
+
+import { fetchSkills } from '@/lib/prompt-session'
+
+const mockFetchSkills = vi.mocked(fetchSkills)
 
 describe('PreviewPanel', () => {
   const mockOnContentChange = vi.fn()
   const mockOnSave = vi.fn()
   const mockOnCopy = vi.fn()
   const mockOnDownload = vi.fn()
+  const mockOnToggleSkill = vi.fn()
 
   const defaultProps = {
     content: '',
@@ -19,6 +33,7 @@ describe('PreviewPanel', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mockFetchSkills.mockResolvedValue([])
   })
 
   describe('rendering', () => {
@@ -216,6 +231,117 @@ describe('PreviewPanel', () => {
       expect(screen.getByRole('button', { name: /save/i })).toBeDisabled()
       expect(screen.getByRole('button', { name: /copy/i })).toBeDisabled()
       expect(screen.getByRole('button', { name: /download/i })).toBeDisabled()
+    })
+  })
+
+  describe('skills section', () => {
+    const skillsProps = {
+      ...defaultProps,
+      onToggleSkill: mockOnToggleSkill,
+      enabledSkills: [] as string[],
+    }
+
+    it('should render skills section when onToggleSkill is provided', () => {
+      render(<PreviewPanel {...skillsProps} />)
+
+      expect(screen.getByText('Skills')).toBeInTheDocument()
+    })
+
+    it('should not render skills section when onToggleSkill is not provided', () => {
+      render(<PreviewPanel {...defaultProps} />)
+
+      expect(screen.queryByText('Skills')).not.toBeInTheDocument()
+    })
+
+    it('should show count badge when skills are active', () => {
+      render(<PreviewPanel {...skillsProps} enabledSkills={['brainstorming', 'system-design']} />)
+
+      expect(screen.getByText('2 active')).toBeInTheDocument()
+    })
+
+    it('should not show count badge when no skills are active', () => {
+      render(<PreviewPanel {...skillsProps} enabledSkills={[]} />)
+
+      expect(screen.queryByText(/active/)).not.toBeInTheDocument()
+    })
+
+    it('should expand/collapse skills list on header click', async () => {
+      mockFetchSkills.mockResolvedValue([
+        { id: 'brainstorming', name: 'brainstorming', description: 'Explore ideas', sourceDir: '~/.claude/skills' },
+      ])
+
+      render(<PreviewPanel {...skillsProps} />)
+
+      // Initially collapsed - skills list not visible
+      await waitFor(() => {
+        expect(screen.queryByText('Explore ideas')).not.toBeInTheDocument()
+      })
+
+      // Click to expand
+      fireEvent.click(screen.getByText('Skills'))
+
+      await waitFor(() => {
+        expect(screen.getByText('brainstorming')).toBeInTheDocument()
+        expect(screen.getByText('Explore ideas')).toBeInTheDocument()
+      })
+
+      // Click to collapse
+      fireEvent.click(screen.getByText('Skills'))
+
+      await waitFor(() => {
+        expect(screen.queryByText('Explore ideas')).not.toBeInTheDocument()
+      })
+    })
+
+    it('should call onToggleSkill when clicking a skill', async () => {
+      mockFetchSkills.mockResolvedValue([
+        { id: 'brainstorming', name: 'brainstorming', description: 'Explore ideas', sourceDir: '~/.claude/skills' },
+      ])
+
+      render(<PreviewPanel {...skillsProps} />)
+
+      // Expand skills
+      fireEvent.click(screen.getByText('Skills'))
+
+      await waitFor(() => {
+        expect(screen.getByText('brainstorming')).toBeInTheDocument()
+      })
+
+      // Click the skill
+      fireEvent.click(screen.getByText('brainstorming'))
+
+      expect(mockOnToggleSkill).toHaveBeenCalledWith('brainstorming')
+    })
+
+    it('should show empty state when no skills are discovered', async () => {
+      mockFetchSkills.mockResolvedValue([])
+
+      render(<PreviewPanel {...skillsProps} />)
+
+      // Expand skills
+      fireEvent.click(screen.getByText('Skills'))
+
+      await waitFor(() => {
+        expect(screen.getByText(/No skills found/)).toBeInTheDocument()
+      })
+    })
+
+    it('should show loading skeleton while fetching', async () => {
+      // Use a never-resolving promise to keep loading state
+      let resolveSkills: (value: never[]) => void
+      mockFetchSkills.mockReturnValue(new Promise((resolve) => { resolveSkills = resolve }))
+
+      render(<PreviewPanel {...skillsProps} />)
+
+      // Expand skills to see skeleton
+      fireEvent.click(screen.getByText('Skills'))
+
+      // Should show skeleton placeholders (animate-pulse elements)
+      const pulsingElements = document.querySelectorAll('.animate-pulse')
+      expect(pulsingElements.length).toBeGreaterThan(0)
+
+      // Resolve to clean up
+      resolveSkills!([])
     })
   })
 })

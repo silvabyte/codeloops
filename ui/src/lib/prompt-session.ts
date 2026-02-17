@@ -23,6 +23,22 @@ export interface SavePromptResponse {
 export interface SessionStatePayload {
   messages: Message[]
   promptDraft: string
+  enabledSkills: string[]
+}
+
+// ============================================================================
+// Skills Types
+// ============================================================================
+
+export interface SkillInfo {
+  id: string
+  name: string
+  description: string
+  sourceDir: string
+}
+
+export interface ListSkillsResponse {
+  skills: SkillInfo[]
 }
 
 export interface SavePromptSessionRequest {
@@ -100,14 +116,27 @@ export async function createPromptSession(
   return res.json()
 }
 
+/** Fetch available skills from the backend. Returns empty array on failure. */
+export async function fetchSkills(): Promise<SkillInfo[]> {
+  try {
+    const res = await fetch(`${API_BASE}/api/skills`)
+    if (!res.ok) return []
+    const data: ListSkillsResponse = await res.json()
+    return data.skills
+  } catch {
+    return []
+  }
+}
+
 export async function* sendPromptMessage(
   sessionId: string,
-  content: string
+  content: string,
+  enabledSkills?: string[],
 ): AsyncGenerator<string, void, unknown> {
   const res = await fetch(`${API_BASE}/api/prompt-session/${encodeURIComponent(sessionId)}/message`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, enabledSkills }),
   })
 
   if (!res.ok) throw new Error(`Failed to send message: ${res.statusText}`)

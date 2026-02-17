@@ -29,6 +29,7 @@ export function PromptBuilder() {
     selectWorkType,
     sendMessage,
     updatePromptDraft,
+    toggleSkill,
     setParentIds,
     save,
     clearError,
@@ -320,6 +321,8 @@ export function PromptBuilder() {
             promptId={session.id || undefined}
             parentIds={session.parentIds}
             onParentIdsChange={setParentIds}
+            enabledSkills={session.enabledSkills}
+            onToggleSkill={toggleSkill}
           />
         )}
       </div>

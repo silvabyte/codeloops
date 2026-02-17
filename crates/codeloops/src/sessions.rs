@@ -85,9 +85,10 @@ pub async fn handle_sessions_command(action: SessionsAction) -> Result<()> {
         }
         SessionsAction::Show { id, json } => {
             let id = resolve_session_id(&db, id)?;
-            let session = db.sessions().get(&id)?.ok_or_else(|| {
-                anyhow::anyhow!("Session not found: {}", id)
-            })?;
+            let session = db
+                .sessions()
+                .get(&id)?
+                .ok_or_else(|| anyhow::anyhow!("Session not found: {}", id))?;
 
             if json {
                 println!("{}", serde_json::to_string_pretty(&session)?);
@@ -270,11 +271,7 @@ fn print_session_detail(session: &Session) {
             println!("{}  {}", "Iterations:".dimmed(), iterations);
         }
         if let Some(duration) = session.duration_secs {
-            println!(
-                "{}  {}",
-                "Duration:".dimmed(),
-                format_duration(duration)
-            );
+            println!("{}  {}", "Duration:".dimmed(), format_duration(duration));
         }
         if let Some(confidence) = session.confidence {
             println!("{}  {:.0}%", "Confidence:".dimmed(), confidence * 100.0);

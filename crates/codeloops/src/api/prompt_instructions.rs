@@ -5,11 +5,19 @@
 //! NOT hardcoded questions or responses. The AI dynamically generates
 //! questions based on these instructions and the user's actual answers.
 
+use crate::skills::SkillInfo;
+
 /// Get system instructions for the given work type.
 ///
 /// These instructions guide the AI agent on how to conduct the interview,
 /// what topics to cover, and when to generate the final prompt.
-pub fn get_system_instructions(work_type: &str, working_dir: &str) -> String {
+/// When `enabled_skills` is non-empty, appends a section listing the
+/// available skills and how the agent should reference them.
+pub fn get_system_instructions(
+    work_type: &str,
+    working_dir: &str,
+    enabled_skills: &[&SkillInfo],
+) -> String {
     let type_instructions = match work_type {
         "feature" => FEATURE_INSTRUCTIONS,
         "defect" => DEFECT_INSTRUCTIONS,
@@ -18,9 +26,24 @@ pub fn get_system_instructions(work_type: &str, working_dir: &str) -> String {
         _ => CUSTOM_INSTRUCTIONS,
     };
 
+    let skills_section = if enabled_skills.is_empty() {
+        String::new()
+    } else {
+        let mut section = String::from(
+            "\n\n## Available Skills\n\
+             The implementation agent has access to the following skills. \
+             When writing the prompt.md, reference relevant skills in the \
+             implementation plan so the coding agent knows to use them:\n",
+        );
+        for skill in enabled_skills {
+            section.push_str(&format!("- /{} - {}\n", skill.id, skill.description));
+        }
+        section
+    };
+
     format!(
-        "{}\n\n{}\n\nWorking directory: {}",
-        BASE_INSTRUCTIONS, type_instructions, working_dir
+        "{}\n\n{}{}\n\nWorking directory: {}",
+        BASE_INSTRUCTIONS, type_instructions, skills_section, working_dir
     )
 }
 
@@ -278,37 +301,58 @@ mod tests {
 
     #[test]
     fn test_get_system_instructions_feature() {
-        let instructions = get_system_instructions("feature", "/path/to/project");
-        assert!(instructions.contains("RULES:"));
-        assert!(instructions.contains("Problem Definition"));
+        let instructions = get_system_instructions("feature", "/path/to/project", &[]);
+        assert!(instructions.contains("FEATURE"));
+        assert!(instructions.contains("Problem statement"));
         assert!(instructions.contains("/path/to/project"));
     }
 
     #[test]
     fn test_get_system_instructions_defect() {
-        let instructions = get_system_instructions("defect", "/project");
-        assert!(instructions.contains("Symptom Identification"));
-        assert!(instructions.contains("Root Cause Investigation"));
+        let instructions = get_system_instructions("defect", "/project", &[]);
+        assert!(instructions.contains("Observed behavior"));
+        assert!(instructions.contains("Suspected area"));
     }
 
     #[test]
     fn test_get_system_instructions_risk() {
-        let instructions = get_system_instructions("risk", "/project");
-        assert!(instructions.contains("Impact Assessment"));
+        let instructions = get_system_instructions("risk", "/project", &[]);
+        assert!(instructions.contains("Impact"));
         assert!(instructions.contains("security"));
     }
 
     #[test]
     fn test_get_system_instructions_debt() {
-        let instructions = get_system_instructions("debt", "/project");
-        assert!(instructions.contains("Scope Definition"));
-        assert!(instructions.contains("debt work tends to expand"));
+        let instructions = get_system_instructions("debt", "/project", &[]);
+        assert!(instructions.contains("Target state"));
+        assert!(instructions.contains("TECHNICAL DEBT"));
     }
 
     #[test]
     fn test_get_system_instructions_custom() {
-        let instructions = get_system_instructions("something-else", "/project");
+        let instructions = get_system_instructions("something-else", "/project", &[]);
         assert!(instructions.contains("CUSTOM"));
-        assert!(instructions.contains("nature of the work"));
+        assert!(instructions.contains("Goal statement"));
+    }
+
+    #[test]
+    fn test_get_system_instructions_with_skills() {
+        let skill = SkillInfo {
+            id: "brainstorming".to_string(),
+            name: "brainstorming".to_string(),
+            description: "Explore user intent and design".to_string(),
+            source_dir: "~/.claude/skills".to_string(),
+        };
+        let skills = vec![&skill];
+        let instructions = get_system_instructions("feature", "/project", &skills);
+        assert!(instructions.contains("Available Skills"));
+        assert!(instructions.contains("/brainstorming"));
+        assert!(instructions.contains("Explore user intent and design"));
+    }
+
+    #[test]
+    fn test_get_system_instructions_without_skills() {
+        let instructions = get_system_instructions("feature", "/project", &[]);
+        assert!(!instructions.contains("Available Skills"));
     }
 }

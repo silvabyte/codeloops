@@ -20,9 +20,9 @@ export type PromptSessionState =
   | { status: 'loading_context' }
   | { status: 'selecting_work_type'; workingDir: string; projectName: string }
   | { status: 'creating_session'; workingDir: string; projectName: string; workType: WorkType }
-  | { status: 'awaiting_agent'; workingDir: string; projectName: string; workType: WorkType; sessionId: string }
-  | { status: 'streaming'; workingDir: string; projectName: string; workType: WorkType; sessionId: string; messages: Message[]; promptDraft: string; parentIds: string[] }
-  | { status: 'ready'; workingDir: string; projectName: string; workType: WorkType; sessionId: string; messages: Message[]; promptDraft: string; parentIds: string[] }
+  | { status: 'awaiting_agent'; workingDir: string; projectName: string; workType: WorkType; sessionId: string; enabledSkills: string[] }
+  | { status: 'streaming'; workingDir: string; projectName: string; workType: WorkType; sessionId: string; messages: Message[]; promptDraft: string; parentIds: string[]; enabledSkills: string[] }
+  | { status: 'ready'; workingDir: string; projectName: string; workType: WorkType; sessionId: string; messages: Message[]; promptDraft: string; parentIds: string[]; enabledSkills: string[] }
   | { status: 'error'; workingDir: string; projectName: string; error: string; previousState?: PromptSessionState }
 
 export interface PromptSession {
@@ -34,6 +34,7 @@ export interface PromptSession {
   promptDraft: string
   status: 'selecting' | 'chatting' | 'complete'
   parentIds: string[]
+  enabledSkills: string[]
 }
 
 const STORAGE_KEY_PREFIX = 'codeloops-prompt-session-'
@@ -69,6 +70,7 @@ function deriveSession(state: PromptSessionState): PromptSession {
         promptDraft: '',
         status: 'selecting',
         parentIds: [],
+        enabledSkills: [],
       }
     case 'selecting_work_type':
       return {
@@ -80,11 +82,11 @@ function deriveSession(state: PromptSessionState): PromptSession {
         promptDraft: '',
         status: 'selecting',
         parentIds: [],
+        enabledSkills: [],
       }
     case 'creating_session':
-    case 'awaiting_agent':
       return {
-        id: state.status === 'awaiting_agent' ? state.sessionId : null,
+        id: null,
         workType: state.workType,
         workingDir: state.workingDir,
         projectName: state.projectName,
@@ -92,6 +94,19 @@ function deriveSession(state: PromptSessionState): PromptSession {
         promptDraft: '',
         status: 'chatting',
         parentIds: [],
+        enabledSkills: [],
+      }
+    case 'awaiting_agent':
+      return {
+        id: state.sessionId,
+        workType: state.workType,
+        workingDir: state.workingDir,
+        projectName: state.projectName,
+        messages: [],
+        promptDraft: '',
+        status: 'chatting',
+        parentIds: [],
+        enabledSkills: state.enabledSkills,
       }
     case 'streaming':
       return {
@@ -103,6 +118,7 @@ function deriveSession(state: PromptSessionState): PromptSession {
         promptDraft: state.promptDraft,
         status: 'chatting',
         parentIds: state.parentIds,
+        enabledSkills: state.enabledSkills,
       }
     case 'ready':
       return {
@@ -114,6 +130,7 @@ function deriveSession(state: PromptSessionState): PromptSession {
         promptDraft: state.promptDraft,
         status: 'chatting',
         parentIds: state.parentIds,
+        enabledSkills: state.enabledSkills,
       }
     case 'error':
       // Preserve what we can from the previous state
@@ -130,6 +147,7 @@ function deriveSession(state: PromptSessionState): PromptSession {
         promptDraft: '',
         status: 'selecting',
         parentIds: [],
+        enabledSkills: [],
       }
   }
 }
@@ -155,6 +173,7 @@ interface StoredSession {
   promptDraft: string
   /** Whether the session was in streaming state when last persisted */
   wasStreaming?: boolean
+  enabledSkills?: string[]
 }
 
 export function usePromptSession() {
@@ -191,6 +210,7 @@ export function usePromptSession() {
                     messages: backendState.sessionState.messages,
                     promptDraft: backendState.sessionState.promptDraft,
                     parentIds: backendState.parentIds || [],
+                    enabledSkills: backendState.sessionState.enabledSkills || [],
                   })
                   // Update localStorage with the reconciled state
                   const reconciledStore: StoredSession = {
@@ -199,6 +219,7 @@ export function usePromptSession() {
                     messages: backendState.sessionState.messages,
                     promptDraft: backendState.sessionState.promptDraft,
                     wasStreaming: false,
+                    enabledSkills: backendState.sessionState.enabledSkills || [],
                   }
                   localStorage.setItem(storageKey, JSON.stringify(reconciledStore))
                   return
@@ -218,6 +239,7 @@ export function usePromptSession() {
                 messages: parsed.messages || [],
                 promptDraft: parsed.promptDraft || '',
                 parentIds: [],
+                enabledSkills: parsed.enabledSkills || [],
               })
               return
             }
@@ -267,6 +289,7 @@ export function usePromptSession() {
           messages: state.messages,
           promptDraft: state.promptDraft,
           wasStreaming: state.status === 'streaming',
+          enabledSkills: state.enabledSkills,
         }
         localStorage.setItem(storageKey, JSON.stringify(toStore))
       } catch {
@@ -299,6 +322,7 @@ export function usePromptSession() {
         projectName,
         workType: type,
         sessionId,
+        enabledSkills: [],
       })
 
       // Stream initial AI message
@@ -319,6 +343,7 @@ export function usePromptSession() {
               projectName,
               workType: type,
               sessionId,
+              enabledSkills: [],
             },
           })
           return
@@ -343,6 +368,7 @@ export function usePromptSession() {
               }],
               promptDraft: currentDraft,
               parentIds: [],
+              enabledSkills: [],
             })
           }
         }
@@ -363,6 +389,7 @@ export function usePromptSession() {
         }] : [],
         promptDraft: currentDraft,
         parentIds: [],
+        enabledSkills: [],
       })
     } catch (e) {
       setState({
@@ -383,7 +410,7 @@ export function usePromptSession() {
     // Guard: only send from ready state
     if (state.status !== 'ready') return
 
-    const { workingDir, projectName, workType, sessionId, messages, promptDraft, parentIds } = state
+    const { workingDir, projectName, workType, sessionId, messages, promptDraft, parentIds, enabledSkills } = state
 
     // Add user message immediately
     const userMessage: Message = {
@@ -404,6 +431,7 @@ export function usePromptSession() {
       messages: updatedMessages,
       promptDraft,
       parentIds,
+      enabledSkills,
     })
 
     try {
@@ -411,7 +439,7 @@ export function usePromptSession() {
       const assistantId = generateId()
       let currentDraft = promptDraft
 
-      for await (const chunk of sendPromptMessage(sessionId, content)) {
+      for await (const chunk of sendPromptMessage(sessionId, content, enabledSkills)) {
         if (chunk.startsWith('__ERROR__')) {
           const errorMsg = chunk.slice('__ERROR__'.length)
           setState({
@@ -428,6 +456,7 @@ export function usePromptSession() {
               messages: updatedMessages,
               promptDraft: currentDraft,
               parentIds,
+              enabledSkills,
             },
           })
           return
@@ -490,6 +519,7 @@ export function usePromptSession() {
           messages: finalMessages,
           promptDraft: currentDraft,
           parentIds: prev.parentIds,
+          enabledSkills: prev.enabledSkills,
         }
       })
     } catch (e) {
@@ -507,6 +537,7 @@ export function usePromptSession() {
           messages: updatedMessages,
           promptDraft,
           parentIds,
+          enabledSkills,
         },
       })
     }
@@ -524,6 +555,17 @@ export function usePromptSession() {
     })
   }, [])
 
+  /** Toggle a skill on/off by ID. */
+  const toggleSkill = useCallback((skillId: string) => {
+    setState((prev) => {
+      if (prev.status !== 'ready' && prev.status !== 'streaming' && prev.status !== 'awaiting_agent') return prev
+      const current = prev.enabledSkills
+      const next = current.includes(skillId)
+        ? current.filter((id) => id !== skillId)
+        : [...current, skillId]
+      return { ...prev, enabledSkills: next }
+    })
+  }, [])
 
   const setParentIds = useCallback(
     async (newParentIds: string[]) => {
@@ -609,7 +651,7 @@ export function usePromptSession() {
   const newPrompt = useCallback(async () => {
     if (state.status !== 'ready') return
 
-    const { sessionId, workType, workingDir, projectName, messages, promptDraft } = state
+    const { sessionId, workType, workingDir, projectName, messages, promptDraft, enabledSkills } = state
 
     // Save current session to history before starting new one
     try {
@@ -627,6 +669,7 @@ export function usePromptSession() {
         sessionState: {
           messages,
           promptDraft,
+          enabledSkills,
         },
       })
     } catch (e) {
@@ -665,6 +708,7 @@ export function usePromptSession() {
         messages: response.sessionState.messages,
         promptDraft: response.sessionState.promptDraft,
         parentIds: response.parentIds || [],
+        enabledSkills: response.sessionState.enabledSkills || [],
       })
     } catch (e) {
       setState({
@@ -699,6 +743,7 @@ export function usePromptSession() {
     selectWorkType,
     sendMessage,
     updatePromptDraft,
+    toggleSkill,
     setParentIds,
     save,
     reset,

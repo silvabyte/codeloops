@@ -4,6 +4,7 @@ import {
   createPromptSession,
   sendPromptMessage,
   savePrompt,
+  fetchSkills,
 } from '../prompt-session'
 
 describe('prompt-session API client', () => {
@@ -242,6 +243,89 @@ describe('prompt-session API client', () => {
       await expect(
         savePrompt('/test', 'content')
       ).rejects.toThrow('Failed to save prompt')
+    })
+  })
+
+  describe('fetchSkills', () => {
+    it('should fetch skills successfully', async () => {
+      const mockResponse = {
+        skills: [
+          { id: 'brainstorming', name: 'brainstorming', description: 'Explore ideas', sourceDir: '~/.claude/skills' },
+          { id: 'system-design', name: 'system-design', description: 'Design systems', sourceDir: '~/.agents/skills' },
+        ],
+      }
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(mockResponse),
+      })
+
+      const result = await fetchSkills()
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/skills')
+      )
+      expect(result).toEqual(mockResponse.skills)
+      expect(result).toHaveLength(2)
+    })
+
+    it('should return empty array on network error', async () => {
+      mockFetch.mockRejectedValue(new Error('Network error'))
+
+      const result = await fetchSkills()
+      expect(result).toEqual([])
+    })
+
+    it('should return empty array on non-ok response', async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        statusText: 'Internal Server Error',
+      })
+
+      const result = await fetchSkills()
+      expect(result).toEqual([])
+    })
+  })
+
+  describe('sendPromptMessage with enabledSkills', () => {
+    it('should include enabledSkills in request body', async () => {
+      const chunks = [
+        'data: {"content":"Hello"}\n',
+        'data: [DONE]\n',
+      ]
+
+      const mockReader = {
+        read: vi
+          .fn()
+          .mockResolvedValueOnce({
+            done: false,
+            value: new TextEncoder().encode(chunks[0]),
+          })
+          .mockResolvedValueOnce({
+            done: false,
+            value: new TextEncoder().encode(chunks[1]),
+          })
+          .mockResolvedValueOnce({ done: true }),
+      }
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        body: {
+          getReader: () => mockReader,
+        },
+      })
+
+      const messages: string[] = []
+      for await (const chunk of sendPromptMessage('test-123', 'Hello', ['brainstorming', 'system-design'])) {
+        messages.push(chunk)
+      }
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/prompt-session/test-123/message'),
+        expect.objectContaining({
+          body: JSON.stringify({ content: 'Hello', enabledSkills: ['brainstorming', 'system-design'] }),
+        })
+      )
     })
   })
 })

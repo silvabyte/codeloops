@@ -2,6 +2,7 @@ mod api;
 mod config;
 mod init;
 mod sessions;
+pub mod skills;
 mod ui;
 
 use std::path::{Path, PathBuf};
@@ -481,11 +482,7 @@ async fn run_loop(args: RunArgs) -> Result<()> {
     let db = match Database::open() {
         Ok(db) => Some(Arc::new(db)),
         Err(e) => {
-            eprintln!(
-                "{} Failed to open database: {}",
-                "⚠".bright_yellow(),
-                e
-            );
+            eprintln!("{} Failed to open database: {}", "⚠".bright_yellow(), e);
             None
         }
     };

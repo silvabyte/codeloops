@@ -417,4 +417,112 @@ describe('usePromptSession', () => {
       expect(result.current.session.projectName).toBe('Unknown Project')
     })
   })
+
+  describe('skills', () => {
+    it('should default enabledSkills to empty array', async () => {
+      const { result } = renderHook(() => usePromptSession())
+
+      await waitFor(() => {
+        expect(result.current.contextLoading).toBe(false)
+      })
+
+      expect(result.current.session.enabledSkills).toEqual([])
+    })
+
+    it('should toggle skill on when not present', async () => {
+      mockCreatePromptSession.mockResolvedValue({ sessionId: 'test-123' })
+
+      async function* mockMessages() {
+        yield 'Welcome!'
+      }
+      mockSendPromptMessage.mockReturnValue(mockMessages())
+
+      const { result } = renderHook(() => usePromptSession())
+
+      await waitFor(() => {
+        expect(result.current.contextLoading).toBe(false)
+      })
+
+      await act(async () => {
+        await result.current.selectWorkType('feature')
+      })
+
+      act(() => {
+        result.current.toggleSkill('brainstorming')
+      })
+
+      expect(result.current.session.enabledSkills).toContain('brainstorming')
+    })
+
+    it('should toggle skill off when already present', async () => {
+      mockCreatePromptSession.mockResolvedValue({ sessionId: 'test-123' })
+
+      async function* mockMessages() {
+        yield 'Welcome!'
+      }
+      mockSendPromptMessage.mockReturnValue(mockMessages())
+
+      const { result } = renderHook(() => usePromptSession())
+
+      await waitFor(() => {
+        expect(result.current.contextLoading).toBe(false)
+      })
+
+      await act(async () => {
+        await result.current.selectWorkType('feature')
+      })
+
+      // Toggle on
+      act(() => {
+        result.current.toggleSkill('brainstorming')
+      })
+      expect(result.current.session.enabledSkills).toContain('brainstorming')
+
+      // Toggle off
+      act(() => {
+        result.current.toggleSkill('brainstorming')
+      })
+      expect(result.current.session.enabledSkills).not.toContain('brainstorming')
+    })
+
+    it('should restore enabledSkills from localStorage', async () => {
+      const storedSession = {
+        id: 'stored-123',
+        workType: 'feature',
+        messages: [{ id: '1', role: 'assistant', content: 'Hello' }],
+        promptDraft: '# Test',
+        enabledSkills: ['brainstorming', 'system-design'],
+      }
+
+      vi.mocked(localStorage.getItem).mockReturnValue(JSON.stringify(storedSession))
+
+      const { result } = renderHook(() => usePromptSession())
+
+      await waitFor(() => {
+        expect(result.current.contextLoading).toBe(false)
+      })
+
+      expect(result.current.session.enabledSkills).toEqual(['brainstorming', 'system-design'])
+    })
+
+    it('should default enabledSkills to empty when absent from stored session', async () => {
+      const storedSession = {
+        id: 'stored-123',
+        workType: 'feature',
+        messages: [{ id: '1', role: 'assistant', content: 'Hello' }],
+        promptDraft: '# Test',
+        // no enabledSkills field
+      }
+
+      vi.mocked(localStorage.getItem).mockReturnValue(JSON.stringify(storedSession))
+
+      const { result } = renderHook(() => usePromptSession())
+
+      await waitFor(() => {
+        expect(result.current.contextLoading).toBe(false)
+      })
+
+      expect(result.current.session.enabledSkills).toEqual([])
+    })
+  })
 })
