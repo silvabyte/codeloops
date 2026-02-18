@@ -76,6 +76,7 @@ impl AgentConfig {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AgentType {
     ClaudeCode,
+    ClaudeGateway,
     OpenCode,
     Cursor,
 }
@@ -84,6 +85,7 @@ impl std::fmt::Display for AgentType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AgentType::ClaudeCode => write!(f, "claude-code"),
+            AgentType::ClaudeGateway => write!(f, "claude-gateway"),
             AgentType::OpenCode => write!(f, "opencode"),
             AgentType::Cursor => write!(f, "cursor"),
         }
@@ -96,6 +98,7 @@ impl std::str::FromStr for AgentType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "claude" | "claude-code" | "claudecode" => Ok(AgentType::ClaudeCode),
+            "claude-gateway" | "claudegateway" => Ok(AgentType::ClaudeGateway),
             "opencode" | "open-code" => Ok(AgentType::OpenCode),
             "cursor" => Ok(AgentType::Cursor),
             _ => Err(format!("Unknown agent type: {}", s)),
@@ -130,4 +133,34 @@ pub trait Agent: Send + Sync {
 
     /// Get the path to the agent binary
     fn binary_path(&self) -> &Path;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn agent_type_display_claude_gateway() {
+        assert_eq!(AgentType::ClaudeGateway.to_string(), "claude-gateway");
+    }
+
+    #[test]
+    fn agent_type_from_str_claude_gateway() {
+        assert_eq!(
+            "claude-gateway".parse::<AgentType>().unwrap(),
+            AgentType::ClaudeGateway
+        );
+        assert_eq!(
+            "claudegateway".parse::<AgentType>().unwrap(),
+            AgentType::ClaudeGateway
+        );
+    }
+
+    #[test]
+    fn agent_type_roundtrip_claude_gateway() {
+        let agent_type = AgentType::ClaudeGateway;
+        let s = agent_type.to_string();
+        let parsed: AgentType = s.parse().unwrap();
+        assert_eq!(parsed, agent_type);
+    }
 }
