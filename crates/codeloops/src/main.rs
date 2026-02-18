@@ -170,6 +170,7 @@ enum Commands {
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum AgentChoice {
     Claude,
+    ClaudeGateway,
     Opencode,
     Cursor,
 }
@@ -178,6 +179,7 @@ impl From<AgentChoice> for AgentType {
     fn from(choice: AgentChoice) -> Self {
         match choice {
             AgentChoice::Claude => AgentType::ClaudeCode,
+            AgentChoice::ClaudeGateway => AgentType::ClaudeGateway,
             AgentChoice::Opencode => AgentType::OpenCode,
             AgentChoice::Cursor => AgentType::Cursor,
         }
@@ -205,6 +207,7 @@ impl From<LogFormatChoice> for LogFormat {
 fn parse_agent_choice(s: &str) -> Option<AgentChoice> {
     match s.to_lowercase().as_str() {
         "claude" | "claude-code" => Some(AgentChoice::Claude),
+        "claude-gateway" | "claudegateway" => Some(AgentChoice::ClaudeGateway),
         "opencode" | "open-code" => Some(AgentChoice::Opencode),
         "cursor" => Some(AgentChoice::Cursor),
         _ => None,
@@ -464,7 +467,7 @@ async fn run_loop(args: RunArgs) -> Result<()> {
             "Agent '{}' is not available.\n\n  \
              Install it or choose a different agent:\n    \
              codeloops --agent opencode\n\n  \
-             Available agents: claude, opencode, cursor",
+             Available agents: claude, claude-gateway, opencode, cursor",
             actor.name()
         );
     }
@@ -473,7 +476,7 @@ async fn run_loop(args: RunArgs) -> Result<()> {
             "Agent '{}' is not available.\n\n  \
              Install it or choose a different agent:\n    \
              codeloops --critic-agent opencode\n\n  \
-             Available agents: claude, opencode, cursor",
+             Available agents: claude, claude-gateway, opencode, cursor",
             critic.name()
         );
     }

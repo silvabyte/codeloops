@@ -25,6 +25,11 @@ const AGENTS: &[AgentInfo] = &[
         agent_type: AgentType::ClaudeCode,
     },
     AgentInfo {
+        display_name: "Claude Gateway",
+        config_name: "claude-gateway",
+        agent_type: AgentType::ClaudeGateway,
+    },
+    AgentInfo {
         display_name: "Opencode",
         config_name: "opencode",
         agent_type: AgentType::OpenCode,
@@ -67,9 +72,10 @@ pub async fn handle_init() -> Result<()> {
             "{} No agents found in PATH. Install at least one:",
             "⚠".bright_yellow()
         );
-        eprintln!("  Claude Code: https://docs.anthropic.com/claude-code");
-        eprintln!("  Opencode:    https://opencode.ai/docs/#install");
-        eprintln!("  Cursor:      https://docs.cursor.com/agent/cli");
+        eprintln!("  Claude Code:    https://docs.anthropic.com/claude-code");
+        eprintln!("  Claude Gateway: (enterprise — contact your admin)");
+        eprintln!("  Opencode:       https://opencode.ai/docs/#install");
+        eprintln!("  Cursor:         https://docs.cursor.com/agent/cli");
         eprintln!();
         eprintln!(
             "After installing, run {} again.",

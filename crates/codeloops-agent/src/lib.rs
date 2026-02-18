@@ -16,6 +16,7 @@
 //! | Agent | Type | Binary |
 //! |-------|------|--------|
 //! | Claude Code | [`AgentType::ClaudeCode`] | `claude` |
+//! | Claude Gateway | [`AgentType::ClaudeGateway`] | `claude-gateway` |
 //! | OpenCode | [`AgentType::OpenCode`] | `opencode` |
 //! | Cursor | [`AgentType::Cursor`] | `cursor` |
 //!
@@ -44,6 +45,7 @@
 //! guide for detailed instructions.
 
 mod claude;
+mod claude_gateway;
 mod cursor;
 mod opencode;
 mod output;
@@ -51,6 +53,7 @@ mod spawner;
 mod traits;
 
 pub use claude::ClaudeCodeAgent;
+pub use claude_gateway::ClaudeGatewayAgent;
 pub use cursor::CursorAgent;
 pub use opencode::OpenCodeAgent;
 pub use output::AgentOutput;
@@ -61,7 +64,20 @@ pub use traits::{Agent, AgentConfig, AgentError, AgentType};
 pub fn create_agent(agent_type: AgentType) -> Box<dyn Agent> {
     match agent_type {
         AgentType::ClaudeCode => Box::new(ClaudeCodeAgent::new()),
+        AgentType::ClaudeGateway => Box::new(ClaudeGatewayAgent::new()),
         AgentType::OpenCode => Box::new(OpenCodeAgent::new()),
         AgentType::Cursor => Box::new(CursorAgent::new()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_agent_claude_gateway() {
+        let agent = create_agent(AgentType::ClaudeGateway);
+        assert_eq!(agent.agent_type(), AgentType::ClaudeGateway);
+        assert_eq!(agent.name(), "Claude Gateway");
     }
 }
