@@ -258,7 +258,12 @@ impl<'db> Sessions<'db> {
                 git_files_changed = ?2
             WHERE session_id = ?3 AND iteration_number = ?4
             "#,
-            params![diff, files_changed as i64, session_id, iteration_number as i64],
+            params![
+                diff,
+                files_changed as i64,
+                session_id,
+                iteration_number as i64
+            ],
         )?;
         Ok(())
     }
@@ -817,11 +822,8 @@ impl<'db> Sessions<'db> {
 
                     if i > 0 {
                         let prev = &iterations[i - 1];
-                        let prev_decision = prev
-                            .critic_decision
-                            .as_deref()
-                            .unwrap_or("")
-                            .to_lowercase();
+                        let prev_decision =
+                            prev.critic_decision.as_deref().unwrap_or("").to_lowercase();
                         let prev_rejected = prev_decision != "approve"
                             && prev_decision != "approved"
                             && prev_decision != "done";

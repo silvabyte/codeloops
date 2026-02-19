@@ -157,9 +157,7 @@ impl Database {
     /// New schema has nullable fields and a phase column for incremental writes.
     fn migrate_iterations_phase(conn: &Connection) -> Result<(), rusqlite::Error> {
         // Check if the phase column already exists
-        let has_phase = conn
-            .prepare("SELECT phase FROM iterations LIMIT 0")
-            .is_ok();
+        let has_phase = conn.prepare("SELECT phase FROM iterations LIMIT 0").is_ok();
 
         if has_phase {
             return Ok(());
@@ -660,7 +658,10 @@ mod tests {
         let session = db.sessions().get(&id).unwrap().unwrap();
         assert_eq!(session.iterations.len(), 1);
         assert_eq!(session.iterations[0].iteration_number, 1);
-        assert_eq!(session.iterations[0].actor_output, Some("Made changes".to_string()));
+        assert_eq!(
+            session.iterations[0].actor_output,
+            Some("Made changes".to_string())
+        );
         assert_eq!(
             session.iterations[0].feedback,
             Some("Please also fix tests".to_string())

@@ -71,7 +71,7 @@ impl Agent for ClaudeGatewayAgent {
         );
 
         let mut args = vec![
-            "--print",                       // Non-interactive mode, output only
+            "--print",                        // Non-interactive mode, output only
             "--dangerously-skip-permissions", // Skip permission prompts
         ];
 
@@ -123,8 +123,7 @@ mod tests {
 
     #[tokio::test]
     async fn is_available_false_when_binary_missing() {
-        let agent =
-            ClaudeGatewayAgent::with_binary_path(PathBuf::from("nonexistent-binary-12345"));
+        let agent = ClaudeGatewayAgent::with_binary_path(PathBuf::from("nonexistent-binary-12345"));
         assert!(!agent.is_available().await);
     }
 }
