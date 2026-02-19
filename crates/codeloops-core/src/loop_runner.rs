@@ -16,6 +16,9 @@ use crate::error::LoopError;
 use crate::outcome::LoopOutcome;
 use crate::LoopContext;
 
+type TeeFile = Arc<StdMutex<std::fs::File>>;
+type TeeFiles = (TeeFile, TeeFile);
+
 /// Orchestrates the actor-critic loop
 pub struct LoopRunner<'a> {
     actor: &'a dyn Agent,
@@ -84,8 +87,8 @@ impl<'a> LoopRunner<'a> {
         &self,
         iteration: usize,
         role: AgentRole,
-        stdout_file: Arc<StdMutex<std::fs::File>>,
-        stderr_file: Arc<StdMutex<std::fs::File>>,
+        stdout_file: TeeFile,
+        stderr_file: TeeFile,
     ) -> OutputCallback {
         let logger = self.logger.clone();
         Arc::new(move |line: &str, output_type: OutputType| {
@@ -128,11 +131,7 @@ impl<'a> LoopRunner<'a> {
     }
 
     /// Create temp files for tee output, returning (stdout_file, stderr_file).
-    fn create_tee_files(
-        session_id: &str,
-        iteration: usize,
-        phase: &str,
-    ) -> Option<(Arc<StdMutex<std::fs::File>>, Arc<StdMutex<std::fs::File>>)> {
+    fn create_tee_files(session_id: &str, iteration: usize, phase: &str) -> Option<TeeFiles> {
         let dir = Self::output_dir(session_id);
         if std::fs::create_dir_all(&dir).is_err() {
             return None;
