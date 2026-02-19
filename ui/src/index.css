@@ -195,3 +195,30 @@ body {
     transform: translateX(200%);
   }
 }
+
+/* Active node pulse for run flow visualization */
+@keyframes nodePulse {
+  0%, 100% {
+    box-shadow: 0 0 4px var(--color-amber-glow);
+  }
+  50% {
+    box-shadow: 0 0 12px var(--color-amber-glow), 0 0 20px var(--color-amber-glow);
+  }
+}
+
+.node-pulse {
+  animation: nodePulse 2s ease-in-out infinite;
+}
+
+/* React Flow overrides for dark theme */
+.react-flow__node {
+  font-family: var(--font-mono);
+}
+
+.react-flow__edge-path {
+  stroke: var(--color-border) !important;
+}
+
+.react-flow__background pattern line {
+  stroke: var(--color-border-subtle) !important;
+}

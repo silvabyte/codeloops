@@ -1,11 +1,13 @@
 use chrono::Utc;
+use std::io::Write as IoWrite;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 use tracing::{debug, info, warn};
 
 use codeloops_agent::{Agent, AgentConfig, OutputCallback, OutputType};
 use codeloops_critic::{CriticDecision, CriticEvaluationInput, CriticEvaluator};
-use codeloops_db::{Database, Iteration, SessionEnd, SessionStart};
+use codeloops_db::{Database, SessionEnd, SessionStart};
 use codeloops_git::DiffCapture;
 use codeloops_logging::{AgentRole, LogEvent, Logger, StreamType};
 
@@ -75,6 +77,77 @@ impl<'a> LoopRunner<'a> {
                 line: line.to_string(),
             });
         })
+    }
+
+    /// Create an output callback that also tees to temp files for live streaming.
+    fn create_tee_callback(
+        &self,
+        iteration: usize,
+        role: AgentRole,
+        stdout_file: Arc<StdMutex<std::fs::File>>,
+        stderr_file: Arc<StdMutex<std::fs::File>>,
+    ) -> OutputCallback {
+        let logger = self.logger.clone();
+        Arc::new(move |line: &str, output_type: OutputType| {
+            let stream = match output_type {
+                OutputType::Stdout => StreamType::Stdout,
+                OutputType::Stderr => StreamType::Stderr,
+            };
+            logger.log(&LogEvent::AgentStreamLine {
+                iteration,
+                role,
+                stream,
+                line: line.to_string(),
+            });
+
+            // Tee to temp file for live SSE streaming
+            match output_type {
+                OutputType::Stdout => {
+                    if let Ok(mut f) = stdout_file.lock() {
+                        let _ = writeln!(f, "{}", line);
+                        let _ = f.flush();
+                    }
+                }
+                OutputType::Stderr => {
+                    if let Ok(mut f) = stderr_file.lock() {
+                        let _ = writeln!(f, "{}", line);
+                        let _ = f.flush();
+                    }
+                }
+            }
+        })
+    }
+
+    /// Get the output directory for a session's temp files.
+    fn output_dir(session_id: &str) -> PathBuf {
+        dirs::data_local_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("codeloops")
+            .join("output")
+            .join(session_id)
+    }
+
+    /// Create temp files for tee output, returning (stdout_file, stderr_file).
+    fn create_tee_files(
+        session_id: &str,
+        iteration: usize,
+        phase: &str,
+    ) -> Option<(Arc<StdMutex<std::fs::File>>, Arc<StdMutex<std::fs::File>>)> {
+        let dir = Self::output_dir(session_id);
+        if std::fs::create_dir_all(&dir).is_err() {
+            return None;
+        }
+
+        let stdout_path = dir.join(format!("iter_{}_{}.stdout", iteration, phase));
+        let stderr_path = dir.join(format!("iter_{}_{}.stderr", iteration, phase));
+
+        let stdout = std::fs::File::create(stdout_path).ok()?;
+        let stderr = std::fs::File::create(stderr_path).ok()?;
+
+        Some((
+            Arc::new(StdMutex::new(stdout)),
+            Arc::new(StdMutex::new(stderr)),
+        ))
     }
 
     /// Run the actor-critic loop until completion
@@ -181,6 +254,14 @@ impl<'a> LoopRunner<'a> {
     ) -> Result<Option<LoopOutcome>, LoopError> {
         let iteration = context.iteration;
 
+        // --- Phase: actor_started ---
+        // Insert a new iteration row in the DB
+        if let (Some(ref db), Some(ref session_id)) = (&self.db, &self.session_id) {
+            if let Err(e) = db.sessions().start_iteration(session_id, iteration) {
+                warn!(error = %e, "Failed to write start_iteration to database");
+            }
+        }
+
         // Get the prompt for this iteration
         let actor_prompt = context.current_prompt();
 
@@ -189,9 +270,21 @@ impl<'a> LoopRunner<'a> {
             prompt_preview: actor_prompt.chars().take(100).collect(),
         });
 
+        // Create output callback — tee to files if we have a session
+        let actor_callback = if let Some(ref session_id) = self.session_id {
+            if let Some((stdout_file, stderr_file)) =
+                Self::create_tee_files(session_id, iteration, "actor")
+            {
+                self.create_tee_callback(iteration, AgentRole::Actor, stdout_file, stderr_file)
+            } else {
+                self.create_output_callback(iteration, AgentRole::Actor)
+            }
+        } else {
+            self.create_output_callback(iteration, AgentRole::Actor)
+        };
+
         // Run actor with streaming output
         debug!(iteration, "Running actor");
-        let actor_callback = self.create_output_callback(iteration, AgentRole::Actor);
         let actor_output = self
             .actor
             .execute_with_callback(&actor_prompt, actor_config, Some(actor_callback))
@@ -208,6 +301,20 @@ impl<'a> LoopRunner<'a> {
             stdout_lines: actor_output.stdout_lines(),
             stderr_lines: actor_output.stderr_lines(),
         });
+
+        // --- Phase: actor_completed ---
+        if let (Some(ref db), Some(ref session_id)) = (&self.db, &self.session_id) {
+            if let Err(e) = db.sessions().complete_actor(
+                session_id,
+                iteration,
+                &actor_output.stdout,
+                &actor_output.stderr,
+                actor_output.exit_code,
+                actor_output.duration.as_secs_f64(),
+            ) {
+                warn!(error = %e, "Failed to write complete_actor to database");
+            }
+        }
 
         // Capture git diff
         let git_diff = self
@@ -230,10 +337,40 @@ impl<'a> LoopRunner<'a> {
             deletions: diff_summary.deletions,
         });
 
+        // --- Phase: diff_captured ---
+        if let (Some(ref db), Some(ref session_id)) = (&self.db, &self.session_id) {
+            if let Err(e) = db.sessions().complete_diff(
+                session_id,
+                iteration,
+                &git_diff,
+                diff_summary.files_changed,
+            ) {
+                warn!(error = %e, "Failed to write complete_diff to database");
+            }
+        }
+
+        // --- Phase: critic_started ---
+        if let (Some(ref db), Some(ref session_id)) = (&self.db, &self.session_id) {
+            if let Err(e) = db.sessions().start_critic(session_id, iteration) {
+                warn!(error = %e, "Failed to write start_critic to database");
+            }
+        }
+
         // Run critic with streaming output
         self.logger.log(&LogEvent::CriticStarted { iteration });
 
-        let critic_callback = self.create_output_callback(iteration, AgentRole::Critic);
+        let critic_callback = if let Some(ref session_id) = self.session_id {
+            if let Some((stdout_file, stderr_file)) =
+                Self::create_tee_files(session_id, iteration, "critic")
+            {
+                self.create_tee_callback(iteration, AgentRole::Critic, stdout_file, stderr_file)
+            } else {
+                self.create_output_callback(iteration, AgentRole::Critic)
+            }
+        } else {
+            self.create_output_callback(iteration, AgentRole::Critic)
+        };
+
         let evaluator = CriticEvaluator::new(self.critic);
         let evaluation_input = CriticEvaluationInput {
             original_task: &context.prompt,
@@ -251,7 +388,31 @@ impl<'a> LoopRunner<'a> {
             decision: decision.short_description(),
         });
 
-        // Record this iteration
+        // --- Phase: critic_completed ---
+        let feedback = match &decision {
+            CriticDecision::Continue { feedback, .. } => Some(feedback.clone()),
+            CriticDecision::Error {
+                error_description,
+                recovery_suggestion,
+            } => Some(format!(
+                "Error encountered: {}\n\nRecovery suggestion: {}",
+                error_description, recovery_suggestion
+            )),
+            CriticDecision::Done { summary, .. } => Some(summary.clone()),
+        };
+
+        if let (Some(ref db), Some(ref session_id)) = (&self.db, &self.session_id) {
+            if let Err(e) = db.sessions().complete_critic(
+                session_id,
+                iteration,
+                &decision.short_description(),
+                feedback.as_deref(),
+            ) {
+                warn!(error = %e, "Failed to write complete_critic to database");
+            }
+        }
+
+        // Record this iteration in the in-memory context
         let record = IterationRecord {
             iteration_number: iteration,
             actor_output: actor_output.stdout.clone(),
@@ -260,41 +421,11 @@ impl<'a> LoopRunner<'a> {
             actor_duration_secs: actor_output.duration.as_secs_f64(),
             git_diff: git_diff.clone(),
             git_files_changed: diff_summary.files_changed,
-            critic_output: String::new(), // We don't store full critic output
+            critic_output: String::new(),
             critic_decision: decision.short_description(),
             timestamp: Utc::now(),
         };
         context.push_record(record.clone());
-
-        // Write to session in database
-        if let (Some(ref db), Some(ref session_id)) = (&self.db, &self.session_id) {
-            let feedback = match &decision {
-                CriticDecision::Continue { feedback, .. } => Some(feedback.clone()),
-                CriticDecision::Error {
-                    error_description,
-                    recovery_suggestion,
-                } => Some(format!(
-                    "Error encountered: {}\n\nRecovery suggestion: {}",
-                    error_description, recovery_suggestion
-                )),
-                CriticDecision::Done { summary, .. } => Some(summary.clone()),
-            };
-            let iter = Iteration {
-                iteration_number: record.iteration_number,
-                actor_output: record.actor_output.clone(),
-                actor_stderr: record.actor_stderr.clone(),
-                actor_exit_code: record.actor_exit_code,
-                actor_duration_secs: record.actor_duration_secs,
-                git_diff: record.git_diff.clone(),
-                git_files_changed: record.git_files_changed,
-                critic_decision: record.critic_decision.clone(),
-                feedback,
-                timestamp: record.timestamp,
-            };
-            if let Err(e) = db.sessions().add_iteration(session_id, &iter) {
-                warn!(error = %e, "Failed to write iteration to database");
-            }
-        }
 
         // Process decision
         match decision {

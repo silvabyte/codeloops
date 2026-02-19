@@ -21,17 +21,21 @@ pub struct SessionStart {
 }
 
 /// Data for a single iteration.
+///
+/// Fields are optional because iterations are written incrementally
+/// as each phase completes (actor → diff → critic).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Iteration {
     pub iteration_number: usize,
-    pub actor_output: String,
-    pub actor_stderr: String,
-    pub actor_exit_code: i32,
-    pub actor_duration_secs: f64,
-    pub git_diff: String,
-    pub git_files_changed: usize,
-    pub critic_decision: String,
+    pub phase: String,
+    pub actor_output: Option<String>,
+    pub actor_stderr: Option<String>,
+    pub actor_exit_code: Option<i32>,
+    pub actor_duration_secs: Option<f64>,
+    pub git_diff: Option<String>,
+    pub git_files_changed: Option<usize>,
+    pub critic_decision: Option<String>,
     pub feedback: Option<String>,
     pub timestamp: DateTime<Utc>,
 }
@@ -189,16 +193,123 @@ impl<'db> Sessions<'db> {
         Ok(id)
     }
 
-    /// Add an iteration to a session.
+    /// Insert a new iteration row when the actor phase begins.
+    pub fn start_iteration(
+        &self,
+        session_id: &str,
+        iteration_number: usize,
+    ) -> Result<(), rusqlite::Error> {
+        let now = Utc::now();
+        self.conn.execute(
+            r#"
+            INSERT INTO iterations (session_id, iteration_number, phase, timestamp)
+            VALUES (?1, ?2, 'actor_started', ?3)
+            "#,
+            params![session_id, iteration_number as i64, now.to_rfc3339()],
+        )?;
+        Ok(())
+    }
+
+    /// Update with actor results when actor completes.
+    pub fn complete_actor(
+        &self,
+        session_id: &str,
+        iteration_number: usize,
+        output: &str,
+        stderr: &str,
+        exit_code: i32,
+        duration_secs: f64,
+    ) -> Result<(), rusqlite::Error> {
+        self.conn.execute(
+            r#"
+            UPDATE iterations SET
+                phase = 'actor_completed',
+                actor_output = ?1,
+                actor_stderr = ?2,
+                actor_exit_code = ?3,
+                actor_duration_secs = ?4
+            WHERE session_id = ?5 AND iteration_number = ?6
+            "#,
+            params![
+                output,
+                stderr,
+                exit_code,
+                duration_secs,
+                session_id,
+                iteration_number as i64,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Update with git diff data.
+    pub fn complete_diff(
+        &self,
+        session_id: &str,
+        iteration_number: usize,
+        diff: &str,
+        files_changed: usize,
+    ) -> Result<(), rusqlite::Error> {
+        self.conn.execute(
+            r#"
+            UPDATE iterations SET
+                phase = 'diff_captured',
+                git_diff = ?1,
+                git_files_changed = ?2
+            WHERE session_id = ?3 AND iteration_number = ?4
+            "#,
+            params![diff, files_changed as i64, session_id, iteration_number as i64],
+        )?;
+        Ok(())
+    }
+
+    /// Update phase to critic_started.
+    pub fn start_critic(
+        &self,
+        session_id: &str,
+        iteration_number: usize,
+    ) -> Result<(), rusqlite::Error> {
+        self.conn.execute(
+            r#"
+            UPDATE iterations SET phase = 'critic_started'
+            WHERE session_id = ?1 AND iteration_number = ?2
+            "#,
+            params![session_id, iteration_number as i64],
+        )?;
+        Ok(())
+    }
+
+    /// Update with critic results.
+    pub fn complete_critic(
+        &self,
+        session_id: &str,
+        iteration_number: usize,
+        decision: &str,
+        feedback: Option<&str>,
+    ) -> Result<(), rusqlite::Error> {
+        self.conn.execute(
+            r#"
+            UPDATE iterations SET
+                phase = 'critic_completed',
+                critic_decision = ?1,
+                feedback = ?2
+            WHERE session_id = ?3 AND iteration_number = ?4
+            "#,
+            params![decision, feedback, session_id, iteration_number as i64],
+        )?;
+        Ok(())
+    }
+
+    /// Add a complete iteration in one shot (backward-compatible convenience method).
     pub fn add_iteration(&self, session_id: &str, iter: &Iteration) -> Result<(), rusqlite::Error> {
         self.conn.execute(
             r#"
             INSERT INTO iterations (
-                session_id, iteration_number, actor_output, actor_stderr,
+                session_id, iteration_number, phase, actor_output, actor_stderr,
                 actor_exit_code, actor_duration_secs, git_diff, git_files_changed,
                 critic_decision, feedback, timestamp
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            VALUES (?1, ?2, 'critic_completed', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
             "#,
             params![
                 session_id,
@@ -208,13 +319,12 @@ impl<'db> Sessions<'db> {
                 iter.actor_exit_code,
                 iter.actor_duration_secs,
                 iter.git_diff,
-                iter.git_files_changed as i64,
+                iter.git_files_changed.map(|n| n as i64),
                 iter.critic_decision,
                 iter.feedback,
                 iter.timestamp.to_rfc3339(),
             ],
         )?;
-
         Ok(())
     }
 
@@ -334,8 +444,8 @@ impl<'db> Sessions<'db> {
 
         let diffs: Vec<&str> = iterations
             .iter()
-            .filter(|i| !i.git_diff.is_empty())
-            .map(|i| i.git_diff.as_str())
+            .filter_map(|i| i.git_diff.as_deref())
+            .filter(|d| !d.is_empty())
             .collect();
 
         Ok(Some(diffs.join("\n")))
@@ -542,7 +652,7 @@ impl<'db> Sessions<'db> {
     fn get_iterations(&self, session_id: &str) -> Result<Vec<Iteration>, rusqlite::Error> {
         let mut stmt = self.conn.prepare(
             r#"
-            SELECT iteration_number, actor_output, actor_stderr, actor_exit_code,
+            SELECT iteration_number, phase, actor_output, actor_stderr, actor_exit_code,
                    actor_duration_secs, git_diff, git_files_changed, critic_decision,
                    feedback, timestamp
             FROM iterations
@@ -552,17 +662,18 @@ impl<'db> Sessions<'db> {
         )?;
 
         let rows = stmt.query_map(params![session_id], |row| {
-            let timestamp_str: String = row.get(9)?;
+            let timestamp_str: String = row.get(10)?;
             Ok(Iteration {
                 iteration_number: row.get::<_, i64>(0)? as usize,
-                actor_output: row.get(1)?,
-                actor_stderr: row.get(2)?,
-                actor_exit_code: row.get(3)?,
-                actor_duration_secs: row.get(4)?,
-                git_diff: row.get(5)?,
-                git_files_changed: row.get::<_, i64>(6)? as usize,
-                critic_decision: row.get(7)?,
-                feedback: row.get(8)?,
+                phase: row.get(1)?,
+                actor_output: row.get(2)?,
+                actor_stderr: row.get(3)?,
+                actor_exit_code: row.get(4)?,
+                actor_duration_secs: row.get(5)?,
+                git_diff: row.get(6)?,
+                git_files_changed: row.get::<_, Option<i64>>(7)?.map(|n| n as usize),
+                critic_decision: row.get(8)?,
+                feedback: row.get(9)?,
                 timestamp: DateTime::parse_from_rfc3339(&timestamp_str)
                     .map(|dt| dt.with_timezone(&Utc))
                     .unwrap_or_else(|_| Utc::now()),
@@ -692,7 +803,11 @@ impl<'db> Sessions<'db> {
             total_iterations += iterations.len();
 
             for (i, iteration) in iterations.iter().enumerate() {
-                let decision_lower = iteration.critic_decision.to_lowercase();
+                let decision_lower = iteration
+                    .critic_decision
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_lowercase();
                 let is_approved = decision_lower == "approve"
                     || decision_lower == "approved"
                     || decision_lower == "done";
@@ -702,7 +817,11 @@ impl<'db> Sessions<'db> {
 
                     if i > 0 {
                         let prev = &iterations[i - 1];
-                        let prev_decision = prev.critic_decision.to_lowercase();
+                        let prev_decision = prev
+                            .critic_decision
+                            .as_deref()
+                            .unwrap_or("")
+                            .to_lowercase();
                         let prev_rejected = prev_decision != "approve"
                             && prev_decision != "approved"
                             && prev_decision != "done";

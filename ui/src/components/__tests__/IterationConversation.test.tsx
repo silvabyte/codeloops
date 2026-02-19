@@ -6,6 +6,7 @@ import type { Iteration } from '@/api/types'
 const mockIterations: Iteration[] = [
   {
     iterationNumber: 0,
+    phase: 'critic_completed',
     actorOutput: 'First iteration output',
     actorStderr: '',
     actorExitCode: 0,
@@ -18,6 +19,7 @@ const mockIterations: Iteration[] = [
   },
   {
     iterationNumber: 1,
+    phase: 'critic_completed',
     actorOutput: 'Second iteration completed',
     actorStderr: '',
     actorExitCode: 0,

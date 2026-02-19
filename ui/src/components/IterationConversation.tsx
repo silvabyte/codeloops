@@ -127,7 +127,7 @@ export function IterationConversation({ iterations }: IterationConversationProps
                 </span>
               </div>
               <span className="text-xs text-muted-foreground">
-                {formatDuration(iter.actorDurationSecs)}
+                {iter.actorDurationSecs != null ? formatDuration(iter.actorDurationSecs) : iter.phase}
               </span>
             </div>
 
@@ -153,7 +153,7 @@ export function IterationConversation({ iterations }: IterationConversationProps
                     <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
                       Critic
                     </span>
-                    <DecisionBadge decision={iter.criticDecision} />
+                    <DecisionBadge decision={iter.criticDecision ?? iter.phase} />
                   </div>
                   {iter.feedback && <CopyButton content={iter.feedback} />}
                 </div>
@@ -171,7 +171,7 @@ export function IterationConversation({ iterations }: IterationConversationProps
               </div>
 
               {/* Expandable Diff */}
-              <DiffPreview diff={iter.gitDiff} filesChanged={iter.gitFilesChanged} />
+              <DiffPreview diff={iter.gitDiff ?? ''} filesChanged={iter.gitFilesChanged ?? 0} />
             </div>
           </div>
         )

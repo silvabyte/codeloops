@@ -25,16 +25,28 @@ export interface SessionStart {
 
 export interface Iteration {
   iterationNumber: number
-  actorOutput: string
-  actorStderr: string
-  actorExitCode: number
-  actorDurationSecs: number
-  gitDiff: string
-  gitFilesChanged: number
-  criticDecision: string
+  phase: string
+  actorOutput: string | null
+  actorStderr: string | null
+  actorExitCode: number | null
+  actorDurationSecs: number | null
+  gitDiff: string | null
+  gitFilesChanged: number | null
+  criticDecision: string | null
   feedback: string | null
   timestamp: string
 }
+
+/** Phase progression order for iteration state machine */
+export const PHASE_ORDER = [
+  'actor_started',
+  'actor_completed',
+  'diff_captured',
+  'critic_started',
+  'critic_completed',
+] as const
+
+export type IterationPhase = (typeof PHASE_ORDER)[number]
 
 export interface SessionEnd {
   outcome: string

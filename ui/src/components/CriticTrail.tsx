@@ -28,7 +28,7 @@ export function CriticTrail({ iterations }: CriticTrailProps) {
         {iterations.map((iter) => (
           <div
             key={iter.iterationNumber}
-            className={cn('border-l-2 pl-4 py-2', decisionColor(iter.criticDecision))}
+            className={cn('border-l-2 pl-4 py-2', decisionColor(iter.criticDecision ?? 'pending'))}
           >
             <div className="flex items-center gap-2 mb-1">
               <span className="text-xs font-medium text-muted-foreground">
@@ -38,9 +38,9 @@ export function CriticTrail({ iterations }: CriticTrailProps) {
                 'text-xs px-1.5 py-0.5 rounded',
                 iter.criticDecision === 'DONE' && 'bg-success/20 text-success',
                 iter.criticDecision === 'CONTINUE' && 'bg-warning/20 text-warning',
-                !['DONE', 'CONTINUE'].includes(iter.criticDecision) && 'bg-destructive/20 text-destructive',
+                !['DONE', 'CONTINUE'].includes(iter.criticDecision ?? '') && 'bg-destructive/20 text-destructive',
               )}>
-                {iter.criticDecision}
+                {iter.criticDecision ?? iter.phase}
               </span>
             </div>
             {iter.feedback ? (

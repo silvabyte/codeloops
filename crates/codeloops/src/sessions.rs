@@ -292,35 +292,38 @@ fn print_session_detail(session: &Session) {
         for iter in &session.iterations {
             println!();
             println!(
-                "  {} {}",
+                "  {} {} [{}]",
                 format!("[{}]", iter.iteration_number).bright_blue(),
-                iter.timestamp.format("%H:%M:%S")
+                iter.timestamp.format("%H:%M:%S"),
+                iter.phase.bright_cyan()
             );
+            let exit_code = iter.actor_exit_code.unwrap_or(-1);
+            let duration = iter.actor_duration_secs.unwrap_or(0.0);
             println!(
                 "    {} {} (exit: {}, {:.1}s)",
                 "Actor:".dimmed(),
-                if iter.actor_exit_code == 0 {
+                if exit_code == 0 {
                     "OK".bright_green().to_string()
                 } else {
-                    format!("ERR({})", iter.actor_exit_code)
-                        .bright_red()
-                        .to_string()
+                    format!("ERR({})", exit_code).bright_red().to_string()
                 },
-                iter.actor_exit_code,
-                iter.actor_duration_secs
+                exit_code,
+                duration
             );
             println!(
                 "    {} {} files changed",
                 "Diff:".dimmed(),
-                iter.git_files_changed
+                iter.git_files_changed.unwrap_or(0)
             );
+            let decision = iter.critic_decision.as_deref().unwrap_or("pending");
             println!(
                 "    {} {}",
                 "Decision:".dimmed(),
-                match iter.critic_decision.as_str() {
-                    "DONE" => iter.critic_decision.bright_green().to_string(),
-                    "CONTINUE" => iter.critic_decision.bright_yellow().to_string(),
-                    _ => iter.critic_decision.bright_red().to_string(),
+                match decision {
+                    "DONE" => decision.bright_green().to_string(),
+                    "CONTINUE" => decision.bright_yellow().to_string(),
+                    "pending" => decision.dimmed().to_string(),
+                    _ => decision.bright_red().to_string(),
                 }
             );
             if let Some(ref feedback) = iter.feedback {

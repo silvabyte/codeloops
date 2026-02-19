@@ -29,7 +29,7 @@ export function IterationTimeline({ iterations }: IterationTimelineProps) {
     return <div className="text-muted-foreground text-sm">No iterations yet.</div>
   }
 
-  const maxDuration = Math.max(...iterations.map(i => i.actorDurationSecs))
+  const maxDuration = Math.max(...iterations.map(i => i.actorDurationSecs ?? 0))
 
   return (
     <div className="space-y-2">
@@ -40,7 +40,7 @@ export function IterationTimeline({ iterations }: IterationTimelineProps) {
       {/* Timeline bars */}
       <div className="space-y-1.5">
         {iterations.map((iter) => {
-          const widthPct = maxDuration > 0 ? (iter.actorDurationSecs / maxDuration) * 100 : 100
+          const widthPct = maxDuration > 0 ? ((iter.actorDurationSecs ?? 0) / maxDuration) * 100 : 100
           const isExpanded = expandedId === iter.iterationNumber
 
           return (
@@ -54,23 +54,23 @@ export function IterationTimeline({ iterations }: IterationTimelineProps) {
                 </span>
                 <div className="flex-1 h-6 bg-secondary rounded overflow-hidden">
                   <div
-                    className={cn('h-full rounded transition-all', decisionColor(iter.criticDecision), 'opacity-60 group-hover:opacity-80')}
+                    className={cn('h-full rounded transition-all', decisionColor(iter.criticDecision ?? 'pending'), 'opacity-60 group-hover:opacity-80')}
                     style={{ width: `${Math.max(widthPct, 5)}%` }}
                   />
                 </div>
                 <span className="text-xs text-muted-foreground w-12 text-right">
-                  {formatDuration(iter.actorDurationSecs)}
+                  {iter.actorDurationSecs != null ? formatDuration(iter.actorDurationSecs) : '...'}
                 </span>
-                <span className={cn('text-xs font-medium w-16', decisionTextColor(iter.criticDecision))}>
-                  {iter.criticDecision}
+                <span className={cn('text-xs font-medium w-16', decisionTextColor(iter.criticDecision ?? 'pending'))}>
+                  {iter.criticDecision ?? iter.phase}
                 </span>
               </div>
 
               {isExpanded && (
                 <div className="ml-7 mt-2 mb-3 p-3 rounded-lg border border-border bg-card text-sm space-y-2">
                   <div className="flex gap-4 text-xs text-muted-foreground">
-                    <span>Exit: {iter.actorExitCode}</span>
-                    <span>{iter.gitFilesChanged} files changed</span>
+                    <span>Exit: {iter.actorExitCode ?? '?'}</span>
+                    <span>{iter.gitFilesChanged ?? 0} files changed</span>
                     <span>{new Date(iter.timestamp).toLocaleTimeString()}</span>
                   </div>
                   {iter.feedback && (
@@ -84,7 +84,7 @@ export function IterationTimeline({ iterations }: IterationTimelineProps) {
                   {iter.gitDiff && (
                     <details>
                       <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
-                        View diff ({iter.gitFilesChanged} files)
+                        View diff ({iter.gitFilesChanged ?? 0} files)
                       </summary>
                       <pre className="text-xs mt-2 p-2 bg-secondary/50 rounded overflow-x-auto max-h-64 overflow-y-auto">
                         {iter.gitDiff}

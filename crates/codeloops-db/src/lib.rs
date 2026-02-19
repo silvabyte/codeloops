@@ -128,17 +128,76 @@ impl Database {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
                 iteration_number INTEGER NOT NULL,
-                actor_output TEXT NOT NULL,
-                actor_stderr TEXT NOT NULL,
-                actor_exit_code INTEGER NOT NULL,
-                actor_duration_secs REAL NOT NULL,
-                git_diff TEXT NOT NULL,
-                git_files_changed INTEGER NOT NULL,
-                critic_decision TEXT NOT NULL,
+                phase TEXT NOT NULL DEFAULT 'actor_started',
+                actor_output TEXT,
+                actor_stderr TEXT,
+                actor_exit_code INTEGER,
+                actor_duration_secs REAL,
+                git_diff TEXT,
+                git_files_changed INTEGER,
+                critic_decision TEXT,
                 feedback TEXT,
                 timestamp TEXT NOT NULL,
                 UNIQUE(session_id, iteration_number)
             );
+
+            CREATE INDEX IF NOT EXISTS idx_iterations_session_id ON iterations(session_id);
+            "#,
+        )?;
+
+        // Migrate existing databases that have the old schema (NOT NULL fields, no phase column)
+        Self::migrate_iterations_phase(conn)?;
+
+        Ok(())
+    }
+
+    /// Migrate the iterations table to add the `phase` column and make fields nullable.
+    ///
+    /// Old schema had all iteration fields as NOT NULL and no phase column.
+    /// New schema has nullable fields and a phase column for incremental writes.
+    fn migrate_iterations_phase(conn: &Connection) -> Result<(), rusqlite::Error> {
+        // Check if the phase column already exists
+        let has_phase = conn
+            .prepare("SELECT phase FROM iterations LIMIT 0")
+            .is_ok();
+
+        if has_phase {
+            return Ok(());
+        }
+
+        // Old schema detected — recreate table with new schema
+        conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS iterations_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                iteration_number INTEGER NOT NULL,
+                phase TEXT NOT NULL DEFAULT 'actor_started',
+                actor_output TEXT,
+                actor_stderr TEXT,
+                actor_exit_code INTEGER,
+                actor_duration_secs REAL,
+                git_diff TEXT,
+                git_files_changed INTEGER,
+                critic_decision TEXT,
+                feedback TEXT,
+                timestamp TEXT NOT NULL,
+                UNIQUE(session_id, iteration_number)
+            );
+
+            INSERT INTO iterations_new (
+                id, session_id, iteration_number, phase,
+                actor_output, actor_stderr, actor_exit_code, actor_duration_secs,
+                git_diff, git_files_changed, critic_decision, feedback, timestamp
+            )
+            SELECT
+                id, session_id, iteration_number, 'critic_completed',
+                actor_output, actor_stderr, actor_exit_code, actor_duration_secs,
+                git_diff, git_files_changed, critic_decision, feedback, timestamp
+            FROM iterations;
+
+            DROP TABLE iterations;
+            ALTER TABLE iterations_new RENAME TO iterations;
 
             CREATE INDEX IF NOT EXISTS idx_iterations_session_id ON iterations(session_id);
             "#,
@@ -584,13 +643,14 @@ mod tests {
 
         let iter = Iteration {
             iteration_number: 1,
-            actor_output: "Made changes".to_string(),
-            actor_stderr: "".to_string(),
-            actor_exit_code: 0,
-            actor_duration_secs: 5.5,
-            git_diff: "diff --git a/file.rs".to_string(),
-            git_files_changed: 2,
-            critic_decision: "CONTINUE".to_string(),
+            phase: "critic_completed".to_string(),
+            actor_output: Some("Made changes".to_string()),
+            actor_stderr: Some("".to_string()),
+            actor_exit_code: Some(0),
+            actor_duration_secs: Some(5.5),
+            git_diff: Some("diff --git a/file.rs".to_string()),
+            git_files_changed: Some(2),
+            critic_decision: Some("CONTINUE".to_string()),
             feedback: Some("Please also fix tests".to_string()),
             timestamp: now,
         };
@@ -600,7 +660,7 @@ mod tests {
         let session = db.sessions().get(&id).unwrap().unwrap();
         assert_eq!(session.iterations.len(), 1);
         assert_eq!(session.iterations[0].iteration_number, 1);
-        assert_eq!(session.iterations[0].actor_output, "Made changes");
+        assert_eq!(session.iterations[0].actor_output, Some("Made changes".to_string()));
         assert_eq!(
             session.iterations[0].feedback,
             Some("Please also fix tests".to_string())
@@ -768,13 +828,14 @@ mod tests {
 
         let iter = Iteration {
             iteration_number: 1,
-            actor_output: "Output".to_string(),
-            actor_stderr: "".to_string(),
-            actor_exit_code: 0,
-            actor_duration_secs: 5.0,
-            git_diff: "".to_string(),
-            git_files_changed: 0,
-            critic_decision: "DONE".to_string(),
+            phase: "critic_completed".to_string(),
+            actor_output: Some("Output".to_string()),
+            actor_stderr: Some("".to_string()),
+            actor_exit_code: Some(0),
+            actor_duration_secs: Some(5.0),
+            git_diff: Some("".to_string()),
+            git_files_changed: Some(0),
+            critic_decision: Some("DONE".to_string()),
             feedback: None,
             timestamp: now,
         };

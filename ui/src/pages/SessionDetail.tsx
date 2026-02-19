@@ -3,17 +3,18 @@ import { useSession } from '@/hooks/useSession'
 import { IterationConversation } from '@/components/IterationConversation'
 import { ContentBlock } from '@/components/ContentBlock'
 import { CopyButton } from '@/components/CopyButton'
+import { RunInsights } from '@/components/run/RunInsights'
 import { formatDuration } from '@/lib/utils'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 
-type Tab = 'prompt' | 'iterations' | 'summary' | 'diff'
+type Tab = 'run' | 'prompt' | 'iterations' | 'summary' | 'diff'
 
 export function SessionDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { session, diff, loading, error } = useSession(id)
-  const [activeTab, setActiveTab] = useState<Tab>('prompt')
+  const [activeTab, setActiveTab] = useState<Tab>('run')
 
   if (loading) {
     return (
@@ -58,16 +59,22 @@ export function SessionDetail() {
   }
 
   const tabs: { key: Tab; label: string }[] = [
+    { key: 'run', label: 'Run' },
     { key: 'prompt', label: 'Prompt' },
     { key: 'iterations', label: 'Iterations' },
     { key: 'summary', label: 'Summary' },
     { key: 'diff', label: 'Diff' },
   ]
 
+  // Run tab uses full height; other tabs use the constrained layout
+  const isRunTab = activeTab === 'run'
+
   return (
-    <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
+    <div className={cn(
+      isRunTab ? 'flex flex-col h-[calc(100vh-64px)]' : 'max-w-5xl mx-auto px-6 py-8 space-y-6'
+    )}>
       {/* Minimal Header */}
-      <div>
+      <div className={cn(isRunTab && 'px-6 pt-4 pb-0')}>
         <button
           onClick={() => navigate('/run-insights')}
           className="text-sm text-muted-foreground hover:text-foreground mb-4 block"
@@ -112,7 +119,7 @@ export function SessionDetail() {
       </div>
 
       {/* Tab Navigation */}
-      <div className="border-b border-border">
+      <div className={cn('border-b border-border', isRunTab && 'px-6')}>
         <div className="flex gap-6">
           {tabs.map((tab) => (
             <button
@@ -132,80 +139,88 @@ export function SessionDetail() {
       </div>
 
       {/* Tab Content */}
-      <div className="min-h-[400px]">
-        {activeTab === 'prompt' && (
-          <ContentBlock
-            label="Prompt"
-            content={session.prompt}
-            markdown
-          />
-        )}
+      {activeTab === 'run' && id && (
+        <div className="flex-1 min-h-0">
+          <RunInsights sessionId={id} />
+        </div>
+      )}
 
-        {activeTab === 'iterations' && (
-          <IterationConversation iterations={session.iterations} />
-        )}
+      {activeTab !== 'run' && (
+        <div className="min-h-[400px]">
+          {activeTab === 'prompt' && (
+            <ContentBlock
+              label="Prompt"
+              content={session.prompt}
+              markdown
+            />
+          )}
 
-        {activeTab === 'summary' && (
-          <div>
-            {session.summary ? (
-              <div className="space-y-4">
-                <ContentBlock
-                  label="Summary"
-                  content={session.summary}
-                  markdown
-                />
-                {session.confidence != null && (
-                  <div className="text-sm text-muted-foreground">
-                    Confidence: {Math.round(session.confidence * 100)}%
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-muted-foreground text-sm py-8 text-center">
-                {session.endedAt ? 'No summary available.' : 'Session in progress...'}
-              </div>
-            )}
-          </div>
-        )}
+          {activeTab === 'iterations' && (
+            <IterationConversation iterations={session.iterations} />
+          )}
 
-        {activeTab === 'diff' && (
-          <div>
-            {diff ? (
-              <div className="rounded-lg border border-border overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-2 bg-elevated/30 border-b border-border">
-                  <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
-                    Cumulative Diff
-                  </span>
-                  <CopyButton content={diff} />
+          {activeTab === 'summary' && (
+            <div>
+              {session.summary ? (
+                <div className="space-y-4">
+                  <ContentBlock
+                    label="Summary"
+                    content={session.summary}
+                    markdown
+                  />
+                  {session.confidence != null && (
+                    <div className="text-sm text-muted-foreground">
+                      Confidence: {Math.round(session.confidence * 100)}%
+                    </div>
+                  )}
                 </div>
-                <pre className="p-4 text-xs overflow-x-auto max-h-[600px] overflow-y-auto bg-surface font-mono">
-                  {diff.split('\n').map((line, i) => {
-                    let className = ''
-                    if (line.startsWith('+') && !line.startsWith('+++')) {
-                      className = 'text-success bg-success/10'
-                    } else if (line.startsWith('-') && !line.startsWith('---')) {
-                      className = 'text-destructive bg-destructive/10'
-                    } else if (line.startsWith('@@')) {
-                      className = 'text-cyan'
-                    } else if (line.startsWith('diff ') || line.startsWith('index ')) {
-                      className = 'text-muted-foreground font-bold'
-                    }
-                    return (
-                      <div key={i} className={className}>
-                        {line}
-                      </div>
-                    )
-                  })}
-                </pre>
-              </div>
-            ) : (
-              <div className="text-muted-foreground text-sm py-8 text-center">
-                No diffs available.
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+              ) : (
+                <div className="text-muted-foreground text-sm py-8 text-center">
+                  {session.endedAt ? 'No summary available.' : 'Session in progress...'}
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'diff' && (
+            <div>
+              {diff ? (
+                <div className="rounded-lg border border-border overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-2 bg-elevated/30 border-b border-border">
+                    <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
+                      Cumulative Diff
+                    </span>
+                    <CopyButton content={diff} />
+                  </div>
+                  <pre className="p-4 text-xs overflow-x-auto max-h-[600px] overflow-y-auto bg-surface font-mono">
+                    {diff.split('\n').map((line, i) => {
+                      let className = ''
+                      if (line.startsWith('+') && !line.startsWith('+++')) {
+                        className = 'text-success bg-success/10'
+                      } else if (line.startsWith('-') && !line.startsWith('---')) {
+                        className = 'text-destructive bg-destructive/10'
+                      } else if (line.startsWith('@@')) {
+                        className = 'text-cyan'
+                      } else if (line.startsWith('diff ') || line.startsWith('index ')) {
+                        className = 'text-muted-foreground font-bold'
+                      }
+                      return (
+                        <div key={i} className={className}>
+                          {line}
+                        </div>
+                      )
+                    })}
+                  </pre>
+                </div>
+              ) : (
+                <div className="text-muted-foreground text-sm py-8 text-center">
+                  No diffs available.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
