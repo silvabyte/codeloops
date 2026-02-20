@@ -1,0 +1,19 @@
+[package]
+name = "codeloops-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Terminal UI renderer for codeloops session output"
+
+[dependencies]
+codeloops-logging.workspace = true
+
+crossterm.workspace = true
+ignore.workspace = true
+notify.workspace = true
+tokio.workspace = true
+colored.workspace = true
+dirs.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

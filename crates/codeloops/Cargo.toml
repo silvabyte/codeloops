@@ -16,6 +16,7 @@ codeloops-critic.workspace = true
 codeloops-git.workspace = true
 codeloops-logging.workspace = true
 codeloops-db.workspace = true
+codeloops-tui.workspace = true
 
 tokio.workspace = true
 clap.workspace = true

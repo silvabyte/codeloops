@@ -7,7 +7,7 @@ mod ui;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
@@ -18,6 +18,7 @@ use codeloops_core::{LoopContext, LoopOutcome, LoopRunner};
 use codeloops_db::Database;
 use codeloops_git::DiffCapture;
 use codeloops_logging::{LogFormat, Logger};
+use codeloops_tui::{RenderEvent, SessionRenderer};
 
 use config::{GlobalConfig, ProjectConfig};
 
@@ -343,11 +344,25 @@ async fn run_loop(args: RunArgs) -> Result<()> {
 
     // Create logger (with optional file output)
     let log_format: LogFormat = args.log_format.into();
-    let logger = if let Some(ref log_path) = args.log_file {
+    let mut logger = if let Some(ref log_path) = args.log_file {
         Logger::with_file(log_format, log_path).context("Failed to create file logger")?
     } else {
         Logger::new(log_format)
     };
+
+    // Create TUI renderer (auto-detects TTY vs pipe)
+    let tui_renderer = Arc::new(Mutex::new(SessionRenderer::new()));
+    tui_renderer.lock().unwrap().set_max_iterations(args.max_iterations);
+
+    // When format is Pretty, delegate rendering to the TUI renderer
+    if log_format == LogFormat::Pretty {
+        let renderer_for_callback = tui_renderer.clone();
+        logger.set_event_callback(Box::new(move |event| {
+            if let Ok(mut r) = renderer_for_callback.lock() {
+                r.on_log_event(event);
+            }
+        }));
+    }
 
     // Determine actor agent
     // Precedence: CLI flags > project config > global config > default (Claude)
@@ -461,6 +476,9 @@ async fn run_loop(args: RunArgs) -> Result<()> {
     let actor = create_agent(actor_type);
     let critic = create_agent(critic_type);
 
+    // Set agent names on the TUI renderer
+    tui_renderer.lock().unwrap().set_agent_names(actor.name(), critic.name());
+
     // Verify agents are available
     if !actor.is_available().await {
         anyhow::bail!(
@@ -511,7 +529,12 @@ async fn run_loop(args: RunArgs) -> Result<()> {
 
     // Handle Ctrl+C gracefully
     let interrupt_handle = runner.interrupt_handle();
+    let tui_for_ctrlc = tui_renderer.clone();
     ctrlc::set_handler(move || {
+        // Clean up TUI state on interrupt
+        if let Ok(mut r) = tui_for_ctrlc.lock() {
+            r.cleanup();
+        }
         eprintln!(
             "\n{} Interrupted. Finishing current iteration...",
             "⚠".bright_yellow()
@@ -520,15 +543,35 @@ async fn run_loop(args: RunArgs) -> Result<()> {
     })
     .context("Failed to set Ctrl+C handler")?;
 
+    // Spawn spinner tick task (100ms interval) for the TUI renderer
+    let tui_for_tick = tui_renderer.clone();
+    let tick_task = tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
+        loop {
+            interval.tick().await;
+            if let Ok(mut r) = tui_for_tick.lock() {
+                r.tick();
+            }
+        }
+    });
+
     // Run the loop
     let outcome = runner.run(context).await?;
+
+    // Stop the tick task
+    tick_task.abort();
 
     // Output result
     if args.json_output {
         let json = serde_json::to_string_pretty(&outcome)?;
         println!("{}", json);
     } else {
-        print_outcome(&outcome);
+        print_outcome(&outcome, &tui_renderer, log_format);
+    }
+
+    // Clean up TUI state
+    if let Ok(mut r) = tui_renderer.lock() {
+        r.cleanup();
     }
 
     // Print session ID and hints
@@ -572,7 +615,60 @@ fn get_prompt(prompt: &Option<String>, prompt_file: &Path, working_dir: &Path) -
     }
 }
 
-fn print_outcome(outcome: &LoopOutcome) {
+fn print_outcome(
+    outcome: &LoopOutcome,
+    renderer: &Arc<Mutex<SessionRenderer>>,
+    format: LogFormat,
+) {
+    // When using Pretty format with TUI renderer, use the new layout
+    if format == LogFormat::Pretty {
+        if let Ok(mut r) = renderer.lock() {
+            let event = match outcome {
+                LoopOutcome::Success {
+                    iterations,
+                    summary,
+                    confidence,
+                    total_duration_secs,
+                    ..
+                } => RenderEvent::FinalSuccess {
+                    iterations: *iterations,
+                    total_duration_secs: *total_duration_secs,
+                    confidence: Some(*confidence),
+                    summary: Some(summary.clone()),
+                },
+                LoopOutcome::MaxIterationsReached {
+                    iterations,
+                    total_duration_secs,
+                    ..
+                } => RenderEvent::FinalMaxIterations {
+                    iterations: *iterations,
+                    total_duration_secs: *total_duration_secs,
+                },
+                LoopOutcome::UserInterrupted {
+                    iterations,
+                    total_duration_secs,
+                    ..
+                } => RenderEvent::FinalInterrupted {
+                    iterations: *iterations,
+                    total_duration_secs: *total_duration_secs,
+                },
+                LoopOutcome::Failed {
+                    iterations,
+                    error,
+                    total_duration_secs,
+                    ..
+                } => RenderEvent::FinalFailed {
+                    iterations: *iterations,
+                    total_duration_secs: *total_duration_secs,
+                    error: Some(error.clone()),
+                },
+            };
+            r.render_event(event);
+            return;
+        }
+    }
+
+    // Fallback: legacy output for non-Pretty formats
     let mut stderr = std::io::stderr();
     use std::io::Write;
 

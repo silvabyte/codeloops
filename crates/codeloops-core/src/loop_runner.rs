@@ -10,6 +10,7 @@ use codeloops_critic::{CriticDecision, CriticEvaluationInput, CriticEvaluator};
 use codeloops_db::{Database, SessionEnd, SessionStart};
 use codeloops_git::DiffCapture;
 use codeloops_logging::{AgentRole, LogEvent, Logger, StreamType};
+use codeloops_tui::watcher;
 
 use crate::context::IterationRecord;
 use crate::error::LoopError;
@@ -282,12 +283,48 @@ impl<'a> LoopRunner<'a> {
             self.create_output_callback(iteration, AgentRole::Actor)
         };
 
+        // Start file watcher for real-time file change detection.
+        // The watcher uses a tokio mpsc channel so we can consume events from
+        // a background task while the actor is running.
+        let watcher_result = watcher::start_watching(&context.working_dir);
+        if watcher_result.is_none() {
+            debug!("File watcher failed to start, proceeding without file events");
+        }
+
+        let (watcher_handle, mut watcher_rx) = match watcher_result {
+            Some((handle, rx)) => (Some(handle), Some(rx)),
+            None => (None, None),
+        };
+
+        // Spawn a task to forward file watcher events to the logger in real-time
+        let file_event_task = if let Some(mut rx) = watcher_rx.take() {
+            let logger = self.logger.clone();
+            Some(tokio::spawn(async move {
+                while let Some(event) = rx.recv().await {
+                    logger.log(&LogEvent::FileChanged {
+                        iteration,
+                        path: PathBuf::from(&event.relative_path),
+                        change_type: event.change_type,
+                    });
+                }
+            }))
+        } else {
+            None
+        };
+
         // Run actor with streaming output
         debug!(iteration, "Running actor");
         let actor_output = self
             .actor
             .execute_with_callback(&actor_prompt, actor_config, Some(actor_callback))
             .await?;
+
+        // Stop file watcher by dropping the handle (closes the sender)
+        drop(watcher_handle);
+        // Wait for the event forwarding task to finish draining
+        if let Some(task) = file_event_task {
+            let _ = task.await;
+        }
 
         self.logger.log(&LogEvent::ActorCompleted {
             iteration,

@@ -21,6 +21,15 @@ pub enum StreamType {
     Stderr,
 }
 
+/// Type of file change detected during actor execution
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FileChangeType {
+    Created,
+    Modified,
+    Deleted,
+}
+
 /// Structured log events for the actor-critic loop
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
@@ -75,6 +84,12 @@ pub enum LogEvent {
         iteration: usize,
         error: String,
     },
+    /// A file was changed during actor execution (detected by filesystem watcher)
+    FileChanged {
+        iteration: usize,
+        path: PathBuf,
+        change_type: FileChangeType,
+    },
 }
 
 impl LogEvent {
@@ -116,10 +131,16 @@ impl std::str::FromStr for LogFormat {
     }
 }
 
+/// Callback type for event subscribers (e.g., TUI renderer).
+pub type EventCallback = Box<dyn Fn(&LogEvent) + Send + Sync>;
+
 /// Logger for codeloops events - handles both console output and file logging
 pub struct Logger {
     format: LogFormat,
     file_writer: Option<Mutex<File>>,
+    /// When set, Pretty rendering is delegated to this callback (e.g., TUI renderer).
+    /// The Logger skips its own pretty output and calls this instead.
+    event_callback: Option<EventCallback>,
 }
 
 impl Logger {
@@ -127,6 +148,7 @@ impl Logger {
         Self {
             format,
             file_writer: None,
+            event_callback: None,
         }
     }
 
@@ -145,7 +167,14 @@ impl Logger {
         Ok(Self {
             format,
             file_writer: Some(Mutex::new(file)),
+            event_callback: None,
         })
+    }
+
+    /// Set a callback that receives all events. When format is Pretty,
+    /// the callback handles rendering instead of the built-in pretty formatter.
+    pub fn set_event_callback(&mut self, callback: EventCallback) {
+        self.event_callback = Some(callback);
     }
 
     pub fn log(&self, event: &LogEvent) {
@@ -154,6 +183,14 @@ impl Logger {
             if let Ok(mut file) = writer.lock() {
                 let json = event.with_timestamp();
                 let _ = writeln!(file, "{}", json);
+            }
+        }
+
+        // If there's an event callback and we're in Pretty mode, delegate to it
+        if let Some(ref callback) = self.event_callback {
+            if self.format == LogFormat::Pretty {
+                callback(event);
+                return;
             }
         }
 
@@ -358,6 +395,21 @@ impl Logger {
             LogEvent::ActorOutput { .. } => {
                 // Skip this in pretty mode - it's debug info
             }
+            LogEvent::FileChanged {
+                path, change_type, ..
+            } => {
+                let (sigil, color_fn): (&str, fn(&str) -> colored::ColoredString) = match change_type {
+                    FileChangeType::Created => ("+", |s: &str| s.green()),
+                    FileChangeType::Modified => ("~", |s: &str| s.yellow()),
+                    FileChangeType::Deleted => ("-", |s: &str| s.red()),
+                };
+                let _ = writeln!(
+                    stderr,
+                    "          {} {}",
+                    color_fn(sigil),
+                    path.display()
+                );
+            }
         }
     }
 
@@ -418,6 +470,24 @@ impl Logger {
                 format!("[{}] {}:{}", timestamp, role_str, line)
             }
             LogEvent::ActorOutput { .. } => return, // Skip in compact mode
+            LogEvent::FileChanged {
+                iteration,
+                path,
+                change_type,
+            } => {
+                let sigil = match change_type {
+                    FileChangeType::Created => "+",
+                    FileChangeType::Modified => "~",
+                    FileChangeType::Deleted => "-",
+                };
+                format!(
+                    "[{}] file:{} {} {}",
+                    timestamp,
+                    iteration,
+                    sigil,
+                    path.display()
+                )
+            }
         };
         let _ = writeln!(stderr, "{}", msg);
     }
