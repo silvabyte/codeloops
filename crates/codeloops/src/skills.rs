@@ -6,7 +6,12 @@
 use serde::Serialize;
 
 /// Directories to scan for skills (in priority order; first directory wins on dedup).
-const SKILL_SCAN_DIRS: &[&str] = &["~/.agents/skills", "~/.claude/skills"];
+const SKILL_SCAN_DIRS: &[&str] = &[
+    "~/.agents/skills",
+    "~/.claude/skills",
+    "~/.cursor/skills",
+    "~/.config/opencode/skills",
+];
 
 /// A discovered skill from the filesystem.
 #[derive(Debug, Clone, Serialize)]
