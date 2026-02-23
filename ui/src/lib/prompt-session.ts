@@ -1,12 +1,8 @@
 import type { WorkType } from '@/components/prompt-builder/WorkTypeSelector'
 import type { Message } from '@/components/prompt-builder/Conversation'
+import type { ProjectRecord } from '@/types/project'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3100'
-
-export interface ContextResponse {
-  workingDir: string
-  projectName: string
-}
 
 export interface CreateSessionResponse {
   sessionId: string
@@ -97,17 +93,19 @@ export interface ListPromptsParams {
   offset?: number
 }
 
-export async function getContext(): Promise<ContextResponse> {
-  const res = await fetch(`${API_BASE}/api/context`)
-  if (!res.ok) throw new Error(`Failed to get context: ${res.statusText}`)
+/** Get project context from a registered project. */
+export async function getProjectContext(projectId: string): Promise<ProjectRecord> {
+  const res = await fetch(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}/context`)
+  if (!res.ok) throw new Error(`Failed to get project context: ${res.statusText}`)
   return res.json()
 }
 
 export async function createPromptSession(
+  projectId: string,
   workType: WorkType,
-  workingDir: string
+  workingDir?: string
 ): Promise<CreateSessionResponse> {
-  const res = await fetch(`${API_BASE}/api/prompt-session`, {
+  const res = await fetch(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}/prompt-session`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ workType, workingDir }),
@@ -129,11 +127,12 @@ export async function fetchSkills(): Promise<SkillInfo[]> {
 }
 
 export async function* sendPromptMessage(
+  projectId: string,
   sessionId: string,
   content: string,
   enabledSkills?: string[],
 ): AsyncGenerator<string, void, unknown> {
-  const res = await fetch(`${API_BASE}/api/prompt-session/${encodeURIComponent(sessionId)}/message`, {
+  const res = await fetch(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}/prompt-session/${encodeURIComponent(sessionId)}/message`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content, enabledSkills }),
@@ -175,10 +174,11 @@ export async function* sendPromptMessage(
 }
 
 export async function savePrompt(
+  projectId: string,
   workingDir: string,
   content: string
 ): Promise<SavePromptResponse> {
-  const res = await fetch(`${API_BASE}/api/prompt/save`, {
+  const res = await fetch(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}/prompt/save`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ workingDir, content }),
@@ -192,9 +192,10 @@ export async function savePrompt(
 // ============================================================================
 
 export async function savePromptSession(
+  projectId: string,
   request: SavePromptSessionRequest
 ): Promise<SavePromptSessionResponse> {
-  const res = await fetch(`${API_BASE}/api/prompts`, {
+  const res = await fetch(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}/prompts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
@@ -204,6 +205,7 @@ export async function savePromptSession(
 }
 
 export async function listPrompts(
+  projectId: string,
   params?: ListPromptsParams
 ): Promise<ListPromptsResponse> {
   const searchParams = new URLSearchParams()
@@ -212,20 +214,20 @@ export async function listPrompts(
   if (params?.limit) searchParams.set('limit', String(params.limit))
   if (params?.offset) searchParams.set('offset', String(params.offset))
 
-  const url = `${API_BASE}/api/prompts${searchParams.toString() ? `?${searchParams}` : ''}`
+  const url = `${API_BASE}/api/projects/${encodeURIComponent(projectId)}/prompts${searchParams.toString() ? `?${searchParams}` : ''}`
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Failed to list prompts: ${res.statusText}`)
   return res.json()
 }
 
-export async function getPromptById(id: string): Promise<GetPromptResponse> {
-  const res = await fetch(`${API_BASE}/api/prompts/${encodeURIComponent(id)}`)
+export async function getPromptById(projectId: string, id: string): Promise<GetPromptResponse> {
+  const res = await fetch(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}/prompts/${encodeURIComponent(id)}`)
   if (!res.ok) throw new Error(`Failed to get prompt: ${res.statusText}`)
   return res.json()
 }
 
-export async function deletePrompt(id: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/prompts/${encodeURIComponent(id)}`, {
+export async function deletePrompt(projectId: string, id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}/prompts/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   })
   if (!res.ok) throw new Error(`Failed to delete prompt: ${res.statusText}`)
@@ -235,8 +237,8 @@ export async function deletePrompt(id: string): Promise<void> {
 // Prompt Inheritance API
 // ============================================================================
 
-export async function updatePromptParents(id: string, parentIds: string[]): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/prompts/${encodeURIComponent(id)}/parents`, {
+export async function updatePromptParents(projectId: string, id: string, parentIds: string[]): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}/prompts/${encodeURIComponent(id)}/parents`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(parentIds),
@@ -244,8 +246,8 @@ export async function updatePromptParents(id: string, parentIds: string[]): Prom
   if (!res.ok) throw new Error(`Failed to update prompt parents: ${res.statusText}`)
 }
 
-export async function getResolvedPrompt(id: string): Promise<ResolvedPromptResponse> {
-  const res = await fetch(`${API_BASE}/api/prompts/${encodeURIComponent(id)}/resolved`)
+export async function getResolvedPrompt(projectId: string, id: string): Promise<ResolvedPromptResponse> {
+  const res = await fetch(`${API_BASE}/api/projects/${encodeURIComponent(projectId)}/prompts/${encodeURIComponent(id)}/resolved`)
   if (!res.ok) throw new Error(`Failed to get resolved prompt: ${res.statusText}`)
   return res.json()
 }

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { fetchStats } from '@/api/client'
+import { useCurrentProject } from '@/hooks/useProject'
 import type { SessionStats } from '@/api/types'
 
 export function useStats() {
+  const projectId = useCurrentProject()
   const [stats, setStats] = useState<SessionStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -10,7 +12,7 @@ export function useStats() {
   const load = useCallback(async () => {
     try {
       setLoading(true)
-      const data = await fetchStats()
+      const data = await fetchStats(projectId)
       setStats(data)
       setError(null)
     } catch (e) {
@@ -18,7 +20,7 @@ export function useStats() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [projectId])
 
   useEffect(() => { load() }, [load])
 

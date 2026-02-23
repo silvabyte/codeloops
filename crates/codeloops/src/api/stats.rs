@@ -1,4 +1,6 @@
-use axum::extract::State;
+use std::collections::HashMap;
+
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Json;
 
@@ -8,6 +10,7 @@ use super::AppState;
 
 pub async fn get_stats(
     State(state): State<AppState>,
+    Path(_path_params): Path<HashMap<String, String>>,
 ) -> Result<Json<SessionStats>, (StatusCode, String)> {
     let stats = state
         .db
@@ -20,6 +23,7 @@ pub async fn get_stats(
 
 pub async fn get_metrics(
     State(state): State<AppState>,
+    Path(_path_params): Path<HashMap<String, String>>,
 ) -> Result<Json<AgenticMetrics>, (StatusCode, String)> {
     let metrics = state
         .db

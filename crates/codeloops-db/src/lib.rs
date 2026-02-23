@@ -3,9 +3,11 @@
 //! Provides a unified `Database` struct that owns the SQLite connection
 //! and provides access to domain-specific stores.
 
+mod projects;
 mod prompts;
 mod sessions;
 
+pub use projects::{NewProject, ProjectConfigOverrides, ProjectRecord, ProjectUpdate, Projects};
 pub use prompts::{PromptFilter, PromptRecord, Prompts};
 pub use sessions::{
     AgenticMetrics, DayCount, Iteration, ProjectStats, Session, SessionEnd, SessionFilter,
@@ -72,6 +74,12 @@ impl Database {
     pub fn sessions(&self) -> Sessions<'_> {
         let conn = self.conn.lock().expect("Database lock poisoned");
         Sessions::new(conn)
+    }
+
+    /// Access the projects store.
+    pub fn projects(&self) -> Projects<'_> {
+        let conn = self.conn.lock().expect("Database lock poisoned");
+        Projects::new(conn)
     }
 
     /// Initialize the database schema.
@@ -142,6 +150,19 @@ impl Database {
             );
 
             CREATE INDEX IF NOT EXISTS idx_iterations_session_id ON iterations(session_id);
+
+            CREATE TABLE IF NOT EXISTS projects (
+                id TEXT PRIMARY KEY,
+                path TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
+                config_overrides TEXT,
+                is_default INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                last_accessed_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_projects_last_accessed ON projects(last_accessed_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_projects_path ON projects(path);
             "#,
         )?;
 

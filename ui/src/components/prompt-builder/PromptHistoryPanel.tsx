@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { cn, formatDate } from '@/lib/utils'
 import type { PromptSummary, ListPromptsResponse } from '@/lib/prompt-session'
 import { listPrompts, deletePrompt } from '@/lib/prompt-session'
+import { useCurrentProject } from '@/hooks/useProject'
 import { workTypeMap } from '@/lib/work-type-config'
 import { X, Search, Trash2 } from 'lucide-react'
 
@@ -13,6 +14,7 @@ interface PromptHistoryPanelProps {
 }
 
 export function PromptHistoryPanel({ isOpen, onClose, onSelect }: PromptHistoryPanelProps) {
+  const projectId = useCurrentProject()
   const [prompts, setPrompts] = useState<PromptSummary[]>([])
   const [projects, setProjects] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
@@ -40,7 +42,7 @@ export function PromptHistoryPanel({ isOpen, onClose, onSelect }: PromptHistoryP
     setError(null)
 
     try {
-      const response: ListPromptsResponse = await listPrompts({
+      const response: ListPromptsResponse = await listPrompts(projectId, {
         projectName: selectedProject || undefined,
         search: debouncedSearch || undefined,
         limit: 50,
@@ -52,7 +54,7 @@ export function PromptHistoryPanel({ isOpen, onClose, onSelect }: PromptHistoryP
     } finally {
       setLoading(false)
     }
-  }, [selectedProject, debouncedSearch])
+  }, [projectId, selectedProject, debouncedSearch])
 
   useEffect(() => {
     if (isOpen) {
@@ -112,7 +114,7 @@ export function PromptHistoryPanel({ isOpen, onClose, onSelect }: PromptHistoryP
     }
 
     try {
-      await deletePrompt(id)
+      await deletePrompt(projectId, id)
       setPrompts(prev => prev.filter(p => p.id !== id))
       setDeleteConfirm(null)
     } catch (e) {

@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { fetchMetrics } from '@/api/client'
+import { useCurrentProject } from '@/hooks/useProject'
 import type { AgenticMetrics } from '@/api/types'
 
 export function useMetrics() {
+  const projectId = useCurrentProject()
   const [metrics, setMetrics] = useState<AgenticMetrics | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -10,7 +12,7 @@ export function useMetrics() {
   const load = useCallback(async () => {
     try {
       setLoading(true)
-      const data = await fetchMetrics()
+      const data = await fetchMetrics(projectId)
       setMetrics(data)
       setError(null)
     } catch (e) {
@@ -18,7 +20,7 @@ export function useMetrics() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [projectId])
 
   useEffect(() => {
     load()

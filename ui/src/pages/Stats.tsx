@@ -1,17 +1,18 @@
 import { useMetrics } from '@/hooks/useMetrics'
 import { useSessionEvents } from '@/hooks/useSSE'
+import { useCurrentProject } from '@/hooks/useProject'
 import { SectionHeader } from '@/components/SectionHeader'
 import { MetricCard } from '@/components/MetricCard'
 import { DotChart } from '@/components/DotChart'
 import { formatDuration } from '@/lib/utils'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
-const runInsightsTabs = [
-  { label: 'Overview', path: '/run-insights' },
-  { label: 'Status', path: '/run-insights/status' },
-]
-
 export function Stats() {
+  const projectId = useCurrentProject()
+  const runInsightsTabs = [
+    { label: 'Overview', path: `/projects/${projectId}/run-insights` },
+    { label: 'Status', path: `/projects/${projectId}/run-insights/status` },
+  ]
   const { metrics, loading, error, reload } = useMetrics()
 
   // Auto-refresh on SSE events

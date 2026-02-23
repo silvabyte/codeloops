@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { cn, formatDate } from '@/lib/utils'
 import type { PromptSummary, ListPromptsResponse } from '@/lib/prompt-session'
 import { listPrompts } from '@/lib/prompt-session'
+import { useCurrentProject } from '@/hooks/useProject'
 import { X } from 'lucide-react'
 
 interface ParentPromptSelectorProps {
@@ -17,6 +18,7 @@ export function ParentPromptSelector({
   onSelect,
   excludeIds,
 }: ParentPromptSelectorProps) {
+  const projectId = useCurrentProject()
   const [prompts, setPrompts] = useState<PromptSummary[]>([])
   const [projects, setProjects] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
@@ -43,7 +45,7 @@ export function ParentPromptSelector({
     setError(null)
 
     try {
-      const response: ListPromptsResponse = await listPrompts({
+      const response: ListPromptsResponse = await listPrompts(projectId, {
         projectName: selectedProject || undefined,
         search: debouncedSearch || undefined,
         limit: 50,
@@ -57,7 +59,7 @@ export function ParentPromptSelector({
     } finally {
       setLoading(false)
     }
-  }, [selectedProject, debouncedSearch, excludeIds])
+  }, [projectId, selectedProject, debouncedSearch, excludeIds])
 
   useEffect(() => {
     if (isOpen) {

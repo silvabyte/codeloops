@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { WorkType } from '@/components/prompt-builder/WorkTypeSelector'
 import type { Message } from '@/components/prompt-builder/Conversation'
+import { useCurrentProject } from '@/hooks/useProject'
 import {
-  getContext,
+  getProjectContext,
   createPromptSession,
   sendPromptMessage,
   savePrompt,
@@ -177,6 +178,7 @@ interface StoredSession {
 }
 
 export function usePromptSession() {
+  const projectId = useCurrentProject()
   const [state, setState] = useState<PromptSessionState>({ status: 'loading_context' })
   const [isSaving, setIsSaving] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -185,8 +187,8 @@ export function usePromptSession() {
   useEffect(() => {
     async function init() {
       try {
-        const context = await getContext()
-        const storageKey = getStorageKey(context.workingDir)
+        const context = await getProjectContext(projectId)
+        const storageKey = getStorageKey(context.path)
 
         // Try to restore from localStorage
         const stored = localStorage.getItem(storageKey)
@@ -198,7 +200,7 @@ export function usePromptSession() {
               // fetch the latest state from backend to check if the response completed
               if (parsed.wasStreaming) {
                 try {
-                  const backendState = await getPromptById(parsed.id)
+                  const backendState = await getPromptById(projectId, parsed.id)
                   // Use backend state which has the most up-to-date messages
                   // (including any assistant response that completed while we were away)
                   setState({
@@ -232,8 +234,8 @@ export function usePromptSession() {
               // Restore to ready state from localStorage
               setState({
                 status: 'ready',
-                workingDir: context.workingDir,
-                projectName: context.projectName,
+                workingDir: context.path,
+                projectName: context.name,
                 workType: parsed.workType,
                 sessionId: parsed.id,
                 messages: parsed.messages || [],
@@ -250,8 +252,8 @@ export function usePromptSession() {
 
         setState({
           status: 'selecting_work_type',
-          workingDir: context.workingDir,
-          projectName: context.projectName,
+          workingDir: context.path,
+          projectName: context.name,
         })
       } catch (e) {
         setState({
@@ -263,7 +265,7 @@ export function usePromptSession() {
       }
     }
     init()
-  }, [])
+  }, [projectId])
 
   // NOTE: Auto-save to backend is no longer needed here.
   // The backend now persists messages immediately after each exchange.
@@ -313,7 +315,7 @@ export function usePromptSession() {
     })
 
     try {
-      const { sessionId } = await createPromptSession(type, workingDir)
+      const { sessionId } = await createPromptSession(projectId, type, workingDir)
 
       // Transition to awaiting_agent
       setState({
@@ -329,7 +331,7 @@ export function usePromptSession() {
       let currentContent = ''
       let currentDraft = ''
 
-      for await (const chunk of sendPromptMessage(sessionId, '__INIT__')) {
+      for await (const chunk of sendPromptMessage(projectId, sessionId, '__INIT__')) {
         if (chunk.startsWith('__ERROR__')) {
           const errorMsg = chunk.slice('__ERROR__'.length)
           setState({
@@ -404,7 +406,7 @@ export function usePromptSession() {
         },
       })
     }
-  }, [state])
+  }, [projectId, state])
 
   const sendMessage = useCallback(async (content: string) => {
     // Guard: only send from ready state
@@ -439,7 +441,7 @@ export function usePromptSession() {
       const assistantId = generateId()
       let currentDraft = promptDraft
 
-      for await (const chunk of sendPromptMessage(sessionId, content, enabledSkills)) {
+      for await (const chunk of sendPromptMessage(projectId, sessionId, content, enabledSkills)) {
         if (chunk.startsWith('__ERROR__')) {
           const errorMsg = chunk.slice('__ERROR__'.length)
           setState({
@@ -541,7 +543,7 @@ export function usePromptSession() {
         },
       })
     }
-  }, [state])
+  }, [projectId, state])
 
   const updatePromptDraft = useCallback((content: string) => {
     setState((prev) => {
@@ -583,13 +585,13 @@ export function usePromptSession() {
 
       // Persist to backend
       try {
-        await updatePromptParents(sessionId, newParentIds)
+        await updatePromptParents(projectId, sessionId, newParentIds)
       } catch (e) {
         console.error('Failed to update parent IDs:', e)
         // Revert on error (could add better error handling)
       }
     },
-    [state]
+    [projectId, state]
   )
 
   const save = useCallback(async () => {
@@ -601,7 +603,7 @@ export function usePromptSession() {
     setIsSaving(true)
 
     try {
-      const result = await savePrompt(workingDir, promptDraft)
+      const result = await savePrompt(projectId, workingDir, promptDraft)
       return result.path
     } catch (e) {
       setState((prev) => ({
@@ -615,7 +617,7 @@ export function usePromptSession() {
     } finally {
       setIsSaving(false)
     }
-  }, [state, isSaving])
+  }, [projectId, state, isSaving])
 
   const reset = useCallback(() => {
     abortControllerRef.current?.abort()
@@ -659,7 +661,7 @@ export function usePromptSession() {
       const title = firstUserMessage?.content.slice(0, 50) ||
         (promptDraft ? promptDraft.split('\n')[0].replace(/^#\s*/, '').slice(0, 50) : undefined)
 
-      await savePromptSession({
+      await savePromptSession(projectId, {
         id: sessionId,
         title,
         workType,
@@ -688,7 +690,7 @@ export function usePromptSession() {
       workingDir,
       projectName,
     })
-  }, [state])
+  }, [projectId, state])
 
   // Load a prompt from history
   const loadPrompt = useCallback(async (promptId: string) => {
@@ -696,7 +698,7 @@ export function usePromptSession() {
     const projectName = 'projectName' in state ? state.projectName : ''
 
     try {
-      const response = await getPromptById(promptId)
+      const response = await getPromptById(projectId, promptId)
 
       // Restore to ready state with loaded session
       setState({
@@ -719,7 +721,7 @@ export function usePromptSession() {
         previousState: state.status !== 'error' ? state : undefined,
       })
     }
-  }, [state])
+  }, [projectId, state])
 
   // Derive legacy shapes for backwards compatibility
   const session = deriveSession(state)

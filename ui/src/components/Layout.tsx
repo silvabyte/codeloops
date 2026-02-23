@@ -1,19 +1,21 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
+import { useCurrentProject } from '@/hooks/useProject'
 import { cn } from '@/lib/utils'
 
 export function Layout() {
   const location = useLocation()
+  const projectId = useCurrentProject()
+  const base = `/projects/${projectId}`
 
   const navItems = [
-    { path: '/', label: 'Prompts' },
-    { path: '/run-insights', label: 'Run Insights' },
+    { path: base, label: 'Prompts' },
+    { path: `${base}/run-insights`, label: 'Run Insights' },
   ]
 
   const isActive = (path: string) => {
-    if (path === '/') {
-      return location.pathname === '/'
+    if (path === base) {
+      return location.pathname === base
     }
-    // Match /run-insights and /run-insights/status
     return location.pathname.startsWith(path)
   }
 
@@ -21,7 +23,7 @@ export function Layout() {
     <div className="min-h-screen bg-background">
       <header className="border-b border-border">
         <div className="px-6 py-4 flex items-center justify-between">
-          <Link to="/" className="hover:opacity-80 transition-opacity">
+          <Link to={base} className="hover:opacity-80 transition-opacity">
             <img src="/icon.svg" alt="Codeloops" className="h-7 w-auto" />
           </Link>
           <nav className="flex items-center gap-6">

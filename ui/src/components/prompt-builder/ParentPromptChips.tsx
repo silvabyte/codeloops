@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import { getPromptById } from '@/lib/prompt-session'
+import { useCurrentProject } from '@/hooks/useProject'
 import { X, Plus } from 'lucide-react'
 
 interface ParentPromptChipsProps {
@@ -17,6 +18,7 @@ interface ParentInfo {
 }
 
 export function ParentPromptChips({ parentIds, onRemove, onAdd }: ParentPromptChipsProps) {
+  const projectId = useCurrentProject()
   const [parentInfo, setParentInfo] = useState<ParentInfo[]>([])
 
   useEffect(() => {
@@ -33,7 +35,7 @@ export function ParentPromptChips({ parentIds, onRemove, onAdd }: ParentPromptCh
     // Fetch info for each parent
     parentIds.forEach(async (id) => {
       try {
-        const prompt = await getPromptById(id)
+        const prompt = await getPromptById(projectId, id)
         setParentInfo((prev) =>
           prev.map((p) =>
             p.id === id ? { ...p, title: prompt.title || 'Untitled', loading: false } : p
@@ -45,7 +47,7 @@ export function ParentPromptChips({ parentIds, onRemove, onAdd }: ParentPromptCh
         )
       }
     })
-  }, [parentIds])
+  }, [projectId, parentIds])
 
   return (
     <div className="flex flex-wrap items-center gap-2">

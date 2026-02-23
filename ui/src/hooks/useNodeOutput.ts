@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useCurrentProject } from '@/hooks/useProject'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3100'
 
@@ -19,6 +20,7 @@ export function useNodeOutput(
   phase: 'actor' | 'critic',
   enabled: boolean,
 ): { lines: OutputLine[]; isStreaming: boolean } {
+  const projectId = useCurrentProject()
   const [lines, setLines] = useState<OutputLine[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const eventSourceRef = useRef<EventSource | null>(null)
@@ -37,7 +39,7 @@ export function useNodeOutput(
     setLines([])
     setIsStreaming(true)
 
-    const url = `${API_BASE}/api/sessions/${encodeURIComponent(sessionId)}/output/${iterationNumber}/${phase}`
+    const url = `${API_BASE}/api/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(sessionId)}/output/${iterationNumber}/${phase}`
     const es = new EventSource(url)
     eventSourceRef.current = es
 
@@ -70,7 +72,7 @@ export function useNodeOutput(
       es.close()
       eventSourceRef.current = null
     }
-  }, [sessionId, iterationNumber, phase, enabled])
+  }, [projectId, sessionId, iterationNumber, phase, enabled])
 
   return { lines, isStreaming }
 }

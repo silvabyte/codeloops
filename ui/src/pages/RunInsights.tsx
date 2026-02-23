@@ -6,13 +6,9 @@ import { SectionHeader } from '@/components/SectionHeader'
 import { Welcome } from '@/components/Welcome'
 import { useSessions } from '@/hooks/useSessions'
 import { useStats } from '@/hooks/useStats'
+import { useCurrentProject } from '@/hooks/useProject'
 import { useSessionEvents } from '@/hooks/useSSE'
 import type { SessionFilter } from '@/api/types'
-
-const runInsightsTabs = [
-  { label: 'Overview', path: '/run-insights' },
-  { label: 'Status', path: '/run-insights/status' },
-]
 
 function RunInsightsSkeleton() {
   return (
@@ -29,6 +25,11 @@ function RunInsightsSkeleton() {
 }
 
 export function RunInsights() {
+  const projectId = useCurrentProject()
+  const runInsightsTabs = [
+    { label: 'Overview', path: `/projects/${projectId}/run-insights` },
+    { label: 'Status', path: `/projects/${projectId}/run-insights/status` },
+  ]
   const [filter, setFilter] = useState<SessionFilter>({})
   const { sessions, loading, reload } = useSessions(filter)
   const { stats, loading: statsLoading, reload: reloadStats } = useStats()

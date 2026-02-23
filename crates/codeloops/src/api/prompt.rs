@@ -16,6 +16,7 @@
 //! - `GET /api/prompts` - List all prompts
 //! - `GET /api/prompts/{id}` - Get single prompt
 
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -45,7 +46,8 @@ use crate::skills;
 #[serde(rename_all = "camelCase")]
 pub struct CreateSessionRequest {
     pub work_type: String,
-    pub working_dir: String,
+    /// Optional override; defaults to the project's registered path.
+    pub working_dir: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -212,12 +214,25 @@ pub struct ChatMessage {
 /// persists across server restarts. The session ID is also the prompt ID.
 pub async fn create_session(
     State(state): State<AppState>,
+    Path(path_params): Path<HashMap<String, String>>,
     Json(req): Json<CreateSessionRequest>,
 ) -> Result<Json<CreateSessionResponse>, (StatusCode, String)> {
+    let project_id = path_params
+        .get("project_id")
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "Missing project_id".to_string()))?;
+
+    let project = state
+        .db
+        .projects()
+        .get(project_id)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Project not found".to_string()))?;
+
     let session_id = format!("prompt-{}", uuid::Uuid::new_v4());
 
-    // Extract project name from working dir path
-    let project_name = extract_project_name(&req.working_dir);
+    // Use project path and name from the registered project
+    let working_dir = req.working_dir.clone().unwrap_or_else(|| project.path.clone());
+    let project_name = project.name.clone();
 
     // Create initial session state
     let session_state = SessionStatePayload {
@@ -230,7 +245,7 @@ pub async fn create_session(
         id: session_id.clone(),
         title: None,
         work_type: req.work_type,
-        project_path: req.working_dir,
+        project_path: working_dir,
         project_name,
         content: None,
         session_state: serde_json::to_string(&session_state).map_err(|e| {
@@ -248,6 +263,9 @@ pub async fn create_session(
         .prompts()
         .save(&record)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    // Touch last_accessed_at on write action
+    let _ = state.db.projects().touch(project_id);
 
     Ok(Json(CreateSessionResponse { session_id }))
 }
@@ -267,25 +285,20 @@ pub async fn list_skills() -> Json<ListSkillsResponse> {
     Json(ListSkillsResponse { skills })
 }
 
-/// Extract project name from a path.
-fn extract_project_name(path: &str) -> String {
-    std::path::Path::new(path)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("unknown")
-        .to_string()
-}
-
 /// Send a message to the prompt session.
 ///
 /// Loads the prompt from the database, builds the agent prompt with conversation
 /// history, streams the agent response, and saves messages back to the database.
 pub async fn send_message(
     State(state): State<AppState>,
-    Path(session_id): Path<String>,
+    Path(path_params): Path<HashMap<String, String>>,
     Json(req): Json<SendMessageRequest>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)>
 {
+    let session_id = path_params
+        .get("session_id")
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "Missing session_id".to_string()))?
+        .clone();
     // Load prompt from DB
     let record = state
         .db
@@ -353,6 +366,7 @@ pub async fn send_message(
 }
 
 pub async fn save_prompt(
+    Path(_path_params): Path<HashMap<String, String>>,
     Json(req): Json<SavePromptRequest>,
 ) -> Result<Json<SavePromptResponse>, (StatusCode, String)> {
     let path = std::path::Path::new(&req.working_dir).join("prompt.md");
@@ -372,8 +386,14 @@ pub async fn save_prompt(
 /// Save or update a prompt session to the database.
 pub async fn save_prompt_session(
     State(state): State<AppState>,
+    Path(path_params): Path<HashMap<String, String>>,
     Json(req): Json<SavePromptSessionRequest>,
 ) -> Result<Json<SavePromptSessionResponse>, (StatusCode, String)> {
+    let project_id = path_params.get("project_id");
+    // Touch last_accessed_at on write action
+    if let Some(pid) = project_id {
+        let _ = state.db.projects().touch(pid);
+    }
     let now = Utc::now();
 
     let session_state_json = serde_json::to_string(&req.session_state).map_err(|e| {
@@ -419,6 +439,7 @@ pub async fn save_prompt_session(
 /// List prompts with optional filtering.
 pub async fn list_prompts(
     State(state): State<AppState>,
+    Path(_path_params): Path<HashMap<String, String>>,
     Query(query): Query<ListPromptsQuery>,
 ) -> Result<Json<ListPromptsResponse>, (StatusCode, String)> {
     let filter = PromptFilter {
@@ -470,12 +491,15 @@ pub async fn list_prompts(
 /// Get a single prompt by ID.
 pub async fn get_prompt(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    Path(path_params): Path<HashMap<String, String>>,
 ) -> Result<Json<GetPromptResponse>, (StatusCode, String)> {
+    let id = path_params
+        .get("id")
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "Missing prompt id".to_string()))?;
     let record = state
         .db
         .prompts()
-        .get(&id)
+        .get(id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Prompt not found".to_string()))?;
 
@@ -490,7 +514,7 @@ pub async fn get_prompt(
     let parent_ids = state
         .db
         .prompts()
-        .get_parent_ids(&id)
+        .get_parent_ids(id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(GetPromptResponse {
@@ -510,12 +534,15 @@ pub async fn get_prompt(
 /// Delete a prompt by ID.
 pub async fn delete_prompt(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    Path(path_params): Path<HashMap<String, String>>,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    let id = path_params
+        .get("id")
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "Missing prompt id".to_string()))?;
     let deleted = state
         .db
         .prompts()
-        .delete(&id)
+        .delete(id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     if deleted {
@@ -528,14 +555,18 @@ pub async fn delete_prompt(
 /// Update parent IDs for a prompt.
 pub async fn update_prompt_parents(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    Path(path_params): Path<HashMap<String, String>>,
     Json(parent_ids): Json<Vec<String>>,
 ) -> Result<StatusCode, (StatusCode, String)> {
+    let id = path_params
+        .get("id")
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "Missing prompt id".to_string()))?;
+
     // Verify the prompt exists
     state
         .db
         .prompts()
-        .get(&id)
+        .get(id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Prompt not found".to_string()))?;
 
@@ -543,7 +574,7 @@ pub async fn update_prompt_parents(
     state
         .db
         .prompts()
-        .set_parent_ids(&id, &parent_ids)
+        .set_parent_ids(id, &parent_ids)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(StatusCode::NO_CONTENT)
@@ -552,13 +583,17 @@ pub async fn update_prompt_parents(
 /// Get resolved prompt content with inheritance chain.
 pub async fn get_resolved_prompt(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    Path(path_params): Path<HashMap<String, String>>,
 ) -> Result<Json<ResolvedPromptResponse>, (StatusCode, String)> {
+    let id = path_params
+        .get("id")
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "Missing prompt id".to_string()))?;
+
     // Verify the prompt exists
     state
         .db
         .prompts()
-        .get(&id)
+        .get(id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Prompt not found".to_string()))?;
 
@@ -566,7 +601,7 @@ pub async fn get_resolved_prompt(
     let chain = state
         .db
         .prompts()
-        .resolve_chain(&id)
+        .resolve_chain(id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // Concatenate content from all prompts in the chain
@@ -603,7 +638,7 @@ pub async fn get_resolved_prompt(
         .collect();
 
     Ok(Json(ResolvedPromptResponse {
-        id,
+        id: id.clone(),
         resolved_content,
         chain: chain_summaries,
     }))
@@ -1018,10 +1053,4 @@ mod tests {
         assert!(prompt.contains("FEATURE"));
     }
 
-    #[test]
-    fn test_extract_project_name() {
-        assert_eq!(extract_project_name("/home/user/projects/myapp"), "myapp");
-        assert_eq!(extract_project_name("/tmp/test"), "test");
-        assert_eq!(extract_project_name(""), "unknown");
-    }
 }

@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils'
 import { markdownInherited } from '@/lib/markdown-styles'
 import type { ResolvedPromptResponse } from '@/lib/prompt-session'
 import { getResolvedPrompt } from '@/lib/prompt-session'
+import { useCurrentProject } from '@/hooks/useProject'
 import ReactMarkdown from 'react-markdown'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 
@@ -12,6 +13,7 @@ interface InheritedContentPreviewProps {
 }
 
 export function InheritedContentPreview({ promptId, parentIds }: InheritedContentPreviewProps) {
+  const projectId = useCurrentProject()
   const [resolved, setResolved] = useState<ResolvedPromptResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -27,7 +29,7 @@ export function InheritedContentPreview({ promptId, parentIds }: InheritedConten
       setLoading(true)
       setError(null)
       try {
-        const data = await getResolvedPrompt(promptId)
+        const data = await getResolvedPrompt(projectId, promptId)
         setResolved(data)
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to load inherited content')
@@ -37,7 +39,7 @@ export function InheritedContentPreview({ promptId, parentIds }: InheritedConten
     }
 
     fetchResolved()
-  }, [promptId, parentIds])
+  }, [projectId, promptId, parentIds])
 
   if (parentIds.length === 0) {
     return null

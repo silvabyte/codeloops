@@ -1,13 +1,13 @@
-mod context;
+pub mod extractors;
+mod projects;
 mod prompt;
 mod prompt_instructions;
 mod sessions;
 mod stats;
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::routing::{delete, get, post, put};
+use axum::routing::{get, post, put};
 use axum::Router;
 use tower_http::cors::CorsLayer;
 
@@ -16,44 +16,82 @@ use codeloops_db::Database;
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<Database>,
-    pub working_dir: PathBuf,
 }
 
-pub fn create_router(db: Arc<Database>, working_dir: PathBuf) -> Router {
-    let state = AppState { db, working_dir };
+pub fn create_router(db: Arc<Database>) -> Router {
+    let state = AppState { db };
 
     Router::new()
-        // Session browsing
-        .route("/api/sessions", get(sessions::list_sessions))
-        .route("/api/sessions/{id}", get(sessions::get_session))
-        .route("/api/sessions/{id}/diff", get(sessions::get_session_diff))
+        // Project CRUD (not scoped — top-level resource)
+        .route("/api/projects", get(projects::list_projects))
+        .route("/api/projects", post(projects::create_project))
         .route(
-            "/api/sessions/{id}/output/{iteration}/{phase}",
+            "/api/projects/{project_id}",
+            get(projects::get_project)
+                .put(projects::update_project)
+                .delete(projects::delete_project),
+        )
+        // Project-scoped context
+        .route(
+            "/api/projects/{project_id}/context",
+            get(projects::get_project_context),
+        )
+        // Project-scoped sessions
+        .route(
+            "/api/projects/{project_id}/sessions",
+            get(sessions::list_sessions),
+        )
+        .route(
+            "/api/projects/{project_id}/sessions/{id}",
+            get(sessions::get_session),
+        )
+        .route(
+            "/api/projects/{project_id}/sessions/{id}/diff",
+            get(sessions::get_session_diff),
+        )
+        .route(
+            "/api/projects/{project_id}/sessions/{id}/output/{iteration}/{phase}",
             get(sessions::stream_output),
         )
-        .route("/api/stats", get(stats::get_stats))
-        .route("/api/metrics", get(stats::get_metrics))
-        // Prompt builder
-        .route("/api/context", get(context::get_context))
-        .route("/api/skills", get(prompt::list_skills))
-        .route("/api/prompt-session", post(prompt::create_session))
+        // Project-scoped stats
         .route(
-            "/api/prompt-session/{session_id}/message",
+            "/api/projects/{project_id}/stats",
+            get(stats::get_stats),
+        )
+        .route(
+            "/api/projects/{project_id}/metrics",
+            get(stats::get_metrics),
+        )
+        // Project-scoped prompt builder
+        .route("/api/skills", get(prompt::list_skills))
+        .route(
+            "/api/projects/{project_id}/prompt-session",
+            post(prompt::create_session),
+        )
+        .route(
+            "/api/projects/{project_id}/prompt-session/{session_id}/message",
             post(prompt::send_message),
         )
-        .route("/api/prompt/save", post(prompt::save_prompt))
-        // Prompt history
-        .route("/api/prompts", get(prompt::list_prompts))
-        .route("/api/prompts", post(prompt::save_prompt_session))
-        .route("/api/prompts/{id}", get(prompt::get_prompt))
-        .route("/api/prompts/{id}", delete(prompt::delete_prompt))
+        .route(
+            "/api/projects/{project_id}/prompt/save",
+            post(prompt::save_prompt),
+        )
+        // Project-scoped prompt history
+        .route(
+            "/api/projects/{project_id}/prompts",
+            get(prompt::list_prompts).post(prompt::save_prompt_session),
+        )
+        .route(
+            "/api/projects/{project_id}/prompts/{id}",
+            get(prompt::get_prompt).delete(prompt::delete_prompt),
+        )
         // Prompt inheritance
         .route(
-            "/api/prompts/{id}/parents",
+            "/api/projects/{project_id}/prompts/{id}/parents",
             put(prompt::update_prompt_parents),
         )
         .route(
-            "/api/prompts/{id}/resolved",
+            "/api/projects/{project_id}/prompts/{id}/resolved",
             get(prompt::get_resolved_prompt),
         )
         .layer(CorsLayer::permissive())

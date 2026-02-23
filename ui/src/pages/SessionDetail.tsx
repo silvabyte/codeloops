@@ -1,4 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom'
+import { useCurrentProject } from '@/hooks/useProject'
 import { useSession } from '@/hooks/useSession'
 import { IterationConversation } from '@/components/IterationConversation'
 import { ContentBlock } from '@/components/ContentBlock'
@@ -13,6 +14,7 @@ type Tab = 'run' | 'prompt' | 'iterations' | 'summary' | 'diff'
 export function SessionDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const projectId = useCurrentProject()
   const { session, diff, loading, error } = useSession(id)
   const [activeTab, setActiveTab] = useState<Tab>('run')
 
@@ -33,7 +35,7 @@ export function SessionDetail() {
       <div className="max-w-5xl mx-auto px-6 py-8">
         <div className="text-destructive">{error || 'Session not found'}</div>
         <button
-          onClick={() => navigate('/run-insights')}
+          onClick={() => navigate(`/projects/${projectId}/run-insights`)}
           className="mt-4 text-sm text-primary hover:underline"
         >
           Back to Run Insights
@@ -76,7 +78,7 @@ export function SessionDetail() {
       {/* Minimal Header */}
       <div className={cn(isRunTab && 'px-6 pt-4 pb-0')}>
         <button
-          onClick={() => navigate('/run-insights')}
+          onClick={() => navigate(`/projects/${projectId}/run-insights`)}
           className="text-sm text-muted-foreground hover:text-foreground mb-4 block"
         >
           &larr; Back to Run Insights

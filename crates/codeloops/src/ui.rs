@@ -8,11 +8,35 @@ use crate::api;
 
 pub async fn handle_ui_command(dev: bool, api_port: u16, ui_port: u16) -> Result<()> {
     use colored::Colorize;
+    use codeloops_db::NewProject;
 
     let working_dir = std::env::current_dir().context("Failed to get current directory")?;
     let db = Arc::new(Database::open().context("Failed to initialize database")?);
 
-    let router = api::create_router(db, working_dir);
+    // Auto-register cwd as default project if no projects exist
+    let projects = db
+        .projects()
+        .list()
+        .unwrap_or_default();
+    if projects.is_empty() {
+        let canonical = std::fs::canonicalize(&working_dir)
+            .unwrap_or_else(|_| working_dir.clone());
+        let name = canonical
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("default")
+            .to_string();
+        let path_str = canonical.to_string_lossy().to_string();
+        if let Ok(project) = db.projects().add(&NewProject {
+            path: path_str,
+            name,
+            config_overrides: None,
+        }) {
+            let _ = db.projects().set_default(&project.id);
+        }
+    }
+
+    let router = api::create_router(db);
 
     // Start the API server
     let api_addr = format!("0.0.0.0:{}", api_port);

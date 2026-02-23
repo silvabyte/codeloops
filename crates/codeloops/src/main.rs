@@ -1,6 +1,7 @@
 mod api;
 mod config;
 mod init;
+pub mod projects;
 mod sessions;
 pub mod skills;
 mod ui;
@@ -164,8 +165,43 @@ enum Commands {
         ui_port: u16,
     },
 
+    /// Manage registered projects
+    Project {
+        #[command(subcommand)]
+        action: ProjectAction,
+    },
+
     /// Set up codeloops with interactive configuration
     Init,
+}
+
+#[derive(Subcommand, Debug)]
+enum ProjectAction {
+    /// Register a project directory
+    Add {
+        /// Path to project directory (default: current directory)
+        #[arg(default_value = ".")]
+        path: PathBuf,
+
+        /// Custom display name (default: directory name)
+        #[arg(long)]
+        name: Option<String>,
+    },
+
+    /// List all registered projects
+    List,
+
+    /// Remove a registered project
+    Remove {
+        /// Project ID or path
+        id_or_path: String,
+    },
+
+    /// Set a project as the default
+    SetDefault {
+        /// Project ID or path
+        id_or_path: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -236,6 +272,7 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Some(Commands::Init) => init::handle_init().await,
+        Some(Commands::Project { action }) => handle_project_command(action).await,
         Some(Commands::Sessions { action }) => sessions::handle_sessions_command(action).await,
         Some(Commands::Ui {
             dev,
@@ -294,6 +331,116 @@ async fn main() -> Result<()> {
             .await
         }
     }
+}
+
+async fn handle_project_command(action: ProjectAction) -> Result<()> {
+    use codeloops_db::NewProject;
+    use colored::Colorize;
+
+    let db = Database::open().context("Failed to open database")?;
+
+    match action {
+        ProjectAction::Add { path, name } => {
+            let canonical = std::fs::canonicalize(&path)
+                .with_context(|| format!("Directory does not exist: {}", path.display()))?;
+
+            let path_str = canonical.to_string_lossy().to_string();
+
+            // Check for duplicate
+            if db.projects().get_by_path(&path_str)?.is_some() {
+                anyhow::bail!("A project already exists for this directory: {}", path_str);
+            }
+
+            let display_name = name.unwrap_or_else(|| {
+                canonical
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown")
+                    .to_string()
+            });
+
+            let project = db.projects().add(&NewProject {
+                path: path_str.clone(),
+                name: display_name.clone(),
+                config_overrides: None,
+            })?;
+
+            // If this is the first project, make it the default
+            if db.projects().list()?.len() == 1 {
+                db.projects().set_default(&project.id)?;
+            }
+
+            println!(
+                "{} Registered project '{}' at {}",
+                "✓".bright_green(),
+                display_name,
+                path_str
+            );
+        }
+        ProjectAction::List => {
+            let projects = db.projects().list()?;
+            if projects.is_empty() {
+                println!("No projects registered. Run: codeloops project add <path>");
+                return Ok(());
+            }
+
+            for p in &projects {
+                let default_marker = if p.is_default { " (default)" } else { "" };
+                let exists = std::path::Path::new(&p.path).exists();
+                let status = if exists { "" } else { " [missing]" };
+                println!(
+                    "  {} {} {}{}{}",
+                    p.id.dimmed(),
+                    p.name.bold(),
+                    p.path.dimmed(),
+                    default_marker.bright_cyan(),
+                    if status.is_empty() {
+                        String::new()
+                    } else {
+                        status.bright_red().to_string()
+                    }
+                );
+            }
+        }
+        ProjectAction::Remove { id_or_path } => {
+            let removed = if id_or_path.contains('/') || id_or_path == "." {
+                let canonical = std::fs::canonicalize(&id_or_path)
+                    .unwrap_or_else(|_| PathBuf::from(&id_or_path));
+                db.projects()
+                    .remove_by_path(&canonical.to_string_lossy())?
+            } else {
+                db.projects().remove(&id_or_path)?
+            };
+
+            if removed {
+                println!("{} Project removed", "✓".bright_green());
+            } else {
+                anyhow::bail!("Project not found: {}", id_or_path);
+            }
+        }
+        ProjectAction::SetDefault { id_or_path } => {
+            let project = if id_or_path.contains('/') || id_or_path == "." {
+                let canonical = std::fs::canonicalize(&id_or_path)
+                    .unwrap_or_else(|_| PathBuf::from(&id_or_path));
+                db.projects()
+                    .get_by_path(&canonical.to_string_lossy())?
+            } else {
+                db.projects().get(&id_or_path)?
+            };
+
+            let project = project
+                .ok_or_else(|| anyhow::anyhow!("Project not found: {}", id_or_path))?;
+
+            db.projects().set_default(&project.id)?;
+            println!(
+                "{} Set '{}' as default project",
+                "✓".bright_green(),
+                project.name
+            );
+        }
+    }
+
+    Ok(())
 }
 
 struct RunArgs {

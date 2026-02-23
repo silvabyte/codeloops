@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { cn, formatDuration, formatDate, formatRelativeTime } from '@/lib/utils'
+import { useCurrentProject } from '@/hooks/useProject'
 import type { SessionSummary } from '@/api/types'
 
 interface SessionListProps {
@@ -28,6 +29,7 @@ function StatusDot({ outcome }: { outcome: string | null }) {
 
 export function SessionList({ sessions, loading }: SessionListProps) {
   const navigate = useNavigate()
+  const projectId = useCurrentProject()
 
   if (loading) {
     return (
@@ -63,7 +65,7 @@ export function SessionList({ sessions, loading }: SessionListProps) {
       {sessions.map((s) => (
         <div
           key={s.id}
-          onClick={() => navigate(`/sessions/${encodeURIComponent(s.id)}`)}
+          onClick={() => navigate(`/projects/${projectId}/sessions/${encodeURIComponent(s.id)}`)}
           className={cn(
             'rounded-lg bg-surface/50 border border-transparent p-4 cursor-pointer transition-colors',
             'hover:bg-surface hover:border-border-subtle',
@@ -71,7 +73,7 @@ export function SessionList({ sessions, loading }: SessionListProps) {
           )}
           tabIndex={0}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') navigate(`/sessions/${encodeURIComponent(s.id)}`)
+            if (e.key === 'Enter') navigate(`/projects/${projectId}/sessions/${encodeURIComponent(s.id)}`)
           }}
         >
           <div className="flex items-start gap-3">

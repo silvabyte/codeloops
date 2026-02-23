@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -26,8 +27,10 @@ pub struct ListParams {
 
 pub async fn list_sessions(
     State(state): State<AppState>,
+    Path(path_params): Path<HashMap<String, String>>,
     Query(params): Query<ListParams>,
 ) -> Result<Json<Vec<SessionSummary>>, (StatusCode, String)> {
+    let _project_id = path_params.get("project_id");
     let filter = build_filter(params).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
 
     let summaries = state
@@ -41,12 +44,15 @@ pub async fn list_sessions(
 
 pub async fn get_session(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    Path(params): Path<HashMap<String, String>>,
 ) -> Result<Json<Session>, (StatusCode, String)> {
+    let id = params
+        .get("id")
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "Missing session id".to_string()))?;
     let session = state
         .db
         .sessions()
-        .get(&id)
+        .get(id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Session not found: {}", id)))?;
 
@@ -55,12 +61,15 @@ pub async fn get_session(
 
 pub async fn get_session_diff(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    Path(params): Path<HashMap<String, String>>,
 ) -> Result<String, (StatusCode, String)> {
+    let id = params
+        .get("id")
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "Missing session id".to_string()))?;
     let diff = state
         .db
         .sessions()
-        .get_diff(&id)
+        .get_diff(id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .unwrap_or_default();
 
@@ -76,9 +85,21 @@ pub async fn get_session_diff(
 /// - For completed phases: returns full output from DB as a single event + [DONE]
 pub async fn stream_output(
     State(state): State<AppState>,
-    Path((id, iteration, phase)): Path<(String, usize, String)>,
+    Path(params): Path<HashMap<String, String>>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)>
 {
+    let id = params
+        .get("id")
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "Missing session id".to_string()))?
+        .clone();
+    let iteration: usize = params
+        .get("iteration")
+        .and_then(|v| v.parse().ok())
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "Invalid iteration".to_string()))?;
+    let phase = params
+        .get("phase")
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "Missing phase".to_string()))?
+        .clone();
     if phase != "actor" && phase != "critic" {
         return Err((
             StatusCode::BAD_REQUEST,

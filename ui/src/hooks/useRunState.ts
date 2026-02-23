@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchSession } from '@/api/client'
+import { useCurrentProject } from '@/hooks/useProject'
 import type { Iteration, Session } from '@/api/types'
 
 export interface RunState {
@@ -14,12 +15,13 @@ export interface RunState {
 }
 
 /**
- * Polls GET /api/sessions/{id} at a configurable interval to track
+ * Polls GET /api/projects/{projectId}/sessions/{id} at a configurable interval to track
  * iteration phase state for live run visualization.
  *
  * Stops polling when the session has an outcome (completed/failed/etc).
  */
 export function useRunState(sessionId: string | undefined, pollInterval = 3000): RunState {
+  const projectId = useCurrentProject()
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -28,7 +30,7 @@ export function useRunState(sessionId: string | undefined, pollInterval = 3000):
   const fetchData = useCallback(async () => {
     if (!sessionId) return
     try {
-      const data = await fetchSession(sessionId)
+      const data = await fetchSession(projectId, sessionId)
       setSession(data)
       setError(null)
     } catch (e) {
@@ -36,7 +38,7 @@ export function useRunState(sessionId: string | undefined, pollInterval = 3000):
     } finally {
       setLoading(false)
     }
-  }, [sessionId])
+  }, [projectId, sessionId])
 
   // Initial fetch
   useEffect(() => {
