@@ -2,7 +2,7 @@
   "apps": [
     {
       "name": "CodeLoopsSite",
-      "source_dir": "site/dist",
+      "source_dir": "packages/site/dist",
       "description": "CodeLoops home page",
       "enabled": true
     }

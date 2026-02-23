@@ -2,7 +2,7 @@
    CODELOOPS MARKETING SITE — "Amber Circuit" Theme
    ========================================================================== */
 
-@import "../../shared/design-tokens.css";
+@import "@codeloops/shared/design-tokens.css";
 
 /* --------------------------------------------------------------------------
    CSS RESET

@@ -1,5 +1,5 @@
 {
-  "name": "site",
+  "name": "@codeloops/site",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -7,6 +7,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview"
+  },
+  "dependencies": {
+    "@codeloops/shared": "workspace:*"
   },
   "devDependencies": {
     "typescript": "~5.9.3",

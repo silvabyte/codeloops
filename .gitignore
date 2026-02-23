@@ -10,6 +10,6 @@ Cargo.lock
 prompts/
 !/docs/
 a.out
-ui/codeloops-ui
+packages/ui/codeloops-ui
 
 notes.md

@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import "../../shared/design-tokens.css";
+@import "@codeloops/shared/design-tokens.css";
 
 @theme {
   /* Map shared tokens to Tailwind theme */

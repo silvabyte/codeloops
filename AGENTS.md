@@ -18,7 +18,9 @@ This project automates AI-assisted coding with built-in verification:
 - **codeloops-git** - Git diff capture
 - **codeloops-logging** - Structured logging and JSONL session writer
 - **codeloops-sessions** - Session reading/parsing/store/watcher (shared by CLI and API)
-- **ui/** - Web UI (React + Vite + Tailwind CSS). Run `codeloops ui --dev` for development
+- **packages/ui/** - Web UI (React + Vite + Tailwind CSS). Run `codeloops ui --dev` for development
+- **packages/site/** - Static marketing site (Vite + TypeScript)
+- **packages/shared/** - Shared design tokens and CSS variables
 
 ## Issue Tracking with bd (beads)
 
@@ -129,8 +131,8 @@ cargo run -- ui --dev
 ### Frontend Development
 
 ```bash
-cd ui
-bun install
+bun install      # Run from repo root — installs all workspace packages
+cd packages/ui
 bun dev          # Vite dev server with HMR
 bun run build    # Production build
 ```

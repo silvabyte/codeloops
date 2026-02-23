@@ -6,6 +6,9 @@ use codeloops_db::Database;
 
 use crate::api;
 
+/// Path from workspace root to the UI package directory.
+const UI_PACKAGE_DIR: &str = "packages/ui";
+
 pub async fn handle_ui_command(dev: bool, api_port: u16, ui_port: u16) -> Result<()> {
     use colored::Colorize;
     use codeloops_db::NewProject;
@@ -149,7 +152,7 @@ fn find_ui_dir() -> Result<std::path::PathBuf> {
             .and_then(|p| p.parent())
         // workspace root
         {
-            let ui_dir = workspace_root.join("ui");
+            let ui_dir = workspace_root.join(UI_PACKAGE_DIR);
             if ui_dir.exists() {
                 return Ok(ui_dir);
             }
@@ -187,7 +190,7 @@ fn find_ui_binary() -> Result<std::path::PathBuf> {
             .and_then(|p| p.parent())
         // workspace root
         {
-            let candidate = workspace_root.join("ui").join("codeloops-ui");
+            let candidate = workspace_root.join(UI_PACKAGE_DIR).join("codeloops-ui");
             if candidate.exists() {
                 return Ok(candidate);
             }
@@ -214,7 +217,7 @@ fn find_ui_binary() -> Result<std::path::PathBuf> {
     }
 
     anyhow::bail!(
-        "Could not find 'codeloops-ui' binary. Build the UI first with 'bun run compile' in the ui/ directory."
+        "Could not find 'codeloops-ui' binary. Build the UI first with 'bun run compile' in the packages/ui/ directory."
     )
 }
 

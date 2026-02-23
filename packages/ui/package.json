@@ -1,5 +1,5 @@
 {
-  "name": "ui",
+  "name": "@codeloops/ui",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -14,6 +14,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@codeloops/shared": "workspace:*",
     "@tailwindcss/vite": "^4.1.18",
     "@xyflow/react": "^12.10.0",
     "class-variance-authority": "^0.7.1",
