@@ -11,5 +11,6 @@ prompts/
 !/docs/
 a.out
 packages/ui/codeloops-ui
+node_modules/
 
 notes.md
