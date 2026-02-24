@@ -657,10 +657,16 @@ fn build_init_prompt(
     let system = get_system_instructions(work_type, working_dir, enabled_skills);
     format!(
         "{}\n\n---\n\n\
-        The user has selected '{}' as the work type and is ready to start.\n\n\
-        Introduce yourself briefly (1-2 sentences) and ask your FIRST question \
-        to understand what they're working on. Remember: ask ONE question only.",
-        system, work_type
+        The user has selected '{}' as the work type and is ready to start.\n\
+        The working directory is: {}\n\n\
+        BEFORE responding, perform a quick orientation scan of the project:\n\
+        1. List the top-level directory to understand project structure\n\
+        2. Read the main config file (package.json, Cargo.toml, go.mod, etc.)\n\
+        3. Identify the primary language, framework, and directory layout\n\n\
+        Then introduce yourself briefly (1-2 sentences), share a SHORT summary \
+        of what you learned about the project (2-3 bullet points), and ask your \
+        first questions. Your questions should be INFORMED by the project structure.",
+        system, work_type, working_dir
     )
 }
 
@@ -704,9 +710,17 @@ fn build_agent_prompt_from_messages(
     prompt.push_str(
         "Continue the interview based on the user's latest message. \
         Either:\n\
-        1. Ask ONE focused follow-up question to gather more information, OR\n\
-        2. If you have enough information (typically after 4-6 exchanges), \
-           generate the prompt.md content within <prompt></prompt> tags.\n\n\
+        1. Continue the conversation — ask follow-up questions, share findings, \
+           or confirm your understanding. Be natural and dynamic.\n\
+        2. If you have enough information, generate the prompt.md content \
+           within <prompt></prompt> tags.\n\n\
+        EXPLORATION REMINDER:\n\
+        - If the user mentioned specific areas or features: search the codebase \
+          for related files before responding.\n\
+        - If entering the touch-points phase: proactively explore and suggest \
+          files/components you found.\n\
+        - Before generating prompt.md: verify file paths exist and read key files.\n\
+        - Share exploration findings as a brief quote block.\n\n\
         Keep your response concise and conversational.",
     );
 
@@ -1023,7 +1037,8 @@ mod tests {
         let prompt = build_init_prompt("feature", "/path/to/project", &[]);
         assert!(prompt.contains("feature"));
         assert!(prompt.contains("/path/to/project"));
-        assert!(prompt.contains("FIRST question"));
+        assert!(prompt.contains("orientation scan"));
+        assert!(prompt.contains("INFORMED by the project structure"));
     }
 
     #[test]
