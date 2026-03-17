@@ -110,12 +110,10 @@ If some fields are unknown, you may still generate prompt.md but MUST include:
 - Validation Plan (how to verify assumptions quickly)
 
 OUTPUT FORMAT:
-When generating prompt.md, output ONLY the prompt content between:
-<prompt>
-...
-</prompt>
-
-After generating, continue the interview with a question that would improve the prompt.md most.
+When generating or updating the prompt, write the content directly to the prompt.md
+file in the working directory using the Write tool.
+After writing the file, briefly tell the user what you wrote or changed, then continue
+the interview with a question that would improve the prompt most.
 
 Working directory context (may be relevant): {{WORKING_DIR}}
 "#;

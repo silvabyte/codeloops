@@ -712,8 +712,8 @@ fn build_agent_prompt_from_messages(
         Either:\n\
         1. Continue the conversation — ask follow-up questions, share findings, \
            or confirm your understanding. Be natural and dynamic.\n\
-        2. If you have enough information, generate the prompt.md content \
-           within <prompt></prompt> tags.\n\n\
+        2. If you have enough information, generate the prompt by writing/updating \
+           prompt.md in the working directory using the Write tool.\n\n\
         EXPLORATION REMINDER:\n\
         - If the user mentioned specific areas or features: search the codebase \
           for related files before responding.\n\
@@ -752,13 +752,17 @@ async fn stream_agent_response(
     let session_id_clone = session_id.clone();
     let db_clone = db.clone();
     let user_message_clone = user_message.clone();
+    let working_dir_ref = working_dir.clone();
     tokio::spawn(async move {
         let result = execute_agent(prompt, working_dir, tx.clone()).await;
 
         match result {
             Ok(full_response) => {
-                // Extract prompt draft
-                let maybe_draft = extract_prompt_draft(&full_response);
+                // Read prompt.md from disk -- the file is the source of truth
+                let prompt_path = std::path::Path::new(&working_dir_ref).join("prompt.md");
+                let maybe_draft = std::fs::read_to_string(&prompt_path)
+                    .ok()
+                    .filter(|c| !c.trim().is_empty());
 
                 // Save messages to database
                 if let Err(e) = save_messages_to_prompt(
@@ -981,56 +985,9 @@ fn save_user_message_to_prompt(
     Ok(())
 }
 
-// ============================================================================
-// Prompt Draft Extraction
-// ============================================================================
-
-/// Extract prompt.md content from agent response if present.
-///
-/// The agent is instructed to wrap the final prompt in `<prompt>` and `</prompt>` tags
-/// when it has gathered enough information to generate the prompt.md content.
-fn extract_prompt_draft(response: &str) -> Option<String> {
-    let start_tag = "<prompt>";
-    let end_tag = "</prompt>";
-
-    if let Some(start) = response.find(start_tag) {
-        if let Some(end) = response.find(end_tag) {
-            if end > start {
-                let content = &response[start + start_tag.len()..end];
-                return Some(content.trim().to_string());
-            }
-        }
-    }
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_extract_prompt_draft_found() {
-        let response = "Here's your prompt:\n\n<prompt>\n# Feature: Add login\n\n## Problem\nUsers can't sign in.\n</prompt>\n\nLet me know if you want changes!";
-        let draft = extract_prompt_draft(response);
-        assert!(draft.is_some());
-        let draft = draft.unwrap();
-        assert!(draft.contains("# Feature: Add login"));
-        assert!(draft.contains("Users can't sign in"));
-    }
-
-    #[test]
-    fn test_extract_prompt_draft_not_found() {
-        let response = "What component will this affect?";
-        let draft = extract_prompt_draft(response);
-        assert!(draft.is_none());
-    }
-
-    #[test]
-    fn test_extract_prompt_draft_malformed() {
-        let response = "<prompt>content without closing tag";
-        let draft = extract_prompt_draft(response);
-        assert!(draft.is_none());
-    }
 
     #[test]
     fn test_build_init_prompt() {
@@ -1066,6 +1023,9 @@ mod tests {
         assert!(prompt.contains("Where should the button appear"));
         assert!(prompt.contains("On the header"));
         assert!(prompt.contains("FEATURE"));
+        // Should reference writing prompt.md via Write tool, not <prompt> tags
+        assert!(prompt.contains("Write tool"));
+        assert!(!prompt.contains("<prompt>"));
     }
 
 }

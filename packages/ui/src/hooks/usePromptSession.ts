@@ -44,14 +44,6 @@ function getStorageKey(projectPath: string): string {
   return `${STORAGE_KEY_PREFIX}${projectPath.replace(/\//g, '-')}`
 }
 
-/**
- * Strip <prompt></prompt> tags from assistant messages for display.
- * The prompt content is sent separately via the promptDraft field.
- */
-function stripPromptTags(content: string): string {
-  return content.replace(/<prompt>[\s\S]*?<\/prompt>/g, '').trim()
-}
-
 function generateId(): string {
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 }
@@ -355,7 +347,7 @@ export function usePromptSession() {
           currentContent += chunk
 
           // Transition to streaming on first content
-          const displayContent = stripPromptTags(currentContent)
+          const displayContent = currentContent
           if (displayContent) {
             setState({
               status: 'streaming',
@@ -377,7 +369,7 @@ export function usePromptSession() {
       }
 
       // Transition to ready
-      const displayContent = stripPromptTags(currentContent)
+      const displayContent = currentContent
       setState({
         status: 'ready',
         workingDir,
@@ -466,7 +458,7 @@ export function usePromptSession() {
           currentDraft = chunk.slice('__PROMPT_DRAFT__'.length)
         } else {
           assistantContent += chunk
-          const displayContent = stripPromptTags(assistantContent)
+          const displayContent = assistantContent
 
           // Update streaming state with assistant response
           setState((prev) => {
@@ -494,7 +486,7 @@ export function usePromptSession() {
       }
 
       // Transition to ready
-      const displayContent = stripPromptTags(assistantContent)
+      const displayContent = assistantContent
       setState((prev) => {
         if (prev.status !== 'streaming') return prev
 
