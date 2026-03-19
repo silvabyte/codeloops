@@ -76,8 +76,9 @@ impl Agent for OpenCodeAgent {
             args.push(&model_arg);
         }
 
-        // Add the prompt
-        args.push("--prompt");
+        // Add -- to signal end of options, then the prompt as positional argument
+        // OpenCode expects the message as a positional arg: `opencode run [message..]`
+        args.push("--");
         args.push(prompt);
 
         ProcessSpawner::spawn_with_callback(&self.binary_path, &args, config, on_output).await
