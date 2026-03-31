@@ -50,17 +50,16 @@ object AgentRunner:
         workDir: os.Path,
         model:   Option[String]
     ): Either[WorkflowError, AgentOutput] = {
+      import scala.util.{Try, Success, Failure}
       val args = agentType.buildArgs(prompt, model)
-      try {
-        val result = os
-          .proc(args)
-          .call(cwd = workDir, stdin = os.Pipe, check = false)
-        Right(AgentOutput(
-          stdout   = result.out.text(),
-          stderr   = result.err.text(),
-          exitCode = result.exitCode
-        ))
-      } catch case e: Exception => Left(WorkflowError(e.getMessage))
+      Try(os.proc(args).call(cwd = workDir, stdin = os.Pipe, check = false)) match
+        case Success(result) =>
+          Right(AgentOutput(
+            stdout   = result.out.text(),
+            stderr   = result.err.text(),
+            exitCode = result.exitCode
+          ))
+        case Failure(e) => Left(WorkflowError(e.getMessage))
     }
 
   val claude:   AgentRunner = AgentRunner(AgentType.ClaudeCode)

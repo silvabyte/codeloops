@@ -1,6 +1,6 @@
 package codeloopz
 
-import scala.util.Try
+import scala.util.{Try, Success, Failure}
 import scala.concurrent.{Future, Await}
 import scala.concurrent.duration.Duration
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -46,18 +46,16 @@ object Workflow:
 
   def parallel[A](workflows: Seq[Workflow[A]]): Workflow[Seq[A]] = {
     Workflow { ctx =>
-      try {
-        val futures = workflows.map { w =>
-          Future(w.run(ctx)).flatMap {
-            case Right(a)  => Future.successful(a)
-            case Left(err) => Future.failed(err)
-          }
+      val futures = workflows.map { w =>
+        Future(w.run(ctx)).flatMap {
+          case Right(a)  => Future.successful(a)
+          case Left(err) => Future.failed(err)
         }
-        Right(Await.result(Future.sequence(futures), Duration.Inf))
-      } catch {
-        case we: WorkflowError => Left(we)
-        case e:  Exception     => Left(WorkflowError(e.getMessage))
       }
+      Try(Await.result(Future.sequence(futures), Duration.Inf)) match
+        case Success(results) => Right(results)
+        case Failure(we: WorkflowError) => Left(we)
+        case Failure(e) => Left(WorkflowError(e.getMessage))
     }
   }
 
