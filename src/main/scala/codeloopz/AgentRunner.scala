@@ -4,9 +4,9 @@ case class AgentOutput(stdout: String, stderr: String, exitCode: Int)
 
 trait AgentRunner:
   def run(
-      prompt: String,
+      prompt:  String,
       workDir: os.Path,
-      model: Option[String] = None
+      model:   Option[String] = None
   ): Either[WorkflowError, AgentOutput]
 
 enum AgentType:
@@ -14,7 +14,7 @@ enum AgentType:
 
   def buildArgs(
       prompt: String,
-      model: Option[String]
+      model:  Option[String]
   ): Seq[String] = this match
     case ClaudeCode =>
       val base =
@@ -23,7 +23,7 @@ enum AgentType:
       base ++ modelArgs ++ Seq("--", prompt)
 
     case OpenCode =>
-      val base = Seq("opencode", "run")
+      val base      = Seq("opencode", "run")
       val modelArgs = model.map(m => Seq("--model", m)).getOrElse(Seq.empty)
       base ++ modelArgs ++ Seq("--prompt", prompt)
 
@@ -46,33 +46,35 @@ object AgentType:
 object AgentRunner:
   def apply(agentType: AgentType): AgentRunner = new AgentRunner:
     def run(
-        prompt: String,
+        prompt:  String,
         workDir: os.Path,
-        model: Option[String]
-    ): Either[WorkflowError, AgentOutput] =
+        model:   Option[String]
+    ): Either[WorkflowError, AgentOutput] = {
       val args = agentType.buildArgs(prompt, model)
-      try
+      try {
         val result = os
           .proc(args)
           .call(cwd = workDir, stdin = os.Pipe, check = false)
         Right(AgentOutput(
-          stdout = result.out.text(),
-          stderr = result.err.text(),
+          stdout   = result.out.text(),
+          stderr   = result.err.text(),
           exitCode = result.exitCode
         ))
-      catch case e: Exception => Left(WorkflowError(e.getMessage))
+      } catch case e: Exception => Left(WorkflowError(e.getMessage))
+    }
 
-  val claude: AgentRunner = AgentRunner(AgentType.ClaudeCode)
+  val claude:   AgentRunner = AgentRunner(AgentType.ClaudeCode)
   val opencode: AgentRunner = AgentRunner(AgentType.OpenCode)
-  val cursor: AgentRunner = AgentRunner(AgentType.Cursor)
+  val cursor:   AgentRunner = AgentRunner(AgentType.Cursor)
 
   def fromType(name: String): Option[AgentRunner] =
     AgentType.fromString(name).map(AgentRunner(_))
 
   def mock(fn: String => String): AgentRunner = new AgentRunner:
     def run(
-        prompt: String,
+        prompt:  String,
         workDir: os.Path,
-        model: Option[String]
-    ): Either[WorkflowError, AgentOutput] =
+        model:   Option[String]
+    ): Either[WorkflowError, AgentOutput] = {
       Right(AgentOutput(stdout = fn(prompt), stderr = "", exitCode = 0))
+    }

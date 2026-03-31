@@ -4,8 +4,8 @@ class WorkflowSuite extends munit.FunSuite:
 
   val mockCtx: WorkflowContext = WorkflowContext(
     workDir = os.pwd,
-    agent = AgentRunner.mock(prompt => s"response to: ${prompt.take(50)}"),
-    logger = Logger.silent
+    agent   = AgentRunner.mock(prompt => s"response to: ${prompt.take(50)}"),
+    logger  = Logger.silent
   )
 
   test("pure lifts a value into Right") {
@@ -23,32 +23,36 @@ class WorkflowSuite extends munit.FunSuite:
   }
 
   test("flatMap chains workflows") {
-    val w = for
-      a <- Workflow.pure(3)
-      b <- Workflow.pure(a + 7)
-    yield b
+    val w = {
+      for
+        a <- Workflow.pure(3)
+        b <- Workflow.pure(a + 7)
+      yield b
+    }
     assertEquals(w.run(mockCtx), Right(10))
   }
 
   test("flatMap short-circuits on failure") {
     var secondRan = false
-    val w = for
-      _ <- Workflow.fail(WorkflowError("early fail"))
-      _ <- Workflow { _ => secondRan = true; Right(()) }
-    yield ()
+    val w         = {
+      for
+        _ <- Workflow.fail(WorkflowError("early fail"))
+        _ <- Workflow { _ => secondRan = true; Right(()) }
+      yield ()
+    }
     assert(w.run(mockCtx).isLeft)
     assert(!secondRan)
   }
 
   test("agent runs prompt through mock runner") {
-    val w = Workflow.agent("hello world")
+    val w      = Workflow.agent("hello world")
     val result = w.run(mockCtx)
     assert(result.isRight)
     assert(result.exists(_.contains("response to: hello world")))
   }
 
   test("agent substitutes template variables") {
-    val w = Workflow.agent("review {{file}}", Map("file" -> "Main.scala"))
+    val w   = Workflow.agent("review {{file}}", Map("file" -> "Main.scala"))
     val ctx = mockCtx.copy(
       agent = AgentRunner.mock(prompt => prompt)
     )
@@ -59,19 +63,20 @@ class WorkflowSuite extends munit.FunSuite:
   test("agent propagates failure on non-zero exit code") {
     val failAgent = new AgentRunner:
       def run(
-          prompt: String,
+          prompt:  String,
           workDir: os.Path,
-          model: Option[String]
-      ): Either[WorkflowError, AgentOutput] =
+          model:   Option[String]
+      ): Either[WorkflowError, AgentOutput] = {
         Right(AgentOutput("", "bad stuff", exitCode = 1))
+      }
 
-    val ctx = mockCtx.copy(agent = failAgent)
+    val ctx    = mockCtx.copy(agent = failAgent)
     val result = Workflow.agent("test").run(ctx)
     assert(result.isLeft)
   }
 
   test("parallel collects results from all workflows") {
-    var counter = 0
+    var counter   = 0
     val workflows = (1 to 3).map { i =>
       Workflow[Int] { _ =>
         synchronized { counter += 1 }
@@ -95,15 +100,17 @@ class WorkflowSuite extends munit.FunSuite:
 
   test("loop terminates on done signal") {
     var callCount = 0
-    val step = (_: Option[String]) =>
+    val step      = (_: Option[String]) => {
       Workflow[String] { _ =>
         callCount += 1
-        val response =
+        val response = {
           if callCount >= 2 then
             """{"done": true, "review": "final review"}"""
           else """{"done": false, "review": "still refining"}"""
+        }
         Right(response)
       }
+    }
     val result = Workflow.loop(step, maxIterations = 5).run(mockCtx)
     assertEquals(result, Right("final review"))
     assertEquals(callCount, 2)
@@ -111,7 +118,7 @@ class WorkflowSuite extends munit.FunSuite:
 
   test("loop passes prior feedback to subsequent iterations") {
     var receivedFeedback: List[Option[String]] = Nil
-    val step = (prior: Option[String]) =>
+    val step = (prior: Option[String]) => {
       Workflow[String] { _ =>
         receivedFeedback = receivedFeedback :+ prior
         if receivedFeedback.size >= 3 then
@@ -119,6 +126,7 @@ class WorkflowSuite extends munit.FunSuite:
         else
           Right("""{"done": false, "review": "needs work"}""")
       }
+    }
     Workflow.loop(step, maxIterations = 5).run(mockCtx)
     assertEquals(receivedFeedback(0), None)
     assertEquals(
@@ -128,10 +136,11 @@ class WorkflowSuite extends munit.FunSuite:
   }
 
   test("loop fails on max iterations exceeded") {
-    val step = (_: Option[String]) =>
+    val step = (_: Option[String]) => {
       Workflow[String] { _ =>
         Right("""{"done": false, "review": "not yet"}""")
       }
+    }
     val result = Workflow.loop(step, maxIterations = 3).run(mockCtx)
     assert(result.isLeft)
     assert(result.left.toOption.get.message.contains("max iterations"))
@@ -147,7 +156,7 @@ class WorkflowSuite extends munit.FunSuite:
   }
 
   test("Prompt.render substitutes placeholders") {
-    val p = Prompt.Inline("Hello {{name}}, you have {{count}} items")
+    val p      = Prompt.Inline("Hello {{name}}, you have {{count}} items")
     val result = p.render(Map("name" -> "Alice", "count" -> "5"))
     assertEquals(result, Right("Hello Alice, you have 5 items"))
   }
@@ -162,10 +171,12 @@ class WorkflowSuite extends munit.FunSuite:
       }
     )
 
-    val w = for
-      diff   <- Workflow.agent("get the diff")
-      review <- Workflow.agent("review {{diff}}", Map("diff" -> diff))
-    yield review
+    val w = {
+      for
+        diff <- Workflow.agent("get the diff")
+        review <- Workflow.agent("review {{diff}}", Map("diff" -> diff))
+      yield review
+    }
 
     val result = w.run(ctx)
     assert(result.isRight)
@@ -243,7 +254,7 @@ class WorkflowSuite extends munit.FunSuite:
     enum TestStep(val prompt: Prompt) extends Prompt.AsPrompt:
       case Greet extends TestStep(Prompt.Inline("Hello {{name}}"))
 
-    val ctx = mockCtx.copy(agent = AgentRunner.mock(identity))
+    val ctx    = mockCtx.copy(agent = AgentRunner.mock(identity))
     val result = Workflow.agent(TestStep.Greet, Map("name" -> "World")).run(ctx)
     assertEquals(result, Right("Hello World"))
   }
