@@ -1,0 +1,46 @@
+# macOS
+.DS_Store
+
+# sbt specific
+dist/*
+target/
+lib_managed/
+src_managed/
+project/boot/
+project/plugins/project/
+project/target/
+project/project/
+project/local-plugins.sbt
+.history
+.ensime
+.ensime_cache/
+.sbt-scripted/
+local.sbt
+
+# Scala
+*.class
+*.log
+*.tasty
+
+# Scala CLI
+.scala-build/
+
+# Bloop
+.bsp/
+.bloop/
+
+# VS Code
+.vscode/
+
+# Metals
+.metals/
+metals.sbt
+
+# IDEA
+.idea/
+.idea_modules/
+/.worksheet/
+
+# Environment / secrets
+.env
+.env.*
