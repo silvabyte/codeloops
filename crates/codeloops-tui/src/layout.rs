@@ -48,7 +48,13 @@ pub fn stream_box_height() -> usize {
 /// preserves the file name at the tail.
 pub fn fit_path_to_width(path: &str, term_w: usize) -> String {
     // CONTENT_COL spaces of indent + 1 sigil + 1 space already consumed.
-    let avail = term_w.saturating_sub(CONTENT_COL + 2).max(1);
+    // If nothing is left for the path, return empty so the line itself fits.
+    // (Don't `.max(1)` here — that adds a phantom char and pushes the printed
+    // width to term_w + 1, wrapping the row.)
+    let avail = term_w.saturating_sub(CONTENT_COL + 2);
+    if avail == 0 {
+        return String::new();
+    }
     truncate_path(path, avail)
 }
 
@@ -193,9 +199,22 @@ mod tests {
 
     #[test]
     fn fit_path_narrow_terminal_degrades() {
-        // term_w = 12 means avail clamps to 1 — output is just `…`.
-        let out = fit_path_to_width("anything/at/all.rs", 12);
-        assert_eq!(out, "…");
+        // term_w = 12 leaves zero room for the path itself — output is empty so
+        // that the printed line (10 indent + 1 sigil + 1 space) fits in 12 cols.
+        assert_eq!(fit_path_to_width("anything/at/all.rs", 12), "");
+    }
+
+    #[test]
+    fn fit_path_total_visible_width_never_exceeds_term_w() {
+        // Invariant: indent(CONTENT_COL=10) + sigil(1) + space(1) + path <= term_w.
+        // Pre-fix this failed at term_w = 12 because `.max(1)` produced a 1-char
+        // path and the line totalled 13 columns.
+        let path = "very/long/path/to/some/deep/file.rs";
+        for w in [12, 13, 14, 15, 20, 30, 80] {
+            let out = fit_path_to_width(path, w);
+            let total = CONTENT_COL + 2 + out.chars().count();
+            assert!(total <= w, "term_w={}: total visible {} exceeds", w, total);
+        }
     }
 
     #[test]

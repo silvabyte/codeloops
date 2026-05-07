@@ -159,8 +159,6 @@ struct SpinnerState {
     box_height: usize,
     /// Most-recent file events for the streaming view (tail). Never exceeds box_height.
     recent: VecDeque<FileEvent>,
-    /// Total file events seen this phase (currently informational; reserved for future "+N more").
-    total: usize,
     /// Whether we've printed the box+spinner at least once (so cursor moves are valid).
     printed: bool,
 }
@@ -317,7 +315,6 @@ impl TuiRenderer {
                     label: "actor".to_string(),
                     box_height: h,
                     recent: VecDeque::with_capacity(h),
-                    total: 0,
                     printed: false,
                 });
                 // Print the initial (empty) box + spinner line
@@ -326,7 +323,6 @@ impl TuiRenderer {
 
             RenderEvent::FileChange(file_event) => {
                 if let Some(ref mut state) = self.active_spinner {
-                    state.total += 1;
                     state.recent.push_back(file_event.clone());
                     while state.recent.len() > state.box_height {
                         state.recent.pop_front();
@@ -432,7 +428,6 @@ impl TuiRenderer {
                     label: "critic".to_string(),
                     box_height: 0,
                     recent: VecDeque::new(),
-                    total: 0,
                     printed: false,
                 });
                 self.tick();
