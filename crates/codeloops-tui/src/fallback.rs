@@ -63,7 +63,6 @@ fn yellow(s: &str) -> String {
     }
 }
 
-
 /// Fallback renderer for non-TTY environments.
 pub struct FallbackRenderer {
     max_iterations: Option<usize>,
@@ -104,13 +103,7 @@ impl FallbackRenderer {
             } => {
                 let _ = writeln!(w);
                 let title_rule = rule("codeloops ".len() + 2);
-                let _ = writeln!(
-                    w,
-                    "{}{} {}",
-                    MARGIN,
-                    bold("codeloops"),
-                    dim(&title_rule)
-                );
+                let _ = writeln!(w, "{}{} {}", MARGIN, bold("codeloops"), dim(&title_rule));
                 let _ = writeln!(w);
 
                 let dir_display = shorten_home(&working_dir.display().to_string());
@@ -120,13 +113,7 @@ impl FallbackRenderer {
                 let prompt_lines = wrap_text(prompt, width);
                 for (i, line) in prompt_lines.iter().enumerate() {
                     if i == 0 {
-                        let _ = writeln!(
-                            w,
-                            "{}{}{}",
-                            MARGIN,
-                            dim(&pad_label("prompt")),
-                            line
-                        );
+                        let _ = writeln!(w, "{}{}{}", MARGIN, dim(&pad_label("prompt")), line);
                     } else {
                         let _ = writeln!(w, "{}{}", content_indent(), line);
                     }
@@ -135,22 +122,15 @@ impl FallbackRenderer {
                 let _ = writeln!(w, "{}{}{}", MARGIN, dim(&pad_label("dir")), dir_display);
 
                 // agents line
-                if let (Some(actor), Some(critic)) = (&self.actor_agent_name, &self.critic_agent_name) {
+                if let (Some(actor), Some(critic)) =
+                    (&self.actor_agent_name, &self.critic_agent_name)
+                {
                     let agents_str = if let Some(max) = self.max_iterations {
-                        format!(
-                            "{} → {} · {} iterations max",
-                            actor, critic, max
-                        )
+                        format!("{} → {} · {} iterations max", actor, critic, max)
                     } else {
                         format!("{} → {}", actor, critic)
                     };
-                    let _ = writeln!(
-                        w,
-                        "{}{}{}",
-                        MARGIN,
-                        dim(&pad_label("agents")),
-                        agents_str
-                    );
+                    let _ = writeln!(w, "{}{}{}", MARGIN, dim(&pad_label("agents")), agents_str);
                 }
                 let _ = writeln!(w);
                 let _ = writeln!(w);
@@ -163,23 +143,12 @@ impl FallbackRenderer {
                     format!("{}", iteration)
                 };
                 let iter_rule = rule(iter_display.len() + 3);
-                let _ = writeln!(
-                    w,
-                    "{}{} {}",
-                    MARGIN,
-                    bold(&iter_display),
-                    dim(&iter_rule)
-                );
+                let _ = writeln!(w, "{}{} {}", MARGIN, bold(&iter_display), dim(&iter_rule));
                 let _ = writeln!(w);
             }
 
             RenderEvent::ActorStart => {
-                let _ = writeln!(
-                    w,
-                    "{}{}...",
-                    MARGIN,
-                    dim(&pad_label("actor")),
-                );
+                let _ = writeln!(w, "{}{}...", MARGIN, dim(&pad_label("actor")),);
             }
 
             RenderEvent::FileChange(file_event) => {
@@ -262,12 +231,7 @@ impl FallbackRenderer {
             }
 
             RenderEvent::CriticStart => {
-                let _ = writeln!(
-                    w,
-                    "{}{}...",
-                    MARGIN,
-                    dim(&pad_label("critic")),
-                );
+                let _ = writeln!(w, "{}{}...", MARGIN, dim(&pad_label("critic")),);
             }
 
             RenderEvent::CriticDone {

@@ -35,8 +35,8 @@ use std::time::Instant;
 
 use codeloops_logging::LogEvent;
 
-pub use renderer::{FileEvent, RenderEvent, TuiRenderer};
 pub use fallback::FallbackRenderer;
+pub use renderer::{FileEvent, RenderEvent, TuiRenderer};
 
 /// Unified session renderer that selects TTY or fallback mode.
 pub struct SessionRenderer {

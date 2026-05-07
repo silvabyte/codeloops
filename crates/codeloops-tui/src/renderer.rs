@@ -2,6 +2,7 @@
 ///
 /// Uses crossterm for cursor manipulation on stderr. Output stays in
 /// the terminal scrollback — no alternate screen.
+use std::collections::VecDeque;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::time::Instant;
@@ -11,8 +12,8 @@ use crossterm::{cursor, execute, terminal};
 use codeloops_logging::FileChangeType;
 
 use crate::layout::{
-    self, content_indent, pad_label, rule, shorten_home, wrap_text, COLLAPSED_SHOW, MARGIN,
-    MAX_FILE_EVENTS,
+    self, content_indent, fit_path_to_width, pad_label, rule, shorten_home, stream_box_height,
+    wrap_text, MARGIN, MAX_FILE_EVENTS,
 };
 use crate::spinner::{format_elapsed, Spinner};
 
@@ -153,9 +154,14 @@ struct SpinnerState {
     spinner: Spinner,
     start: Instant,
     label: String,
-    /// Number of file event lines printed below the spinner
-    file_lines_below: usize,
-    /// Whether we've printed the spinner line at least once
+    /// Fixed height of the streaming file box above the spinner.
+    /// 0 for phases without a box (e.g. critic).
+    box_height: usize,
+    /// Most-recent file events for the streaming view (tail). Never exceeds box_height.
+    recent: VecDeque<FileEvent>,
+    /// Total file events seen this phase (currently informational; reserved for future "+N more").
+    total: usize,
+    /// Whether we've printed the box+spinner at least once (so cursor moves are valid).
     printed: bool,
 }
 
@@ -166,8 +172,6 @@ pub struct TuiRenderer {
     critic_agent_name: Option<String>,
     /// Active spinner state (during actor/critic execution)
     active_spinner: Option<SpinnerState>,
-    /// File events accumulated during the current actor phase
-    current_file_events: Vec<FileEvent>,
 }
 
 impl Default for TuiRenderer {
@@ -183,7 +187,6 @@ impl TuiRenderer {
             actor_agent_name: None,
             critic_agent_name: None,
             active_spinner: None,
-            current_file_events: Vec::new(),
         }
     }
 
@@ -197,6 +200,10 @@ impl TuiRenderer {
     }
 
     /// Called by the spinner tick task (~100ms interval) to update in-place.
+    ///
+    /// Layout (top to bottom): exactly `box_height` rows of streaming file events
+    /// (most recent at the bottom; padded with blanks if fewer events have arrived),
+    /// then a single spinner status row directly underneath.
     pub fn tick(&mut self) {
         if let Some(ref mut state) = self.active_spinner {
             let frame = state.spinner.tick();
@@ -205,20 +212,36 @@ impl TuiRenderer {
 
             let mut w = io::stderr();
 
-            // Move cursor up to the spinner line, overwrite it
+            // Move cursor back to the top of the box on every redraw.
             if state.printed {
-                // Move up past file lines + the blank line separator (if files exist) + spinner line
-                let lines_to_go_up = if state.file_lines_below > 0 {
-                    state.file_lines_below + 1 + 1 // file lines + blank separator + spinner line itself
-                } else {
-                    1 // just the spinner line
-                };
-                let _ = execute!(w, cursor::MoveUp(lines_to_go_up as u16));
+                let total = state.box_height + 1;
+                let _ = execute!(w, cursor::MoveUp(total as u16));
             }
 
-            // Clear and rewrite spinner line
+            let term_w = layout::term_width();
+
+            // Render the file-event box (always exactly box_height rows).
+            // Tail-align: pad the *top* with blanks so newest events sit just above
+            // the spinner.
+            let pad = state.box_height.saturating_sub(state.recent.len());
+            for _ in 0..pad {
+                let _ = execute!(w, terminal::Clear(terminal::ClearType::CurrentLine));
+                let _ = writeln!(w, "\r");
+            }
+            for fe in state.recent.iter() {
+                let sigil = match fe.change_type {
+                    FileChangeType::Created => green("+"),
+                    FileChangeType::Modified => yellow("~"),
+                    FileChangeType::Deleted => red("-"),
+                };
+                let path = fit_path_to_width(&fe.path, term_w);
+                let _ = execute!(w, terminal::Clear(terminal::ClearType::CurrentLine));
+                let _ = writeln!(w, "\r{}{} {}", content_indent(), sigil, path);
+            }
+
+            // Spinner status row, directly under the box.
             let _ = execute!(w, terminal::Clear(terminal::ClearType::CurrentLine));
-            let _ = write!(
+            let _ = writeln!(
                 w,
                 "\r{}{}{} {}",
                 MARGIN,
@@ -226,42 +249,6 @@ impl TuiRenderer {
                 cyan_char(&frame.to_string()),
                 dim_cyan(&elapsed_str),
             );
-            let _ = writeln!(w);
-
-            // Reprint file events below
-            if state.file_lines_below > 0 {
-                let _ = writeln!(w); // blank separator
-                let start = if self.current_file_events.len() > MAX_FILE_EVENTS {
-                    // Show first COLLAPSED_SHOW, then "... and N more"
-                    for fe in self.current_file_events.iter().take(COLLAPSED_SHOW) {
-                        let sigil = match fe.change_type {
-                            FileChangeType::Created => green("+"),
-                            FileChangeType::Modified => yellow("~"),
-                            FileChangeType::Deleted => red("-"),
-                        };
-                        let _ = writeln!(w, "{}{} {}", content_indent(), sigil, fe.path);
-                    }
-                    let remaining = self.current_file_events.len() - COLLAPSED_SHOW;
-                    let _ = writeln!(
-                        w,
-                        "{}{}",
-                        content_indent(),
-                        dim(&format!("… and {} more files", remaining))
-                    );
-                    0 // sentinel, we handled it
-                } else {
-                    for fe in &self.current_file_events {
-                        let sigil = match fe.change_type {
-                            FileChangeType::Created => green("+"),
-                            FileChangeType::Modified => yellow("~"),
-                            FileChangeType::Deleted => red("-"),
-                        };
-                        let _ = writeln!(w, "{}{} {}", content_indent(), sigil, fe.path);
-                    }
-                    0
-                };
-                let _ = start; // suppress unused
-            }
 
             let _ = w.flush();
             state.printed = true;
@@ -278,13 +265,7 @@ impl TuiRenderer {
             } => {
                 let _ = writeln!(w);
                 let title_rule = rule("codeloops ".len() + 2);
-                let _ = writeln!(
-                    w,
-                    "{}{} {}",
-                    MARGIN,
-                    bold("codeloops"),
-                    dim(&title_rule)
-                );
+                let _ = writeln!(w, "{}{} {}", MARGIN, bold("codeloops"), dim(&title_rule));
                 let _ = writeln!(w);
 
                 let dir_display = shorten_home(&working_dir.display().to_string());
@@ -294,13 +275,7 @@ impl TuiRenderer {
                 let prompt_lines = wrap_text(prompt, width);
                 for (i, line) in prompt_lines.iter().enumerate() {
                     if i == 0 {
-                        let _ = writeln!(
-                            w,
-                            "{}{}{}",
-                            MARGIN,
-                            dim(&pad_label("prompt")),
-                            line
-                        );
+                        let _ = writeln!(w, "{}{}{}", MARGIN, dim(&pad_label("prompt")), line);
                     } else {
                         let _ = writeln!(w, "{}{}", content_indent(), line);
                     }
@@ -317,13 +292,7 @@ impl TuiRenderer {
                     } else {
                         format!("{} → {}", actor, critic)
                     };
-                    let _ = writeln!(
-                        w,
-                        "{}{}{}",
-                        MARGIN,
-                        dim(&pad_label("agents")),
-                        agents_str
-                    );
+                    let _ = writeln!(w, "{}{}{}", MARGIN, dim(&pad_label("agents")), agents_str);
                 }
                 let _ = writeln!(w);
                 let _ = writeln!(w);
@@ -336,37 +305,31 @@ impl TuiRenderer {
                     format!("{}", iteration)
                 };
                 let iter_rule = rule(iter_display.len() + 3);
-                let _ = writeln!(
-                    w,
-                    "{}{} {}",
-                    MARGIN,
-                    bold(&iter_display),
-                    dim(&iter_rule)
-                );
+                let _ = writeln!(w, "{}{} {}", MARGIN, bold(&iter_display), dim(&iter_rule));
                 let _ = writeln!(w);
             }
 
             RenderEvent::ActorStart => {
-                self.current_file_events.clear();
+                let h = stream_box_height();
                 self.active_spinner = Some(SpinnerState {
                     spinner: Spinner::new(),
                     start: Instant::now(),
                     label: "actor".to_string(),
-                    file_lines_below: 0,
+                    box_height: h,
+                    recent: VecDeque::with_capacity(h),
+                    total: 0,
                     printed: false,
                 });
-                // Print initial spinner line
+                // Print the initial (empty) box + spinner line
                 self.tick();
             }
 
             RenderEvent::FileChange(file_event) => {
-                self.current_file_events.push(file_event.clone());
-                // Update the count of file lines below the spinner
                 if let Some(ref mut state) = self.active_spinner {
-                    if self.current_file_events.len() > MAX_FILE_EVENTS {
-                        state.file_lines_below = COLLAPSED_SHOW + 1; // collapsed lines + "... and N more"
-                    } else {
-                        state.file_lines_below = self.current_file_events.len();
+                    state.total += 1;
+                    state.recent.push_back(file_event.clone());
+                    while state.recent.len() > state.box_height {
+                        state.recent.pop_front();
                     }
                 }
                 // The next tick() will redraw including the new file event
@@ -385,12 +348,7 @@ impl TuiRenderer {
                 self.clear_spinner_area(&mut w);
                 self.active_spinner = None;
 
-                // Use file_events from the event if provided, otherwise use accumulated
-                let events_to_show = if !file_events.is_empty() {
-                    file_events
-                } else {
-                    &self.current_file_events
-                };
+                let events_to_show: &[FileEvent] = file_events;
 
                 if *exit_code == 0 {
                     let elapsed = format_elapsed(*duration_secs as u64);
@@ -428,15 +386,27 @@ impl TuiRenderer {
                 }
                 let _ = writeln!(w);
 
-                // File events
+                // File events: cap to MAX_FILE_EVENTS rows + summary, width-truncate paths.
                 if !events_to_show.is_empty() {
-                    for fe in events_to_show {
+                    let term_w = layout::term_width();
+                    let cap = MAX_FILE_EVENTS;
+                    for fe in events_to_show.iter().take(cap) {
                         let sigil = match fe.change_type {
                             FileChangeType::Created => green("+"),
                             FileChangeType::Modified => yellow("~"),
                             FileChangeType::Deleted => red("-"),
                         };
-                        let _ = writeln!(w, "{}{} {}", content_indent(), sigil, fe.path);
+                        let path = fit_path_to_width(&fe.path, term_w);
+                        let _ = writeln!(w, "{}{} {}", content_indent(), sigil, path);
+                    }
+                    if events_to_show.len() > cap {
+                        let remaining = events_to_show.len() - cap;
+                        let _ = writeln!(
+                            w,
+                            "{}{}",
+                            content_indent(),
+                            dim(&format!("… and {} more files", remaining))
+                        );
                     }
                     let _ = writeln!(w);
                 }
@@ -453,8 +423,6 @@ impl TuiRenderer {
                     }
                 }
                 let _ = writeln!(w);
-
-                self.current_file_events.clear();
             }
 
             RenderEvent::CriticStart => {
@@ -462,7 +430,9 @@ impl TuiRenderer {
                     spinner: Spinner::new(),
                     start: Instant::now(),
                     label: "critic".to_string(),
-                    file_lines_below: 0,
+                    box_height: 0,
+                    recent: VecDeque::new(),
+                    total: 0,
                     printed: false,
                 });
                 self.tick();
@@ -595,12 +565,7 @@ impl TuiRenderer {
                     } else {
                         "low"
                     };
-                    let _ = writeln!(
-                        w,
-                        "{}confidence {}",
-                        MARGIN,
-                        dim(conf_text),
-                    );
+                    let _ = writeln!(w, "{}confidence {}", MARGIN, dim(conf_text),);
                 }
                 let _ = writeln!(w);
 
@@ -706,21 +671,13 @@ impl TuiRenderer {
         let _ = w.flush();
     }
 
-    /// Clear the spinner + file event lines from the terminal.
+    /// Clear the streaming box + spinner row from the terminal.
+    /// Layout total height = box_height + 1 (the spinner row).
     fn clear_spinner_area(&self, _w: &mut impl Write) {
         if let Some(ref state) = self.active_spinner {
             if state.printed {
-                // Move up to the spinner line
-                let total_lines = if state.file_lines_below > 0 {
-                    state.file_lines_below + 1 + 1 // file lines + blank separator + spinner line
-                } else {
-                    1
-                };
-                let _ = execute!(
-                    io::stderr(),
-                    cursor::MoveUp(total_lines as u16),
-                );
-                // Clear all lines from spinner down
+                let total_lines = state.box_height + 1;
+                let _ = execute!(io::stderr(), cursor::MoveUp(total_lines as u16));
                 for _ in 0..total_lines {
                     let _ = execute!(
                         io::stderr(),
@@ -728,11 +685,7 @@ impl TuiRenderer {
                         cursor::MoveDown(1),
                     );
                 }
-                // Move back up to where we started clearing
-                let _ = execute!(
-                    io::stderr(),
-                    cursor::MoveUp(total_lines as u16),
-                );
+                let _ = execute!(io::stderr(), cursor::MoveUp(total_lines as u16));
             }
         }
     }

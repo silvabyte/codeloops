@@ -31,6 +31,27 @@ pub fn term_width() -> usize {
         .unwrap_or(80)
 }
 
+/// Get the terminal height in rows, falling back to 24.
+pub fn term_height() -> usize {
+    crossterm::terminal::size()
+        .map(|(_, h)| h as usize)
+        .unwrap_or(24)
+}
+
+/// Adaptive height for the streaming file box: term_h / 3, clamped to [3, 15].
+pub fn stream_box_height() -> usize {
+    (term_height() / 3).clamp(3, 15)
+}
+
+/// Truncate a file path so the printed line (content indent + sigil + space + path)
+/// fits one terminal row. Reuses `truncate_path`, which head-truncates and so
+/// preserves the file name at the tail.
+pub fn fit_path_to_width(path: &str, term_w: usize) -> String {
+    // CONTENT_COL spaces of indent + 1 sigil + 1 space already consumed.
+    let avail = term_w.saturating_sub(CONTENT_COL + 2).max(1);
+    truncate_path(path, avail)
+}
+
 /// Build a left-aligned label padded to LABEL_WIDTH.
 /// Example: `"actor"` -> `"actor   "` (8 chars)
 pub fn pad_label(label: &str) -> String {
@@ -153,6 +174,28 @@ mod tests {
         let truncated = truncate_path(path, 15);
         assert!(truncated.chars().count() <= 15);
         assert!(truncated.starts_with('…'));
+    }
+
+    #[test]
+    fn fit_path_short_passthrough() {
+        // term_w = 80, CONTENT_COL+2 = 12, avail = 68 — short path unchanged.
+        assert_eq!(fit_path_to_width("src/main.rs", 80), "src/main.rs");
+    }
+
+    #[test]
+    fn fit_path_long_truncated_to_avail() {
+        let path = "apps/timeline-poc/src/preview/components/widgets/Toolbar.tsx";
+        // term_w = 30, avail = 30 - 12 = 18.
+        let out = fit_path_to_width(path, 30);
+        assert!(out.chars().count() <= 18);
+        assert!(out.starts_with('…'));
+    }
+
+    #[test]
+    fn fit_path_narrow_terminal_degrades() {
+        // term_w = 12 means avail clamps to 1 — output is just `…`.
+        let out = fit_path_to_width("anything/at/all.rs", 12);
+        assert_eq!(out, "…");
     }
 
     #[test]
