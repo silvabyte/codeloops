@@ -231,7 +231,10 @@ pub async fn create_session(
     let session_id = format!("prompt-{}", uuid::Uuid::new_v4());
 
     // Use project path and name from the registered project
-    let working_dir = req.working_dir.clone().unwrap_or_else(|| project.path.clone());
+    let working_dir = req
+        .working_dir
+        .clone()
+        .unwrap_or_else(|| project.path.clone());
     let project_name = project.name.clone();
 
     // Create initial session state
@@ -1027,5 +1030,4 @@ mod tests {
         assert!(prompt.contains("Write tool"));
         assert!(!prompt.contains("<prompt>"));
     }
-
 }

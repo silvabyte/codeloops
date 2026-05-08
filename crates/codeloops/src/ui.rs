@@ -10,20 +10,16 @@ use crate::api;
 const UI_PACKAGE_DIR: &str = "packages/ui";
 
 pub async fn handle_ui_command(dev: bool, api_port: u16, ui_port: u16) -> Result<()> {
-    use colored::Colorize;
     use codeloops_db::NewProject;
+    use colored::Colorize;
 
     let working_dir = std::env::current_dir().context("Failed to get current directory")?;
     let db = Arc::new(Database::open().context("Failed to initialize database")?);
 
     // Auto-register cwd as default project if no projects exist
-    let projects = db
-        .projects()
-        .list()
-        .unwrap_or_default();
+    let projects = db.projects().list().unwrap_or_default();
     if projects.is_empty() {
-        let canonical = std::fs::canonicalize(&working_dir)
-            .unwrap_or_else(|_| working_dir.clone());
+        let canonical = std::fs::canonicalize(&working_dir).unwrap_or_else(|_| working_dir.clone());
         let name = canonical
             .file_name()
             .and_then(|n| n.to_str())

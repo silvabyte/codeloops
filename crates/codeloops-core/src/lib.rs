@@ -67,6 +67,7 @@ mod context;
 mod error;
 mod loop_runner;
 mod outcome;
+pub mod watcher;
 
 pub use context::{IterationRecord, LoopContext};
 pub use error::LoopError;

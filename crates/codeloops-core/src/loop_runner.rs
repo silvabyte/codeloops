@@ -10,7 +10,8 @@ use codeloops_critic::{CriticDecision, CriticEvaluationInput, CriticEvaluator};
 use codeloops_db::{Database, SessionEnd, SessionStart};
 use codeloops_git::DiffCapture;
 use codeloops_logging::{AgentRole, LogEvent, Logger, StreamType};
-use codeloops_tui::watcher;
+
+use crate::watcher;
 
 use crate::context::IterationRecord;
 use crate::error::LoopError;

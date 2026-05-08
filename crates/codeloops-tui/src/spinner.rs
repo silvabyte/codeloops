@@ -1,47 +1,7 @@
-//! Braille spinner animation for in-place terminal updates.
-//!
-//! Cycles through braille characters at ~100ms per frame to provide
-//! a subtle activity pulse while agents are executing.
+//! Spinner frames and elapsed-time formatting.
 
-const BRAILLE_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-const ASCII_FRAMES: &[char] = &['|', '/', '-', '\\'];
-
-pub struct Spinner {
-    frame: usize,
-    frames: &'static [char],
-}
-
-impl Default for Spinner {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Spinner {
-    pub fn new() -> Self {
-        Self {
-            frame: 0,
-            frames: BRAILLE_FRAMES,
-        }
-    }
-
-    pub fn ascii() -> Self {
-        Self {
-            frame: 0,
-            frames: ASCII_FRAMES,
-        }
-    }
-
-    pub fn tick(&mut self) -> char {
-        let ch = self.frames[self.frame % self.frames.len()];
-        self.frame = self.frame.wrapping_add(1);
-        ch
-    }
-
-    pub fn current(&self) -> char {
-        self.frames[self.frame % self.frames.len()]
-    }
-}
+pub const BRAILLE_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+pub const ASCII_FRAMES: &[char] = &['|', '/', '-', '\\'];
 
 /// Format elapsed seconds into a human-readable duration string.
 ///
@@ -59,33 +19,6 @@ pub fn format_elapsed(secs: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn spinner_cycles_through_frames() {
-        let mut s = Spinner::new();
-        assert_eq!(s.tick(), '⠋');
-        assert_eq!(s.tick(), '⠙');
-        assert_eq!(s.tick(), '⠹');
-        assert_eq!(s.tick(), '⠸');
-        assert_eq!(s.tick(), '⠼');
-        assert_eq!(s.tick(), '⠴');
-        assert_eq!(s.tick(), '⠦');
-        assert_eq!(s.tick(), '⠧');
-        assert_eq!(s.tick(), '⠇');
-        assert_eq!(s.tick(), '⠏');
-        // wraps around
-        assert_eq!(s.tick(), '⠋');
-    }
-
-    #[test]
-    fn ascii_spinner_cycles() {
-        let mut s = Spinner::ascii();
-        assert_eq!(s.tick(), '|');
-        assert_eq!(s.tick(), '/');
-        assert_eq!(s.tick(), '-');
-        assert_eq!(s.tick(), '\\');
-        assert_eq!(s.tick(), '|');
-    }
 
     #[test]
     fn format_elapsed_seconds() {

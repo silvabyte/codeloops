@@ -54,10 +54,7 @@ pub fn create_router(db: Arc<Database>) -> Router {
             get(sessions::stream_output),
         )
         // Project-scoped stats
-        .route(
-            "/api/projects/{project_id}/stats",
-            get(stats::get_stats),
-        )
+        .route("/api/projects/{project_id}/stats", get(stats::get_stats))
         .route(
             "/api/projects/{project_id}/metrics",
             get(stats::get_metrics),

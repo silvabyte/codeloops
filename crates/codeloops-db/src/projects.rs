@@ -216,8 +216,10 @@ impl<'db> Projects<'db> {
 
     /// Atomically set one project as the default (unset all others first).
     pub fn set_default(&self, id: &str) -> Result<(), rusqlite::Error> {
-        self.conn
-            .execute("UPDATE projects SET is_default = 0 WHERE is_default = 1", [])?;
+        self.conn.execute(
+            "UPDATE projects SET is_default = 0 WHERE is_default = 1",
+            [],
+        )?;
         self.conn.execute(
             "UPDATE projects SET is_default = 1 WHERE id = ?1",
             params![id],

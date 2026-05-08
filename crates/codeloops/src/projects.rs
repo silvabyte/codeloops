@@ -17,10 +17,7 @@ pub fn find_project_for_path(path: &Path, projects: &[ProjectRecord]) -> Option<
 
     projects
         .iter()
-        .filter(|p| {
-            path_str == p.path
-                || path_str.starts_with(&format!("{}/", p.path))
-        })
+        .filter(|p| path_str == p.path || path_str.starts_with(&format!("{}/", p.path)))
         .max_by_key(|p| p.path.len())
         .cloned()
 }

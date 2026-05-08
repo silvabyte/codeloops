@@ -1,54 +1,24 @@
-/// Non-TTY fallback renderer.
-///
-/// When stderr is not a TTY (piped, CI), we output sequential lines
-/// with no cursor movement, no spinner animation. Same layout structure
-/// but static output only. Respects NO_COLOR.
+//! Non-TTY fallback renderer: plain stderr lines, one per RenderEvent.
+//!
+//! Used when stderr is piped, dumb terminal, or CI. NO_COLOR honored via the
+//! `colored` crate.
+
 use std::io::{self, Write};
 
 use codeloops_logging::FileChangeType;
 
-use crate::layout::{self, content_indent, pad_label, rule, shorten_home, wrap_text, MARGIN};
-use crate::renderer::RenderEvent;
+use crate::app::{FileEvent, RenderEvent};
+use crate::layout::shorten_home;
 use crate::spinner::format_elapsed;
 
-/// Whether color is enabled (respects NO_COLOR env var and --no-color flag).
 fn use_color() -> bool {
-    // colored crate already respects NO_COLOR and CLICOLOR
     colored::control::SHOULD_COLORIZE.should_colorize()
-}
-
-/// Apply dim styling if color is enabled
-fn dim(s: &str) -> String {
-    if use_color() {
-        use colored::Colorize;
-        s.dimmed().to_string()
-    } else {
-        s.to_string()
-    }
-}
-
-fn bold(s: &str) -> String {
-    if use_color() {
-        use colored::Colorize;
-        s.bold().bright_white().to_string()
-    } else {
-        s.to_string()
-    }
 }
 
 fn green(s: &str) -> String {
     if use_color() {
         use colored::Colorize;
         s.green().to_string()
-    } else {
-        s.to_string()
-    }
-}
-
-fn red(s: &str) -> String {
-    if use_color() {
-        use colored::Colorize;
-        s.red().to_string()
     } else {
         s.to_string()
     }
@@ -63,11 +33,33 @@ fn yellow(s: &str) -> String {
     }
 }
 
-/// Fallback renderer for non-TTY environments.
+fn red(s: &str) -> String {
+    if use_color() {
+        use colored::Colorize;
+        s.red().to_string()
+    } else {
+        s.to_string()
+    }
+}
+
+fn dim(s: &str) -> String {
+    if use_color() {
+        use colored::Colorize;
+        s.dimmed().to_string()
+    } else {
+        s.to_string()
+    }
+}
+
+/// Carries enough state for ActorCompleted+GitDiff merging in the same shape
+/// the TTY path uses.
 pub struct FallbackRenderer {
     max_iterations: Option<usize>,
-    actor_agent_name: Option<String>,
-    critic_agent_name: Option<String>,
+    actor: Option<String>,
+    critic: Option<String>,
+    pending_actor: Option<(i32, f64)>,
+    iter_files: Vec<FileEvent>,
+    iter: usize,
 }
 
 impl Default for FallbackRenderer {
@@ -80,386 +72,166 @@ impl FallbackRenderer {
     pub fn new() -> Self {
         Self {
             max_iterations: None,
-            actor_agent_name: None,
-            critic_agent_name: None,
+            actor: None,
+            critic: None,
+            pending_actor: None,
+            iter_files: Vec::new(),
+            iter: 0,
         }
     }
 
-    pub fn set_max_iterations(&mut self, max: Option<usize>) {
-        self.max_iterations = max;
-    }
-
-    pub fn set_agent_names(&mut self, actor: &str, critic: &str) {
-        self.actor_agent_name = Some(actor.to_string());
-        self.critic_agent_name = Some(critic.to_string());
-    }
-
-    pub fn render(&self, event: &RenderEvent) {
+    pub fn render(&mut self, ev: &RenderEvent) {
         let mut w = io::stderr();
-        match event {
+        match ev {
             RenderEvent::Header {
                 prompt,
                 working_dir,
             } => {
-                let _ = writeln!(w);
-                let title_rule = rule("codeloops ".len() + 2);
-                let _ = writeln!(w, "{}{} {}", MARGIN, bold("codeloops"), dim(&title_rule));
-                let _ = writeln!(w);
-
-                let dir_display = shorten_home(&working_dir.display().to_string());
-                let width = layout::term_width();
-
-                // prompt (may wrap)
-                let prompt_lines = wrap_text(prompt, width);
-                for (i, line) in prompt_lines.iter().enumerate() {
-                    if i == 0 {
-                        let _ = writeln!(w, "{}{}{}", MARGIN, dim(&pad_label("prompt")), line);
+                let dir = shorten_home(&working_dir.display().to_string());
+                let _ = writeln!(w, "codeloops: {} ({})", prompt, dir);
+                if let (Some(a), Some(c)) = (&self.actor, &self.critic) {
+                    if let Some(max) = self.max_iterations {
+                        let _ = writeln!(w, "agents: {} -> {} (max {} iterations)", a, c, max);
                     } else {
-                        let _ = writeln!(w, "{}{}", content_indent(), line);
+                        let _ = writeln!(w, "agents: {} -> {}", a, c);
                     }
                 }
-
-                let _ = writeln!(w, "{}{}{}", MARGIN, dim(&pad_label("dir")), dir_display);
-
-                // agents line
-                if let (Some(actor), Some(critic)) =
-                    (&self.actor_agent_name, &self.critic_agent_name)
-                {
-                    let agents_str = if let Some(max) = self.max_iterations {
-                        format!("{} → {} · {} iterations max", actor, critic, max)
-                    } else {
-                        format!("{} → {}", actor, critic)
-                    };
-                    let _ = writeln!(w, "{}{}{}", MARGIN, dim(&pad_label("agents")), agents_str);
-                }
-                let _ = writeln!(w);
-                let _ = writeln!(w);
             }
-
+            RenderEvent::SetMaxIterations(max) => {
+                self.max_iterations = *max;
+            }
+            RenderEvent::SetAgentNames { actor, critic } => {
+                self.actor = Some(actor.clone());
+                self.critic = Some(critic.clone());
+            }
             RenderEvent::IterationStart { iteration } => {
-                let iter_display = if let Some(max) = self.max_iterations {
-                    format!("{} of {}", iteration, max)
+                self.iter = *iteration;
+                self.iter_files.clear();
+                if let Some(max) = self.max_iterations {
+                    let _ = writeln!(w, "--- iteration {} of {} ---", iteration, max);
                 } else {
-                    format!("{}", iteration)
-                };
-                let iter_rule = rule(iter_display.len() + 3);
-                let _ = writeln!(w, "{}{} {}", MARGIN, bold(&iter_display), dim(&iter_rule));
-                let _ = writeln!(w);
+                    let _ = writeln!(w, "--- iteration {} ---", iteration);
+                }
             }
-
             RenderEvent::ActorStart => {
-                let _ = writeln!(w, "{}{}...", MARGIN, dim(&pad_label("actor")),);
+                let _ = writeln!(w, "actor: started");
             }
-
-            RenderEvent::FileChange(file_event) => {
-                let sigil = match file_event.change_type {
+            RenderEvent::FileChange(fe) => {
+                let sigil = match fe.change_type {
                     FileChangeType::Created => green("+"),
                     FileChangeType::Modified => yellow("~"),
                     FileChangeType::Deleted => red("-"),
                 };
-                let _ = writeln!(w, "{}{} {}", content_indent(), sigil, file_event.path);
+                self.iter_files.push(fe.clone());
+                let _ = writeln!(w, "  {} {}", sigil, fe.path);
             }
-
-            RenderEvent::ActorDone {
-                duration_secs,
+            RenderEvent::ActorCompleted {
                 exit_code,
+                duration_secs,
+            } => {
+                self.pending_actor = Some((*exit_code, *duration_secs));
+            }
+            RenderEvent::GitDiff {
                 files_changed,
                 insertions,
                 deletions,
-                summary,
-                file_events,
             } => {
-                if *exit_code == 0 {
-                    let elapsed = format_elapsed(*duration_secs as u64);
-                    let stats = if *files_changed > 0 {
-                        format!(
-                            "{} · {} {} {} {}",
-                            elapsed,
-                            files_changed,
-                            if *files_changed == 1 { "file" } else { "files" },
-                            green(&format!("+{}", insertions)),
-                            red(&format!("-{}", deletions)),
-                        )
-                    } else {
-                        format!("{} · no changes", elapsed)
-                    };
+                let (exit_code, duration_secs) = self.pending_actor.take().unwrap_or((0, 0.0));
+                let elapsed = format_elapsed(duration_secs as u64);
+                if exit_code == 0 {
                     let _ = writeln!(
                         w,
-                        "{}{}{} {}",
-                        MARGIN,
-                        dim(&pad_label("actor")),
-                        green("✓"),
-                        dim(&stats),
+                        "actor: done in {} · {} files {} {}",
+                        elapsed,
+                        files_changed,
+                        green(&format!("+{}", insertions)),
+                        red(&format!("-{}", deletions)),
                     );
                 } else {
-                    let _ = writeln!(
-                        w,
-                        "{}{}{} exit {}",
-                        MARGIN,
-                        dim(&pad_label("actor")),
-                        red("✗"),
-                        exit_code,
-                    );
+                    let _ = writeln!(w, "actor: failed exit {} in {}", exit_code, elapsed);
                 }
-                let _ = writeln!(w);
-
-                // File events
-                for fe in file_events {
-                    let sigil = match fe.change_type {
-                        FileChangeType::Created => green("+"),
-                        FileChangeType::Modified => yellow("~"),
-                        FileChangeType::Deleted => red("-"),
-                    };
-                    let _ = writeln!(w, "{}{} {}", content_indent(), sigil, fe.path);
-                }
-                if !file_events.is_empty() {
-                    let _ = writeln!(w);
-                }
-
-                // Summary
-                if let Some(text) = summary {
-                    if !text.is_empty() {
-                        let width = layout::term_width();
-                        let lines = wrap_text(text, width);
-                        for line in &lines {
-                            let _ = writeln!(w, "{}{}", content_indent(), dim(line));
-                        }
-                        let _ = writeln!(w);
-                    }
-                }
-                let _ = writeln!(w);
             }
-
             RenderEvent::CriticStart => {
-                let _ = writeln!(w, "{}{}...", MARGIN, dim(&pad_label("critic")),);
+                let _ = writeln!(w, "critic: started");
             }
-
-            RenderEvent::CriticDone {
-                duration_secs,
-                decision_text: _,
-                feedback,
-            } => {
-                let elapsed = format_elapsed(*duration_secs as u64);
-                let _ = writeln!(
-                    w,
-                    "{}{}{} {} · {}",
-                    MARGIN,
-                    dim(&pad_label("critic")),
-                    green("✓"),
-                    dim("done"),
-                    dim(&elapsed),
-                );
-                let _ = writeln!(w);
-
-                if let Some(text) = feedback {
-                    if !text.is_empty() {
-                        let width = layout::term_width();
-                        let lines = wrap_text(text, width);
-                        for line in &lines {
-                            let _ = writeln!(w, "{}{}", content_indent(), dim(line));
-                        }
-                        let _ = writeln!(w);
-                    }
+            RenderEvent::CriticDone => {
+                let _ = writeln!(w, "critic: done");
+            }
+            RenderEvent::CriticContinue { feedback } => match feedback {
+                Some(text) if !text.is_empty() => {
+                    let _ = writeln!(w, "critic: continue · {}", text);
                 }
-            }
-
-            RenderEvent::CriticContinue {
-                duration_secs,
-                feedback,
-            } => {
-                let elapsed = format_elapsed(*duration_secs as u64);
-                let _ = writeln!(
-                    w,
-                    "{}{}{} {} · {}",
-                    MARGIN,
-                    dim(&pad_label("critic")),
-                    yellow("→"),
-                    yellow("continue"),
-                    dim(&elapsed),
-                );
-                let _ = writeln!(w);
-
-                if let Some(text) = feedback {
-                    if !text.is_empty() {
-                        let width = layout::term_width();
-                        let lines = wrap_text(text, width);
-                        for line in &lines {
-                            let _ = writeln!(w, "{}{}", content_indent(), dim(line));
-                        }
-                        let _ = writeln!(w);
-                    }
+                _ => {
+                    let _ = writeln!(w, "critic: continue");
                 }
-                let _ = writeln!(w);
-            }
-
-            RenderEvent::CriticError {
-                duration_secs,
-                error,
-            } => {
-                let elapsed = format_elapsed(*duration_secs as u64);
-                let _ = writeln!(
-                    w,
-                    "{}{}{} {} · {}",
-                    MARGIN,
-                    dim(&pad_label("critic")),
-                    red("✗"),
-                    red("error"),
-                    dim(&elapsed),
-                );
-                let _ = writeln!(w);
-
-                if let Some(text) = error {
-                    let width = layout::term_width();
-                    let lines = wrap_text(text, width);
-                    for line in &lines {
-                        let _ = writeln!(w, "{}{}", content_indent(), dim(line));
-                    }
-                    let _ = writeln!(w);
+            },
+            RenderEvent::CriticError { message } => match message {
+                Some(text) if !text.is_empty() => {
+                    let _ = writeln!(w, "critic: error · {}", text);
                 }
-            }
-
+                _ => {
+                    let _ = writeln!(w, "critic: error");
+                }
+            },
             RenderEvent::FinalSuccess {
                 iterations,
                 total_duration_secs,
-                confidence,
                 summary,
             } => {
-                let final_rule = rule(2);
-                let _ = writeln!(w, "{}{}", MARGIN, dim(&final_rule));
-                let _ = writeln!(w);
-
-                let elapsed = format_elapsed(*total_duration_secs as u64);
-                let iter_word = if *iterations == 1 {
-                    "iteration"
-                } else {
-                    "iterations"
-                };
                 let _ = writeln!(
                     w,
-                    "{}{} · {} {} · {}",
-                    MARGIN,
-                    green(&bold("✓ done")),
+                    "=== {} · {} iterations · {} ===",
+                    green("complete"),
                     iterations,
-                    iter_word,
-                    dim(&elapsed),
+                    format_elapsed(*total_duration_secs as u64),
                 );
-
-                if let Some(conf) = confidence {
-                    let conf_text = if *conf >= 0.9 {
-                        "high"
-                    } else if *conf >= 0.7 {
-                        "medium"
-                    } else {
-                        "low"
-                    };
-                    let _ = writeln!(
-                        w,
-                        "{}{}{}",
-                        MARGIN,
-                        dim(&pad_label("confidence")),
-                        dim(conf_text),
-                    );
-                }
-                let _ = writeln!(w);
-
-                if let Some(text) = summary {
-                    let width = layout::term_width();
-                    let lines = wrap_text(text, width);
-                    for line in &lines {
-                        let _ = writeln!(w, "{}{}", content_indent(), dim(line));
+                if let Some(s) = summary {
+                    if !s.is_empty() {
+                        let _ = writeln!(w, "{}", dim(s));
                     }
-                    let _ = writeln!(w);
                 }
             }
-
             RenderEvent::FinalMaxIterations {
                 iterations,
                 total_duration_secs,
             } => {
-                let final_rule = rule(2);
-                let _ = writeln!(w, "{}{}", MARGIN, dim(&final_rule));
-                let _ = writeln!(w);
-
-                let elapsed = format_elapsed(*total_duration_secs as u64);
                 let _ = writeln!(
                     w,
-                    "{}{} · {} iterations · {}",
-                    MARGIN,
-                    yellow("⚠ incomplete"),
+                    "=== {} · {} iterations · {} ===",
+                    yellow("incomplete"),
                     iterations,
-                    dim(&elapsed),
+                    format_elapsed(*total_duration_secs as u64),
                 );
-                let _ = writeln!(w);
-                let _ = writeln!(
-                    w,
-                    "{}{}",
-                    content_indent(),
-                    dim("The task may not be fully complete.")
-                );
-                let _ = writeln!(w);
             }
-
             RenderEvent::FinalInterrupted {
                 iterations,
                 total_duration_secs,
             } => {
-                let final_rule = rule(2);
-                let _ = writeln!(w, "{}{}", MARGIN, dim(&final_rule));
-                let _ = writeln!(w);
-
-                let elapsed = format_elapsed(*total_duration_secs as u64);
-                let iter_word = if *iterations == 1 {
-                    "iteration"
-                } else {
-                    "iterations"
-                };
                 let _ = writeln!(
                     w,
-                    "{}{} · {} {} · {}",
-                    MARGIN,
-                    yellow("⏸ interrupted"),
+                    "=== {} · {} iterations · {} ===",
+                    yellow("interrupted"),
                     iterations,
-                    iter_word,
-                    dim(&elapsed),
+                    format_elapsed(*total_duration_secs as u64),
                 );
-                let _ = writeln!(w);
             }
-
             RenderEvent::FinalFailed {
                 iterations,
                 total_duration_secs,
                 error,
             } => {
-                let final_rule = rule(2);
-                let _ = writeln!(w, "{}{}", MARGIN, dim(&final_rule));
-                let _ = writeln!(w);
-
-                let elapsed = format_elapsed(*total_duration_secs as u64);
-                let iter_word = if *iterations == 1 {
-                    "iteration"
-                } else {
-                    "iterations"
-                };
                 let _ = writeln!(
                     w,
-                    "{}{} · {} {} · {}",
-                    MARGIN,
-                    red("✗ failed"),
+                    "=== {} · {} iterations · {} ===",
+                    red("failed"),
                     iterations,
-                    iter_word,
-                    dim(&elapsed),
+                    format_elapsed(*total_duration_secs as u64),
                 );
-                let _ = writeln!(w);
-
-                if let Some(text) = error {
-                    let width = layout::term_width();
-                    let lines = wrap_text(text, width);
-                    for line in &lines {
-                        let _ = writeln!(w, "{}{}", content_indent(), dim(line));
-                    }
-                    let _ = writeln!(w);
+                if let Some(e) = error {
+                    let _ = writeln!(w, "{}", red(e));
                 }
             }
         }
+        let _ = w.flush();
     }
 }
