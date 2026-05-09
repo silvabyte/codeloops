@@ -247,6 +247,10 @@ pub(crate) async fn drive_event_loop<B>(
 {
     let mut tick = tokio::time::interval(tick_period);
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    // Log only the *first* io error we see from the backend so a disconnected
+    // terminal doesn't spam logs at every tick. After the first failure the
+    // user already knows the TUI is broken.
+    let mut io_err_logged = false;
 
     loop {
         tokio::select! {
@@ -259,13 +263,23 @@ pub(crate) async fn drive_event_loop<B>(
                         for line in scrollback {
                             let lines = render_scrollback_line(&line);
                             let height = lines.len() as u16;
-                            let _ = terminal.insert_before(height, |buf| {
+                            if let Err(e) = terminal.insert_before(height, |buf| {
                                 use ratatui::widgets::{Paragraph, Widget};
                                 let para = Paragraph::new(lines);
                                 para.render(buf.area, buf);
-                            });
+                            }) {
+                                if !io_err_logged {
+                                    tracing::debug!(error = %e, "tui: insert_before failed");
+                                    io_err_logged = true;
+                                }
+                            }
                         }
-                        let _ = terminal.draw(|f| render::draw(state, f));
+                        if let Err(e) = terminal.draw(|f| render::draw(state, f)) {
+                            if !io_err_logged {
+                                tracing::debug!(error = %e, "tui: terminal.draw failed");
+                                io_err_logged = true;
+                            }
+                        }
                         if matches!(state.phase, Phase::Done) {
                             break;
                         }
@@ -276,7 +290,12 @@ pub(crate) async fn drive_event_loop<B>(
                 if state.is_active() {
                     state.tick();
                 }
-                let _ = terminal.draw(|f| render::draw(state, f));
+                if let Err(e) = terminal.draw(|f| render::draw(state, f)) {
+                    if !io_err_logged {
+                        tracing::debug!(error = %e, "tui: terminal.draw failed");
+                        io_err_logged = true;
+                    }
+                }
             }
         }
     }

@@ -13,3 +13,4 @@ ratatui = "0.29"
 tokio.workspace = true
 colored.workspace = true
 dirs.workspace = true
+tracing.workspace = true
