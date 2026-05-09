@@ -276,6 +276,10 @@ impl AppState {
                     stats,
                     status,
                 });
+                // Actor phase is over; clear the live spinner until CriticStart
+                // arrives so the status line doesn't keep ticking up.
+                self.phase = Phase::Idle;
+                self.phase_started_at = None;
             }
 
             RenderEvent::CriticStart => {
@@ -494,6 +498,32 @@ mod tests {
             }
             _ => panic!("expected IterationDone"),
         }
+    }
+
+    #[test]
+    fn apply_git_diff_clears_actor_phase_to_idle() {
+        let mut s = AppState::new();
+        s.apply(RenderEvent::IterationStart { iteration: 1 });
+        s.apply(RenderEvent::ActorStart);
+        assert_eq!(s.phase, Phase::Actor);
+        assert!(s.phase_started_at.is_some());
+        s.apply(RenderEvent::ActorCompleted {
+            exit_code: 0,
+            duration_secs: 1.0,
+        });
+        // ActorCompleted alone must not flip the phase back to idle —
+        // the IterationDone scrollback hasn't been pushed yet.
+        assert_eq!(s.phase, Phase::Actor);
+        s.apply(RenderEvent::GitDiff {
+            files_changed: 0,
+            insertions: 0,
+            deletions: 0,
+        });
+        // After GitDiff, we've emitted IterationDone and the actor work
+        // is over — the live status line should stop showing
+        // "actor working · Ns" until CriticStart arrives.
+        assert_eq!(s.phase, Phase::Idle);
+        assert!(s.phase_started_at.is_none());
     }
 
     #[test]
