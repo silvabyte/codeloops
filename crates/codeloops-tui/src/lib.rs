@@ -395,6 +395,7 @@ fn render_scrollback_line(line: &ScrollbackLine) -> Vec<Line<'static>> {
             prompt,
             error,
             summary,
+            confidence,
         } => {
             let elapsed_s = spinner::format_elapsed(total_elapsed.as_secs());
             let (sigil, color, label) = match kind {
@@ -403,19 +404,30 @@ fn render_scrollback_line(line: &ScrollbackLine) -> Vec<Line<'static>> {
                 FinalKind::Interrupted => ("⏸", Color::Yellow, "codeloops interrupted"),
                 FinalKind::Failed => ("✗", Color::Red, "codeloops failed"),
             };
-            let mut lines = vec![
-                Line::from(""),
-                Line::from(vec![
-                    Span::raw("  "),
-                    Span::styled(sigil, Style::default().fg(color)),
-                    Span::raw(" "),
-                    Span::styled(
-                        label,
-                        Style::default().fg(color).add_modifier(Modifier::BOLD),
-                    ),
-                    Span::styled(format!(" · {} · {} iterations", elapsed_s, iterations), dim),
-                ]),
+            let mut header_spans = vec![
+                Span::raw("  "),
+                Span::styled(sigil, Style::default().fg(color)),
+                Span::raw(" "),
+                Span::styled(
+                    label,
+                    Style::default().fg(color).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(format!(" · {} · {} iterations", elapsed_s, iterations), dim),
             ];
+            if let Some(conf) = confidence {
+                let bucket = if *conf >= 0.9 {
+                    "high"
+                } else if *conf >= 0.7 {
+                    "medium"
+                } else {
+                    "low"
+                };
+                header_spans.push(Span::styled(
+                    format!(" · confidence {}", bucket),
+                    dim,
+                ));
+            }
+            let mut lines = vec![Line::from(""), Line::from(header_spans)];
             if !prompt.is_empty() {
                 lines.push(Line::from(vec![
                     Span::raw("    "),

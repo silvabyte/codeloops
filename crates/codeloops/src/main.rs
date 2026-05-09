@@ -753,12 +753,14 @@ fn print_outcome(outcome: &LoopOutcome, renderer: Option<&SessionRenderer>, form
                 LoopOutcome::Success {
                     iterations,
                     summary,
+                    confidence,
                     total_duration_secs,
                     ..
                 } => RenderEvent::FinalSuccess {
                     iterations: *iterations,
                     total_duration_secs: *total_duration_secs,
                     summary: Some(summary.clone()),
+                    confidence: Some(*confidence),
                 },
                 LoopOutcome::MaxIterationsReached {
                     iterations,

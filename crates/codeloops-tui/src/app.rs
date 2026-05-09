@@ -84,6 +84,7 @@ pub enum ScrollbackLine {
         prompt: String,
         error: Option<String>,
         summary: Option<String>,
+        confidence: Option<f64>,
     },
 }
 
@@ -126,6 +127,7 @@ pub enum RenderEvent {
         iterations: usize,
         total_duration_secs: f64,
         summary: Option<String>,
+        confidence: Option<f64>,
     },
     FinalMaxIterations {
         iterations: usize,
@@ -315,6 +317,7 @@ impl AppState {
                 iterations,
                 total_duration_secs,
                 summary,
+                confidence,
             } => {
                 self.phase = Phase::Done;
                 out.push(ScrollbackLine::Final {
@@ -324,6 +327,7 @@ impl AppState {
                     prompt: self.prompt.clone(),
                     error: None,
                     summary,
+                    confidence,
                 });
             }
 
@@ -339,6 +343,7 @@ impl AppState {
                     prompt: self.prompt.clone(),
                     error: None,
                     summary: None,
+                    confidence: None,
                 });
             }
 
@@ -354,6 +359,7 @@ impl AppState {
                     prompt: self.prompt.clone(),
                     error: None,
                     summary: None,
+                    confidence: None,
                 });
             }
 
@@ -370,6 +376,7 @@ impl AppState {
                     prompt: self.prompt.clone(),
                     error,
                     summary: None,
+                    confidence: None,
                 });
             }
         }
@@ -522,6 +529,7 @@ mod tests {
             iterations: 3,
             total_duration_secs: 60.0,
             summary: Some("done".into()),
+            confidence: Some(0.95),
         });
         assert_eq!(s.phase, Phase::Done);
         assert_eq!(lines.len(), 1);

@@ -177,6 +177,7 @@ impl FallbackRenderer {
                 iterations,
                 total_duration_secs,
                 summary,
+                confidence,
             } => {
                 let _ = writeln!(
                     w,
@@ -185,6 +186,16 @@ impl FallbackRenderer {
                     iterations,
                     format_elapsed(*total_duration_secs as u64),
                 );
+                if let Some(conf) = confidence {
+                    let bucket = if *conf >= 0.9 {
+                        "high"
+                    } else if *conf >= 0.7 {
+                        "medium"
+                    } else {
+                        "low"
+                    };
+                    let _ = writeln!(w, "{}", dim(&format!("confidence {}", bucket)));
+                }
                 if let Some(s) = summary {
                     if !s.is_empty() {
                         let _ = writeln!(w, "{}", dim(s));
