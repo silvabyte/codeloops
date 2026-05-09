@@ -16,9 +16,8 @@ use codeloops_logging::FileChangeType;
 /// A classified file change event.
 #[derive(Debug, Clone)]
 pub struct WatcherEvent {
-    pub path: PathBuf,
     pub change_type: FileChangeType,
-    /// Path relative to the working directory for display
+    /// Path relative to the working directory for display.
     pub relative_path: String,
 }
 
@@ -94,7 +93,6 @@ pub fn start_watching(
                     .to_string();
 
                 let _ = tx.send(WatcherEvent {
-                    path: path.clone(),
                     change_type,
                     relative_path: relative,
                 });
