@@ -21,7 +21,7 @@ pub mod render;
 pub mod spinner;
 
 use std::io::{self, IsTerminal, Stderr};
-use std::sync::Mutex;
+use std::sync::{Mutex, Once};
 use std::time::Duration;
 
 use crossterm::{
@@ -208,6 +208,10 @@ async fn run_tty(mut rx: mpsc::UnboundedReceiver<Msg>) {
         run_fallback(rx).await;
         return;
     }
+    // Install a panic hook (once) that restores the terminal before unwinding,
+    // so a panic between enable_raw_mode and the normal cleanup path doesn't
+    // leave the user's shell in raw mode + invisible cursor.
+    install_panic_hook();
     let backend = CrosstermBackend::new(io::stderr());
     let viewport = Viewport::Inline(initial_viewport_height());
     let mut terminal = match Terminal::with_options(backend, TerminalOptions { viewport }) {
@@ -262,6 +266,23 @@ async fn run_tty(mut rx: mpsc::UnboundedReceiver<Msg>) {
     let _ = disable_raw_mode();
     let mut stderr: Stderr = io::stderr();
     let _ = crossterm::execute!(stderr, cursor::Show);
+}
+
+/// Install a panic hook (once per process) that restores the terminal — drops
+/// raw mode, shows the cursor — before chaining to the previous hook. Without
+/// this, a panic that unwinds past `SessionRenderer::cleanup` leaves the shell
+/// in raw mode with the cursor hidden until the user runs `reset`.
+fn install_panic_hook() {
+    static INSTALLED: Once = Once::new();
+    INSTALLED.call_once(|| {
+        let prev = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let _ = disable_raw_mode();
+            let mut stderr = io::stderr();
+            let _ = crossterm::execute!(stderr, cursor::Show);
+            prev(info);
+        }));
+    });
 }
 
 async fn run_fallback(mut rx: mpsc::UnboundedReceiver<Msg>) {
