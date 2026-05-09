@@ -1,18 +1,18 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/codeloops",
-    "crates/codeloops-core",
-    "crates/codeloops-agent",
-    "crates/codeloops-critic",
-    "crates/codeloops-db",
-    "crates/codeloops-git",
-    "crates/codeloops-logging",
-    "crates/codeloops-tui",
+  "crates/codeloops",
+  "crates/codeloops-core",
+  "crates/codeloops-agent",
+  "crates/codeloops-critic",
+  "crates/codeloops-db",
+  "crates/codeloops-git",
+  "crates/codeloops-logging",
+  "crates/codeloops-skills",
+  "crates/codeloops-tui",
+  "crates/codeloops-skills",
 ]
-exclude = [
-    "scripts/migrate_sessions_crate",
-]
+exclude = ["scripts/migrate_sessions_crate"]
 
 [workspace.package]
 version = "0.1.0"
@@ -90,3 +90,4 @@ codeloops-git = { path = "crates/codeloops-git" }
 codeloops-logging = { path = "crates/codeloops-logging" }
 codeloops-db = { path = "crates/codeloops-db" }
 codeloops-tui = { path = "crates/codeloops-tui" }
+codeloops-skills = { path = "crates/codeloops-skills" }

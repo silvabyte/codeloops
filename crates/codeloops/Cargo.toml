@@ -14,6 +14,7 @@ codeloops-core.workspace = true
 codeloops-agent.workspace = true
 codeloops-critic.workspace = true
 codeloops-git.workspace = true
+codeloops-skills.workspace = true
 codeloops-logging.workspace = true
 codeloops-db.workspace = true
 codeloops-tui.workspace = true

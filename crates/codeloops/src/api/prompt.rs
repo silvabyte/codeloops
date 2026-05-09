@@ -36,7 +36,7 @@ use tokio_stream::StreamExt;
 
 use super::prompt_instructions::get_system_instructions;
 use super::AppState;
-use crate::skills;
+use codeloops_skills::skills;
 
 // ============================================================================
 // Types

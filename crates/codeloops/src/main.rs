@@ -3,7 +3,6 @@ mod config;
 mod init;
 pub mod projects;
 mod sessions;
-pub mod skills;
 mod ui;
 
 use std::path::{Path, PathBuf};
