@@ -1,67 +1,77 @@
-# PR #50 review
+# PR review — `tui/fixed-streaming-box`
 
-## Summary
-- Signal-grade findings: 2
-- Items checked-and-OK: 8
+Three commits, ~1.4k lines net add / 1.6k lines net delete. Hard cut from a hand-rolled crossterm renderer to a ratatui inline viewport with an mpsc-driven render task. Watcher relocated from `codeloops-tui` to `codeloops-core`. Drive-by `cargo fmt` sweep across unrelated files (called out in the commit message).
 
-## Findings (signal only)
+Build, all 35 workspace tests, and `clippy --all-targets -D warnings` are green.
 
-### F1: `SpinnerState.total` is incremented every FileChange but never read
-- **Severity**: Cleanup (half-finished diff)
-- **Location**: `crates/codeloops-tui/src/renderer.rs:163` (field decl), `:329` (write site), `:435` (init in CriticStart)
-- **Reproduction**: `grep -n state\.total crates/codeloops-tui` — one write, zero reads.
-- **Why this is wrong**: The field's doc comment ("currently informational; reserved for future +N more") asserts an intention. clippy doesn't flag the unused-read because `+= 1` counts as a use. Shipping a counter that has no observable effect implies the diff is half-merged: either the streaming row should display "(+N more)" once `recent.len() == box_height`, or the field shouldn't exist. The PR clearly chose to land the truncated VecDeque view without that summary, so the field is dead state.
-- **Fix**: Remove the field and its three writes. (Applied.)
+## Verdict
 
-### F2: `fit_path_to_width` overflows term_w by one column at the narrow cliff
-- **Severity**: Correctness bug
-- **Location**: `crates/codeloops-tui/src/layout.rs:51` (the `.max(1)`)
-- **Reproduction**: `term_w = 12`. `fit_path_to_width("anything/at/all.rs", 12)` returns `"…"` (1 char). Total printed line = `CONTENT_COL(10) + sigil(1) + space(1) + "…"(1)` = **13 visible cols** on a 12-col terminal. The terminal wraps the row, the next tick's `MoveUp(box_height + 1)` is now off by one per wrapped line, and the streaming box drifts — exactly the failure mode the PR set out to eliminate.
-- **Why this is wrong**: `saturating_sub(CONTENT_COL + 2)` is the available *path budget*. When that budget is 0, there's literally no room for path bytes; the line `(indent)(sigil)(space)` already fills the row. Forcing `.max(1)` re-introduces a phantom column. The pre-fix unit test `fit_path_narrow_terminal_degrades` (layout.rs:195) actually pinned the buggy output (`"…"`) instead of the invariant the function is supposed to uphold.
-- **Fix**: Drop `.max(1)`; return an empty string when `avail == 0`. Update the narrow-terminal test to assert the new (correct) result and add a width-invariant test that exercises the cliff. The new test fails on pre-fix HEAD because at `term_w=12` the function returned `"…"`, making `total = 13 > 12`.
+Clear improvement. Architecture is cleaner (one owner of the terminal, pure `AppState`, true layering), tests went from "none on the renderer" to a smoke test against `TestBackend`, and the 12-column regression that motivated the work is now an explicit test (`renders_at_12_columns_without_panic`). A handful of small bugs and one product-visible regression below.
 
-```diff
--    let avail = term_w.saturating_sub(CONTENT_COL + 2).max(1);
--    truncate_path(path, avail)
-+    let avail = term_w.saturating_sub(CONTENT_COL + 2);
-+    if avail == 0 {
-+        return String::new();
-+    }
-+    truncate_path(path, avail)
-```
+---
 
-(Applied, plus updated `fit_path_narrow_terminal_degrades` and added `fit_path_total_visible_width_never_exceeds_term_w`.)
+## Signal
 
-## Items checked and OK
+### 1. UX regression: confidence is no longer rendered in Pretty mode (success case)
 
-1. **Cursor math under terminal scrolling**: Steady-state math holds. Walked it on a 24-row terminal with `box_height = 8`: first tick prints box+spinner (9 rows of `writeln!`), cursor lands at row R+9, next tick `MoveUp(9)` returns to row R. When the layout straddles the bottom of the viewport, exactly one scroll happens and the cursor + box both shift up by one row in lockstep, so subsequent ticks redraw cleanly. The clamp `[3, 15]` for `box_height` keeps `box_height + 1 ≤ 16`, well below any realistic terminal viewport. The pathological `term_h ≤ 4` case does still scroll-on-every-tick, but the clamp lower-bound of 3 is by design (the box would be useless smaller than 3 rows) and that terminal size is exotic.
-2. **Resize behavior**: `tick()` recomputes `term_w` (so width does adapt) but **not** `term_h`/`box_height` (captured once at `ActorStart`). This means the PR description's "next tick should pick up new width/height" claim is half-true: width yes, height no. Filed under Out-of-scope below since it is a pre-existing limitation in this code path (the prior `file_lines_below`-based math also did not react to resize), the corresponding PR-description checkbox is explicitly unchecked, and a clean fix needs a separate `last_rendered_rows` field to anchor the `MoveUp` math during a height transition (with leftover-row clearing for shrinks and a hard reset for grows).
-3. **`clear_spinner_area`**: For actor (`box_height ≥ 3`) — `MoveUp(box_height + 1)` lands at the top of the box; the `Clear + MoveDown` loop wipes every box row plus the spinner row; the trailing `MoveUp(box_height + 1)` returns the cursor to row R, exactly where `RenderEvent::ActorDone` then writes its first `writeln!` (replaces the spinner row in place). For critic (`box_height = 0`) — `total = 1`, MoveUp 1 / clear / MoveDown / MoveUp 1; cursor ends at the spinner's row, and `CriticDone`'s first `writeln!` overwrites it. Same shape as the prior code's critic path, just with `box_height + 1` in place of the special-cased `1`.
-4. **`RenderEvent::ActorDone` data source**: Only one production emit site exists: `crates/codeloops-tui/src/lib.rs:169` inside the `LogEvent::GitDiffCaptured` arm. `file_events: self.file_events.clone()` is sourced from the same `Vec<FileEvent>` that gets pushed inside `LogEvent::FileChanged` (lib.rs:148). So the canonical accumulator lives in `SessionRenderer`, not in the renderer; dropping the `current_file_events` fallback in `TuiRenderer` is safe — both sources were always populated in lockstep, the renderer copy was redundant.
-5. **Tick / FileChange concurrency**: Both paths funnel through `tui_renderer: Arc<Mutex<SessionRenderer>>`. The 100ms ticker (main.rs:699) calls `r.tick()` inside `tui_for_tick.lock()`. The logger callback (main.rs:507) calls `r.on_log_event(event)` inside `renderer_for_callback.lock()` — and `on_log_event` is what dispatches `RenderEvent::FileChange`. Same Mutex, no race on `state.recent`.
-6. **`total` field**: Fixed (F1).
-7. **Path truncation correctness**: `truncate_path` uses `chars().count()` / `chars().skip()`, which is correct at the codepoint level (no byte-slice panic). Display-width vs char-count is a known imperfection for CJK / combining-character paths but it is pre-existing and not introduced or aggravated by this PR. ANSI escapes don't enter `path` because the sigil is appended after truncation. The off-by-one cliff is fixed (F2).
-8. **`\r` + `writeln!` pattern**: After `Clear(CurrentLine)` the cursor stays at its prior column, so the leading `\r` is load-bearing only if we entered `tick()` with the cursor at non-zero column. In the established invariant the cursor is always at column 0 (each prior `writeln!`'s `\n` lands there, and `MoveUp` does not move the column), so `\r` is defensive but not needed. Harmless on Windows: cooked-mode `\n` already gets `\r` translation, and an explicit leading `\r` just re-zeros the column we're already at.
-9. **Drop / Ctrl+C cleanup**: `cleanup()` is unchanged — only restores cursor visibility. The Ctrl+C handler in main.rs:680 calls `cleanup()` (not `clear_spinner_area`), so the box+spinner remain in scrollback after interrupt. Same behavior as pre-PR; not a regression.
-10. **`MAX_FILE_EVENTS` overloading**: The constant is now used in exactly one place (final-list cap in `RenderEvent::ActorDone`). The doc comment "Max file events shown before collapsing" still describes that use case (collapsed via `… and N more files`). `COLLAPSED_SHOW = 12` is now unused at runtime but is `pub` so removing it is a public-API change — out of scope.
+Old `RenderEvent::FinalSuccess` carried `confidence: Option<f64>` and the renderer printed `confidence high|medium|low` (`crates/codeloops-tui/src/renderer.rs:564-595` on `main`).
 
-## Out of scope / explicitly rejected as noise
+The new `RenderEvent::FinalSuccess` (`crates/codeloops-tui/src/app.rs:125-129`) drops `confidence`, and `main.rs` removed the field from the variant it constructs (`crates/codeloops/src/main.rs:797-810`). The `ScrollbackLine::Final` rendering in `crates/codeloops-tui/src/lib.rs:391-443` does not surface it either.
 
-- **Vertical resize mid-actor not handled** (`renderer.rs:217`, `:313` capture-once). Pre-existing limitation; PR description's checkbox for this case is unchecked, and a correct fix requires `last_rendered_rows` tracking with shrink-clear and grow-reset logic. Recommend a follow-up: store `last_rendered_rows: usize` on `SpinnerState`, recompute `stream_box_height()` at the top of `tick()`, MoveUp by `last_rendered_rows + 1`, and on a height change clear the old footprint via the `clear_spinner_area`-style dance and reset `printed = false` so the next render paints fresh.
-- **`COLLAPSED_SHOW` is dead at runtime** (`layout.rs:25`). `pub` const; removing is an API break. Out of scope.
-- **`term_h ≤ 4` causes per-tick scroll cascade** because the `[3, 15]` clamp's lower bound is 3 (so layout = 4 rows). Not realistic; user with a 3-row terminal has bigger problems.
-- **`truncate_path` uses codepoint count, not display width**, so wide CJK or combining characters can still over-/under-fill by 1-2 cols. Pre-existing; unchanged by this PR.
-- All formatting / rustfmt sweep changes in `fallback.rs`, `lib.rs`, `watcher.rs` — cosmetic.
+The legacy non-Pretty branch in `print_outcome` still prints `Confidence: 95%` (`crates/codeloops/src/main.rs:821-826`), so this is a Pretty-only regression. The data still exists on `LoopOutcome::Success` and is persisted to the DB. If this is intentional pruning, fine — flag it in the commit message; if not, plumb `confidence` back through `FinalSuccess` and add a span to `ScrollbackLine::Final`.
 
-## Reproducer for F2 (terminal cursor math is hard to unit-test directly)
+### 2. Spinner keeps showing "actor working · Ns" after the actor finished
 
-```bash
-# Open a terminal sized to exactly 12 columns wide:
-printf '\e[8;30;12t'
-# Run codeloops with a TTY-attached pretty renderer and any prompt
-# that triggers an actor file write. The streaming box's first event
-# row prints `          + …` (13 cols) on a 12-col terminal, wraps,
-# and from then on the spinner+box stutter as MoveUp drifts.
-```
+`RenderEvent::ActorCompleted` only stashes `(exit_code, duration_secs)` into `pending_actor_done` (`app.rs:245-250`). The follow-up `RenderEvent::GitDiff` emits the `IterationDone` scrollback line but never resets `self.phase` or `self.phase_started_at` (`app.rs:252-277`). `phase` only flips when `RenderEvent::CriticStart` arrives.
 
-After the fix, the line becomes `          + ` (12 cols, sigil + trailing space, empty path) — the row fits and redraws stay anchored.
+Effect: between `ActorCompleted` and the orchestrator emitting `CriticStarted`, the live status line keeps rendering `actor working · X` with `X` still growing. It's usually a sub-second gap, but if anything between the two takes a beat (e.g. git diff capture on a large repo) it shows. Easy fix in `app.rs:252-277`: set `self.phase = Phase::Idle; self.phase_started_at = None;` after pushing `IterationDone`.
+
+### 3. Long file paths get hard-clipped instead of ellipsized
+
+The old code had `fit_path_to_width` (the bug fixed in `1cc7a53`) to truncate paths to fit. The new `render::draw` just emits `Span::raw(fe.path.clone())` (`render.rs:111`) and lets ratatui clip the line at the viewport edge.
+
+That's fine for short paths and 80+ col terminals. For a deeply nested path on a narrow split, the user sees `crates/codeloops-tui/src/r` with no signal that it's truncated — vs. the old `…/codeloops-tui/src/render.rs`. Minor UX regression; worth restoring an ellipsizing helper (or using `ratatui::widgets::List` with `HighlightSpacing`-style truncation hooks) if you care about narrow terminals.
+
+### 4. Dead state in `FallbackRenderer`
+
+`FallbackRenderer.iter_files` is appended to in `RenderEvent::FileChange` and cleared in `IterationStart`, but nothing reads it (`fallback.rs:61, 78, 109, 125`). Looks like leftover scaffolding from when the fallback summarized files at iteration end. Drop the field, the `Vec::new()` init, the `clear()`, and the `push(fe.clone())` — the `clone` even removes a small allocation per file event.
+
+### 5. `WatcherEvent.path` is unused
+
+`crates/codeloops-core/src/watcher.rs:19` defines `path: PathBuf` and `relative_path: String`. The only consumer (`loop_runner.rs:307`) reads `event.relative_path`. The `path` field can be removed (or `path: PathBuf::from(&relative_path)` reconstructed at the call site if a future caller needs it). Trivial.
+
+### 6. Drop-on-panic can leave the terminal in raw mode
+
+`SessionRenderer::Drop` only sends `Msg::Shutdown` (`lib.rs:188-193`); it doesn't await the render task. The render task is what calls `disable_raw_mode` and `cursor::Show`. On the happy path, `main.rs` calls `cleanup().await` which awaits the join handle and is fine.
+
+If a panic unwinds past `cleanup().await` (e.g. between `runner.run().await?` returning Ok and the cleanup line), `Drop` queues Shutdown but the process exits before the render task's epilogue runs — terminal stays in raw mode. Mitigation: use a panic hook that disables raw mode + shows the cursor, or scope-guard the raw-mode bracket. Low likelihood, but the failure mode is "user's shell is unusable until they `reset`."
+
+### 7. `run_tty` is untested
+
+`render_smoke.rs` exercises `render::draw` against `TestBackend` (good, this is the bit most likely to break). The `tokio::select!` loop in `run_tty` — channel draining, `insert_before` of scrollback lines, the `Phase::Done → break` shortcut, the `tick.tick()` path — has no coverage. A test that drives a `Terminal<TestBackend>` through a sequence of `RenderEvent`s would catch ordering regressions (e.g. forgetting to flush a scrollback line before the final draw).
+
+### 8. Silent `_ =` on `terminal.draw` and `terminal.insert_before`
+
+`lib.rs:237, 243, 254, 260` all swallow the `io::Result`. If the backend disconnects mid-loop, the render task keeps spinning, dropping every frame on the floor. Not a correctness issue, but a `tracing::debug!` on first-error would help diagnose "TUI froze" reports.
+
+### 9. Prompt area is hard-capped at two visual rows
+
+`render.rs:28` reserves `Constraint::Length(2)` for the wrapped prompt. With `Wrap { trim: true }` over `(width - 2)` columns, that's enough for ~150 chars at 80 cols, but a long natural-language prompt will get clipped without an indicator. If you want to keep it bounded, append a `…` marker when the wrapped output would exceed two rows. If not, `Constraint::Min(1)` with a sensible upper bound would auto-grow.
+
+### 10. Architectural win (worth calling out)
+
+The watcher relocation reverses a layering inversion: `codeloops-core` no longer depends on `codeloops-tui`. The dependency graph now flows `tui → logging` and `core → logging`, with `tui` as a leaf. Worth keeping that invariant; consider adding a `cargo deny` rule or a comment in `codeloops-core/Cargo.toml` to prevent future regressions.
+
+---
+
+## Noise (filtered out)
+
+These looked suspicious on first read but turned out to be fine:
+
+- The `Mutex<Option<JoinHandle<()>>>` on `SessionRenderer.handle` — `cleanup` is `&self` and idempotent; std mutex is held only across a `take()`, the await happens after the lock is dropped. Correct.
+- `state.tick()` is only called when `state.is_active()` — intentional, the spinner shouldn't animate when there's no spinner shown.
+- `initial_viewport_height` clamps at min 8 even on tiny terminals — ratatui's `autoresize` handles real-time resize, and the 8-row minimum is a "won't fit cleanly" edge case rather than a bug.
+- The reformatting in `crates/codeloops-db/src/projects.rs`, `crates/codeloops/src/api/{extractors,mod,prompt}.rs`, `crates/codeloops/src/{projects,ui}.rs`, `crates/codeloops-logging/src/{events,lib}.rs`, and `crates/codeloops/src/main.rs` non-TUI sections — all `cargo fmt --all` output, called out in the commit message.
+- `Paragraph::clone()` at `render.rs:63` — micro; the original isn't reused, but it's a single Paragraph clone per frame, not worth a diff.
+- Order between `SetAgentNames` and `Header` in the FIFO channel — verified that `main.rs` calls `set_agent_names` before `runner.run()` emits `LoopStarted`, so by the time the render task reads `Header`, agent names are already in `AppState`.
+- `LogEvent::ActorOutput` / `AgentStreamLine` falling through to `{}` in `on_log_event` — those streams are persisted by the logger; the TUI explicitly doesn't display them.
