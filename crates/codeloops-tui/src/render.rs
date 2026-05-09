@@ -11,9 +11,14 @@ use ratatui::{
 use codeloops_logging::FileChangeType;
 
 use crate::app::{AppState, Phase};
+use crate::layout::truncate_path;
 use crate::spinner::{format_elapsed, BRAILLE_FRAMES};
 
 const MARGIN: &str = "  ";
+/// Indent before the file row sigil ("     " = 5 spaces).
+const FILE_INDENT: usize = 5;
+/// Width consumed by sigil + space.
+const FILE_SIGIL_WIDTH: usize = 2;
 
 pub fn draw(state: &AppState, f: &mut Frame) {
     let area = f.area();
@@ -93,6 +98,14 @@ pub fn draw(state: &AppState, f: &mut Frame) {
         };
         let overflow_line = overflow;
 
+        // Available width for the path itself = total width
+        //   - sigil indent (5 = FILE_INDENT)
+        //   - sigil + space (2 = FILE_SIGIL_WIDTH)
+        // ratatui hard-clips anything past viewport width; show a leading `…`
+        // and the tail when the path doesn't fit.
+        let path_budget = (list_area.width as usize)
+            .saturating_sub(FILE_INDENT + FILE_SIGIL_WIDTH);
+
         let start = recent_count.saturating_sub(max_rows);
         let mut lines: Vec<Line> = state
             .recent
@@ -104,11 +117,12 @@ pub fn draw(state: &AppState, f: &mut Frame) {
                     FileChangeType::Modified => ("~", Color::Yellow),
                     FileChangeType::Deleted => ("-", Color::Red),
                 };
+                let display_path = truncate_path(&fe.path, path_budget);
                 Line::from(vec![
                     Span::raw("     "),
                     Span::styled(sigil, Style::default().fg(color)),
                     Span::raw(" "),
-                    Span::raw(fe.path.clone()),
+                    Span::raw(display_path),
                 ])
             })
             .collect();
