@@ -7,7 +7,7 @@ use std::io::{self, Write};
 
 use codeloops_logging::FileChangeType;
 
-use crate::app::{FileEvent, RenderEvent};
+use crate::app::RenderEvent;
 use crate::layout::shorten_home;
 use crate::spinner::format_elapsed;
 
@@ -58,8 +58,6 @@ pub struct FallbackRenderer {
     actor: Option<String>,
     critic: Option<String>,
     pending_actor: Option<(i32, f64)>,
-    iter_files: Vec<FileEvent>,
-    iter: usize,
 }
 
 impl Default for FallbackRenderer {
@@ -75,8 +73,6 @@ impl FallbackRenderer {
             actor: None,
             critic: None,
             pending_actor: None,
-            iter_files: Vec::new(),
-            iter: 0,
         }
     }
 
@@ -105,8 +101,6 @@ impl FallbackRenderer {
                 self.critic = Some(critic.clone());
             }
             RenderEvent::IterationStart { iteration } => {
-                self.iter = *iteration;
-                self.iter_files.clear();
                 if let Some(max) = self.max_iterations {
                     let _ = writeln!(w, "--- iteration {} of {} ---", iteration, max);
                 } else {
@@ -122,7 +116,6 @@ impl FallbackRenderer {
                     FileChangeType::Modified => yellow("~"),
                     FileChangeType::Deleted => red("-"),
                 };
-                self.iter_files.push(fe.clone());
                 let _ = writeln!(w, "  {} {}", sigil, fe.path);
             }
             RenderEvent::ActorCompleted {
