@@ -224,7 +224,13 @@ async fn run_tty(mut rx: mpsc::UnboundedReceiver<Msg>) {
     };
 
     let mut state = AppState::new();
-    drive_event_loop(&mut rx, &mut terminal, &mut state, Duration::from_millis(100)).await;
+    drive_event_loop(
+        &mut rx,
+        &mut terminal,
+        &mut state,
+        Duration::from_millis(100),
+    )
+    .await;
 
     // Clear the inline viewport so it doesn't linger.
     let _ = terminal.clear();
@@ -476,10 +482,7 @@ fn render_scrollback_line(line: &ScrollbackLine) -> Vec<Line<'static>> {
                 } else {
                     "low"
                 };
-                header_spans.push(Span::styled(
-                    format!(" · confidence {}", bucket),
-                    dim,
-                ));
+                header_spans.push(Span::styled(format!(" · confidence {}", bucket), dim));
             }
             let mut lines = vec![Line::from(""), Line::from(header_spans)];
             if !prompt.is_empty() {
@@ -576,13 +579,7 @@ mod tests {
 
         let mut state = AppState::new();
         // Use a long tick period so the test is event-driven, not tick-driven.
-        drive_event_loop(
-            &mut rx,
-            &mut terminal,
-            &mut state,
-            Duration::from_secs(60),
-        )
-        .await;
+        drive_event_loop(&mut rx, &mut terminal, &mut state, Duration::from_secs(60)).await;
 
         assert_eq!(state.phase, Phase::Done);
         // The final draw should leave "codeloops done" visible somewhere in
@@ -592,7 +589,11 @@ mod tests {
         // the inline viewport; on a TestBackend that area is off-buffer, so we
         // check the live viewport reflects the terminal Phase::Done state
         // (status line shows "done"), and the draw didn't error out.
-        assert!(dump.contains("done"), "expected final state in dump:\n{}", dump);
+        assert!(
+            dump.contains("done"),
+            "expected final state in dump:\n{}",
+            dump
+        );
     }
 
     /// Sending Msg::Shutdown breaks the loop even mid-session.
@@ -613,13 +614,7 @@ mod tests {
         tx.send(Msg::Shutdown).unwrap();
 
         let mut state = AppState::new();
-        drive_event_loop(
-            &mut rx,
-            &mut terminal,
-            &mut state,
-            Duration::from_secs(60),
-        )
-        .await;
+        drive_event_loop(&mut rx, &mut terminal, &mut state, Duration::from_secs(60)).await;
 
         // Header was applied before shutdown.
         assert_eq!(state.current_iteration, 1);
@@ -637,13 +632,7 @@ mod tests {
         drop(tx);
 
         let mut state = AppState::new();
-        drive_event_loop(
-            &mut rx,
-            &mut terminal,
-            &mut state,
-            Duration::from_secs(60),
-        )
-        .await;
+        drive_event_loop(&mut rx, &mut terminal, &mut state, Duration::from_secs(60)).await;
 
         assert_eq!(state.phase, Phase::Idle);
     }

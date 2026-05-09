@@ -108,8 +108,7 @@ pub fn draw(state: &AppState, f: &mut Frame) {
         //   - sigil + space (2 = FILE_SIGIL_WIDTH)
         // ratatui hard-clips anything past viewport width; show a leading `…`
         // and the tail when the path doesn't fit.
-        let path_budget = (list_area.width as usize)
-            .saturating_sub(FILE_INDENT + FILE_SIGIL_WIDTH);
+        let path_budget = (list_area.width as usize).saturating_sub(FILE_INDENT + FILE_SIGIL_WIDTH);
 
         let start = recent_count.saturating_sub(max_rows);
         let mut lines: Vec<Line> = state
