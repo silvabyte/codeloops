@@ -3,12 +3,11 @@ mod config;
 mod init;
 pub mod projects;
 mod sessions;
-pub mod skills;
 mod ui;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
@@ -406,8 +405,7 @@ async fn handle_project_command(action: ProjectAction) -> Result<()> {
             let removed = if id_or_path.contains('/') || id_or_path == "." {
                 let canonical = std::fs::canonicalize(&id_or_path)
                     .unwrap_or_else(|_| PathBuf::from(&id_or_path));
-                db.projects()
-                    .remove_by_path(&canonical.to_string_lossy())?
+                db.projects().remove_by_path(&canonical.to_string_lossy())?
             } else {
                 db.projects().remove(&id_or_path)?
             };
@@ -422,14 +420,13 @@ async fn handle_project_command(action: ProjectAction) -> Result<()> {
             let project = if id_or_path.contains('/') || id_or_path == "." {
                 let canonical = std::fs::canonicalize(&id_or_path)
                     .unwrap_or_else(|_| PathBuf::from(&id_or_path));
-                db.projects()
-                    .get_by_path(&canonical.to_string_lossy())?
+                db.projects().get_by_path(&canonical.to_string_lossy())?
             } else {
                 db.projects().get(&id_or_path)?
             };
 
-            let project = project
-                .ok_or_else(|| anyhow::anyhow!("Project not found: {}", id_or_path))?;
+            let project =
+                project.ok_or_else(|| anyhow::anyhow!("Project not found: {}", id_or_path))?;
 
             db.projects().set_default(&project.id)?;
             println!(
@@ -497,19 +494,19 @@ async fn run_loop(args: RunArgs) -> Result<()> {
         Logger::new(log_format)
     };
 
-    // Create TUI renderer (auto-detects TTY vs pipe)
-    let tui_renderer = Arc::new(Mutex::new(SessionRenderer::new()));
-    tui_renderer.lock().unwrap().set_max_iterations(args.max_iterations);
-
-    // When format is Pretty, delegate rendering to the TUI renderer
-    if log_format == LogFormat::Pretty {
-        let renderer_for_callback = tui_renderer.clone();
+    // Create TUI renderer in Pretty mode only (auto-detects TTY vs pipe).
+    // Json/Compact formats use the logger's own output; no TUI to manage.
+    let tui_renderer: Option<Arc<SessionRenderer>> = if log_format == LogFormat::Pretty {
+        let r = Arc::new(SessionRenderer::new());
+        r.set_max_iterations(args.max_iterations);
+        let r2 = r.clone();
         logger.set_event_callback(Box::new(move |event| {
-            if let Ok(mut r) = renderer_for_callback.lock() {
-                r.on_log_event(event);
-            }
+            r2.on_log_event(event);
         }));
-    }
+        Some(r)
+    } else {
+        None
+    };
 
     // Determine actor agent
     // Precedence: CLI flags > project config > global config > default (Claude)
@@ -624,7 +621,9 @@ async fn run_loop(args: RunArgs) -> Result<()> {
     let critic = create_agent(critic_type);
 
     // Set agent names on the TUI renderer
-    tui_renderer.lock().unwrap().set_agent_names(actor.name(), critic.name());
+    if let Some(ref r) = tui_renderer {
+        r.set_agent_names(actor.name(), critic.name());
+    }
 
     // Verify agents are available
     if !actor.is_available().await {
@@ -674,14 +673,10 @@ async fn run_loop(args: RunArgs) -> Result<()> {
         critic_model,
     );
 
-    // Handle Ctrl+C gracefully
+    // Handle Ctrl+C gracefully. The TUI render task keeps running until the
+    // loop unwinds; final cleanup happens after the runner returns.
     let interrupt_handle = runner.interrupt_handle();
-    let tui_for_ctrlc = tui_renderer.clone();
     ctrlc::set_handler(move || {
-        // Clean up TUI state on interrupt
-        if let Ok(mut r) = tui_for_ctrlc.lock() {
-            r.cleanup();
-        }
         eprintln!(
             "\n{} Interrupted. Finishing current iteration...",
             "⚠".bright_yellow()
@@ -690,35 +685,20 @@ async fn run_loop(args: RunArgs) -> Result<()> {
     })
     .context("Failed to set Ctrl+C handler")?;
 
-    // Spawn spinner tick task (100ms interval) for the TUI renderer
-    let tui_for_tick = tui_renderer.clone();
-    let tick_task = tokio::spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
-        loop {
-            interval.tick().await;
-            if let Ok(mut r) = tui_for_tick.lock() {
-                r.tick();
-            }
-        }
-    });
-
     // Run the loop
     let outcome = runner.run(context).await?;
-
-    // Stop the tick task
-    tick_task.abort();
 
     // Output result
     if args.json_output {
         let json = serde_json::to_string_pretty(&outcome)?;
         println!("{}", json);
     } else {
-        print_outcome(&outcome, &tui_renderer, log_format);
+        print_outcome(&outcome, tui_renderer.as_deref(), log_format);
     }
 
-    // Clean up TUI state
-    if let Ok(mut r) = tui_renderer.lock() {
-        r.cleanup();
+    // Async cleanup: drains the channel and restores the terminal.
+    if let Some(r) = tui_renderer {
+        r.cleanup().await;
     }
 
     // Print session ID and hints
@@ -762,14 +742,12 @@ fn get_prompt(prompt: &Option<String>, prompt_file: &Path, working_dir: &Path) -
     }
 }
 
-fn print_outcome(
-    outcome: &LoopOutcome,
-    renderer: &Arc<Mutex<SessionRenderer>>,
-    format: LogFormat,
-) {
-    // When using Pretty format with TUI renderer, use the new layout
+fn print_outcome(outcome: &LoopOutcome, renderer: Option<&SessionRenderer>, format: LogFormat) {
+    // Pretty mode: send the outcome to the TUI which renders the final
+    // scrollback line. Covers all four LoopOutcome variants (LogEvent only
+    // emits LoopCompleted/MaxIterationsReached, never Interrupted/Failed).
     if format == LogFormat::Pretty {
-        if let Ok(mut r) = renderer.lock() {
+        if let Some(r) = renderer {
             let event = match outcome {
                 LoopOutcome::Success {
                     iterations,
@@ -780,8 +758,8 @@ fn print_outcome(
                 } => RenderEvent::FinalSuccess {
                     iterations: *iterations,
                     total_duration_secs: *total_duration_secs,
-                    confidence: Some(*confidence),
                     summary: Some(summary.clone()),
+                    confidence: Some(*confidence),
                 },
                 LoopOutcome::MaxIterationsReached {
                     iterations,
@@ -810,7 +788,7 @@ fn print_outcome(
                     error: Some(error.clone()),
                 },
             };
-            r.render_event(event);
+            r.send_event(event);
             return;
         }
     }

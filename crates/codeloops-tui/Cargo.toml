@@ -9,11 +9,8 @@ description = "Terminal UI renderer for codeloops session output"
 codeloops-logging.workspace = true
 
 crossterm.workspace = true
-ignore.workspace = true
-notify.workspace = true
+ratatui = "0.29"
 tokio.workspace = true
 colored.workspace = true
 dirs.workspace = true
-
-[dev-dependencies]
-tempfile.workspace = true
+tracing.workspace = true

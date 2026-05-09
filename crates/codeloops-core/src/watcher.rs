@@ -16,9 +16,8 @@ use codeloops_logging::FileChangeType;
 /// A classified file change event.
 #[derive(Debug, Clone)]
 pub struct WatcherEvent {
-    pub path: PathBuf,
     pub change_type: FileChangeType,
-    /// Path relative to the working directory for display
+    /// Path relative to the working directory for display.
     pub relative_path: String,
 }
 
@@ -41,9 +40,7 @@ pub fn start_watching(
     let (tx, rx) = mpsc::unbounded_channel();
 
     // Debounce state: track last-seen time per file
-    let debounce = std::sync::Arc::new(std::sync::Mutex::new(
-        HashMap::<PathBuf, Instant>::new(),
-    ));
+    let debounce = std::sync::Arc::new(std::sync::Mutex::new(HashMap::<PathBuf, Instant>::new()));
     let debounce_duration = Duration::from_millis(200);
 
     let debounce_clone = debounce.clone();
@@ -96,7 +93,6 @@ pub fn start_watching(
                     .to_string();
 
                 let _ = tx.send(WatcherEvent {
-                    path: path.clone(),
                     change_type,
                     relative_path: relative,
                 });
@@ -105,9 +101,7 @@ pub fn start_watching(
     })
     .ok()?;
 
-    watcher
-        .watch(working_dir, RecursiveMode::Recursive)
-        .ok()?;
+    watcher.watch(working_dir, RecursiveMode::Recursive).ok()?;
 
     Some((FileWatcherHandle { _watcher: watcher }, rx))
 }
@@ -146,7 +140,9 @@ mod tests {
         // target/ pattern matches the directory itself
         assert!(gi.matched(tmp.path().join("target"), true).is_ignore());
         // Files inside target are matched via matched_path_or_any_parents
-        assert!(gi.matched_path_or_any_parents(tmp.path().join("target/release/binary"), false).is_ignore());
+        assert!(gi
+            .matched_path_or_any_parents(tmp.path().join("target/release/binary"), false)
+            .is_ignore());
         assert!(!gi.matched(tmp.path().join("main.rs"), false).is_ignore());
     }
 }

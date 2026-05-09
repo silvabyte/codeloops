@@ -32,16 +32,14 @@ impl FromRequestParts<AppState> for ProjectExtractor {
     ) -> Result<Self, Self::Rejection> {
         // Extract path params to get project_id
         let Path(params): Path<HashMap<String, String>> =
-            Path::from_request_parts(parts, state)
-                .await
-                .map_err(|_| {
-                    (
-                        StatusCode::BAD_REQUEST,
-                        Json(ErrorResponse {
-                            error: "Missing project_id parameter".to_string(),
-                        }),
-                    )
-                })?;
+            Path::from_request_parts(parts, state).await.map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse {
+                        error: "Missing project_id parameter".to_string(),
+                    }),
+                )
+            })?;
 
         let project_id = params.get("project_id").ok_or_else(|| {
             (

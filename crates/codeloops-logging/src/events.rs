@@ -398,17 +398,13 @@ impl Logger {
             LogEvent::FileChanged {
                 path, change_type, ..
             } => {
-                let (sigil, color_fn): (&str, fn(&str) -> colored::ColoredString) = match change_type {
-                    FileChangeType::Created => ("+", |s: &str| s.green()),
-                    FileChangeType::Modified => ("~", |s: &str| s.yellow()),
-                    FileChangeType::Deleted => ("-", |s: &str| s.red()),
-                };
-                let _ = writeln!(
-                    stderr,
-                    "          {} {}",
-                    color_fn(sigil),
-                    path.display()
-                );
+                let (sigil, color_fn): (&str, fn(&str) -> colored::ColoredString) =
+                    match change_type {
+                        FileChangeType::Created => ("+", |s: &str| s.green()),
+                        FileChangeType::Modified => ("~", |s: &str| s.yellow()),
+                        FileChangeType::Deleted => ("-", |s: &str| s.red()),
+                    };
+                let _ = writeln!(stderr, "          {} {}", color_fn(sigil), path.display());
             }
         }
     }

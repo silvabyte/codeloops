@@ -5,13 +5,20 @@ edition.workspace = true
 license.workspace = true
 description = "Core loop orchestration for codeloops"
 
+# Layering invariant: codeloops-core MUST NOT depend on codeloops-tui.
+# The TUI is a presentation layer downstream of core; flipping that
+# direction creates a cycle (core <-> tui) and re-introduces the
+# layering inversion that the watcher relocation fixed. Communication
+# from core back to the renderer goes through codeloops-logging
+# (LogEvent), which both crates depend on. Renderer-shaped types belong
+# in codeloops-tui, not here.
+
 [dependencies]
 codeloops-agent.workspace = true
 codeloops-critic.workspace = true
 codeloops-git.workspace = true
 codeloops-logging.workspace = true
 codeloops-db.workspace = true
-codeloops-tui.workspace = true
 
 tokio.workspace = true
 async-trait.workspace = true
@@ -22,3 +29,8 @@ anyhow.workspace = true
 tracing.workspace = true
 chrono.workspace = true
 dirs.workspace = true
+notify.workspace = true
+ignore.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

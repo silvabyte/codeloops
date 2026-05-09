@@ -5,7 +5,7 @@
 //! NOT hardcoded questions or responses. The AI dynamically generates
 //! questions based on these instructions and the user's actual answers.
 
-use crate::skills::SkillInfo;
+use codeloops_skills::skills::SkillInfo;
 
 /// Get system instructions for the given work type.
 ///
