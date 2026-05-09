@@ -11,6 +11,26 @@ pub fn shorten_home(path: &str) -> String {
     path.to_string()
 }
 
+/// Truncate `text` to at most `budget` codepoints, appending `…` when it had
+/// to be cut. Used for content that wraps over multiple lines where
+/// `budget = width * max_lines` is a pessimistic upper bound (whitespace-aware
+/// wrap may need fewer chars, so we may truncate slightly earlier than
+/// strictly needed — that's fine for an "overflow" indicator).
+pub fn ellipsize_to_budget(text: &str, budget: usize) -> String {
+    let len = text.chars().count();
+    if len <= budget {
+        return text.to_string();
+    }
+    if budget == 0 {
+        return String::new();
+    }
+    if budget == 1 {
+        return "…".to_string();
+    }
+    let keep: String = text.chars().take(budget - 1).collect();
+    format!("{}…", keep)
+}
+
 /// Truncate `path` so its codepoint count is at most `max`, keeping the tail
 /// (the most informative end of a path) and prefixing with `…`. If `max == 0`
 /// returns an empty string. Codepoint-counted, so this is conservative but
@@ -74,5 +94,25 @@ mod tests {
     #[test]
     fn truncate_path_handles_max_one() {
         assert_eq!(truncate_path("anything", 1), "…");
+    }
+
+    #[test]
+    fn ellipsize_to_budget_passthrough_when_fits() {
+        assert_eq!(ellipsize_to_budget("hello", 10), "hello");
+        assert_eq!(ellipsize_to_budget("hello", 5), "hello");
+    }
+
+    #[test]
+    fn ellipsize_to_budget_appends_ellipsis_on_overflow() {
+        let out = ellipsize_to_budget("the quick brown fox", 10);
+        assert_eq!(out.chars().count(), 10);
+        assert!(out.ends_with('…'));
+        assert!(out.starts_with("the quick"));
+    }
+
+    #[test]
+    fn ellipsize_to_budget_handles_zero_and_one() {
+        assert_eq!(ellipsize_to_budget("hello", 0), "");
+        assert_eq!(ellipsize_to_budget("hello", 1), "…");
     }
 }

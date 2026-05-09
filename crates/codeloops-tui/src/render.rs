@@ -11,7 +11,7 @@ use ratatui::{
 use codeloops_logging::FileChangeType;
 
 use crate::app::{AppState, Phase};
-use crate::layout::truncate_path;
+use crate::layout::{ellipsize_to_budget, truncate_path};
 use crate::spinner::{format_elapsed, BRAILLE_FRAMES};
 
 const MARGIN: &str = "  ";
@@ -56,16 +56,21 @@ pub fn draw(state: &AppState, f: &mut Frame) {
     ]);
     f.render_widget(Paragraph::new(title), chunks[1]);
 
-    // Prompt (quoted, may wrap into the 2 reserved rows)
+    // Prompt (quoted, may wrap into the 2 reserved rows). If the natural
+    // wrap would clearly overflow those rows, truncate and append "…" so the
+    // user has a signal that the line was cut.
+    let prompt_area = prompt_with_margin_area(chunks[3]);
     let prompt_text = if state.prompt.is_empty() {
         String::new()
     } else {
-        format!("\"{}\"", state.prompt)
+        let raw = format!("\"{}\"", state.prompt);
+        let budget = (prompt_area.width as usize) * (prompt_area.height as usize);
+        ellipsize_to_budget(&raw, budget)
     };
     let prompt = Paragraph::new(prompt_text)
         .style(Style::default().add_modifier(Modifier::DIM))
         .wrap(Wrap { trim: true });
-    f.render_widget(prompt.clone(), prompt_with_margin_area(chunks[3]));
+    f.render_widget(prompt, prompt_area);
 
     // Iteration rule
     let iter_label = match state.max_iterations {
