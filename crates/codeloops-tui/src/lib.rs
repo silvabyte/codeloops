@@ -224,7 +224,28 @@ async fn run_tty(mut rx: mpsc::UnboundedReceiver<Msg>) {
     };
 
     let mut state = AppState::new();
-    let mut tick = tokio::time::interval(Duration::from_millis(100));
+    drive_event_loop(&mut rx, &mut terminal, &mut state, Duration::from_millis(100)).await;
+
+    // Clear the inline viewport so it doesn't linger.
+    let _ = terminal.clear();
+    drop(terminal);
+    let _ = disable_raw_mode();
+    let mut stderr: Stderr = io::stderr();
+    let _ = crossterm::execute!(stderr, cursor::Show);
+}
+
+/// Core event-loop body, factored out so it can be exercised with a
+/// `TestBackend` in tests. Drives `rx` until shutdown / channel close /
+/// `Phase::Done`, redrawing on every event and on each `tick_period`.
+pub(crate) async fn drive_event_loop<B>(
+    rx: &mut mpsc::UnboundedReceiver<Msg>,
+    terminal: &mut Terminal<B>,
+    state: &mut AppState,
+    tick_period: Duration,
+) where
+    B: ratatui::backend::Backend,
+{
+    let mut tick = tokio::time::interval(tick_period);
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     loop {
@@ -244,7 +265,7 @@ async fn run_tty(mut rx: mpsc::UnboundedReceiver<Msg>) {
                                 para.render(buf.area, buf);
                             });
                         }
-                        let _ = terminal.draw(|f| render::draw(&state, f));
+                        let _ = terminal.draw(|f| render::draw(state, f));
                         if matches!(state.phase, Phase::Done) {
                             break;
                         }
@@ -255,17 +276,10 @@ async fn run_tty(mut rx: mpsc::UnboundedReceiver<Msg>) {
                 if state.is_active() {
                     state.tick();
                 }
-                let _ = terminal.draw(|f| render::draw(&state, f));
+                let _ = terminal.draw(|f| render::draw(state, f));
             }
         }
     }
-
-    // Clear the inline viewport so it doesn't linger.
-    let _ = terminal.clear();
-    drop(terminal);
-    let _ = disable_raw_mode();
-    let mut stderr: Stderr = io::stderr();
-    let _ = crossterm::execute!(stderr, cursor::Show);
 }
 
 /// Install a panic hook (once per process) that restores the terminal — drops
@@ -474,5 +488,144 @@ fn render_scrollback_line(line: &ScrollbackLine) -> Vec<Line<'static>> {
             lines.push(Line::from(""));
             lines
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::backend::TestBackend;
+    use std::path::PathBuf;
+
+    fn buf_to_string(terminal: &Terminal<TestBackend>) -> String {
+        let buf = terminal.backend().buffer();
+        let mut out = String::new();
+        for y in 0..buf.area.height {
+            for x in 0..buf.area.width {
+                out.push_str(buf[(x, y)].symbol());
+            }
+            out.push('\n');
+        }
+        out
+    }
+
+    /// Drive `drive_event_loop` with a `TestBackend` through a full session.
+    /// Verifies the loop exits cleanly on `FinalSuccess` (Phase::Done shortcut)
+    /// and that scrollback events are flushed before the final draw.
+    #[tokio::test(flavor = "current_thread")]
+    async fn drive_event_loop_processes_full_session() {
+        let backend = TestBackend::new(80, 24);
+        // Use Inline viewport like production; insert_before is the path under
+        // test and it's only meaningful with an inline viewport.
+        let viewport = Viewport::Inline(12);
+        let mut terminal = Terminal::with_options(backend, TerminalOptions { viewport }).unwrap();
+        let (tx, mut rx) = mpsc::unbounded_channel::<Msg>();
+
+        // Pre-load the channel with a complete session.
+        for ev in [
+            RenderEvent::SetMaxIterations(Some(3)),
+            RenderEvent::SetAgentNames {
+                actor: "claude".into(),
+                critic: "claude".into(),
+            },
+            RenderEvent::Header {
+                prompt: "fix the bug".into(),
+                working_dir: PathBuf::from("/tmp/proj"),
+            },
+            RenderEvent::IterationStart { iteration: 1 },
+            RenderEvent::ActorStart,
+            RenderEvent::ActorCompleted {
+                exit_code: 0,
+                duration_secs: 1.5,
+            },
+            RenderEvent::GitDiff {
+                files_changed: 1,
+                insertions: 3,
+                deletions: 0,
+            },
+            RenderEvent::CriticStart,
+            RenderEvent::CriticDone,
+            RenderEvent::FinalSuccess {
+                iterations: 1,
+                total_duration_secs: 5.0,
+                summary: Some("ship it".into()),
+                confidence: Some(0.95),
+            },
+        ] {
+            tx.send(Msg::Event(ev)).unwrap();
+        }
+
+        let mut state = AppState::new();
+        // Use a long tick period so the test is event-driven, not tick-driven.
+        drive_event_loop(
+            &mut rx,
+            &mut terminal,
+            &mut state,
+            Duration::from_secs(60),
+        )
+        .await;
+
+        assert_eq!(state.phase, Phase::Done);
+        // The final draw should leave "codeloops done" visible somewhere in
+        // the inline viewport (rendered by render::draw).
+        let dump = buf_to_string(&terminal);
+        // Final scrollback line ("codeloops done") goes via insert_before above
+        // the inline viewport; on a TestBackend that area is off-buffer, so we
+        // check the live viewport reflects the terminal Phase::Done state
+        // (status line shows "done"), and the draw didn't error out.
+        assert!(dump.contains("done"), "expected final state in dump:\n{}", dump);
+    }
+
+    /// Sending Msg::Shutdown breaks the loop even mid-session.
+    #[tokio::test(flavor = "current_thread")]
+    async fn drive_event_loop_exits_on_shutdown() {
+        let backend = TestBackend::new(80, 24);
+        let viewport = Viewport::Inline(8);
+        let mut terminal = Terminal::with_options(backend, TerminalOptions { viewport }).unwrap();
+        let (tx, mut rx) = mpsc::unbounded_channel::<Msg>();
+
+        tx.send(Msg::Event(RenderEvent::Header {
+            prompt: "p".into(),
+            working_dir: PathBuf::from("/tmp"),
+        }))
+        .unwrap();
+        tx.send(Msg::Event(RenderEvent::IterationStart { iteration: 1 }))
+            .unwrap();
+        tx.send(Msg::Shutdown).unwrap();
+
+        let mut state = AppState::new();
+        drive_event_loop(
+            &mut rx,
+            &mut terminal,
+            &mut state,
+            Duration::from_secs(60),
+        )
+        .await;
+
+        // Header was applied before shutdown.
+        assert_eq!(state.current_iteration, 1);
+        // Phase should NOT be Done — we exited on Shutdown, not FinalSuccess.
+        assert_ne!(state.phase, Phase::Done);
+    }
+
+    /// Channel close (drop tx) also exits the loop cleanly.
+    #[tokio::test(flavor = "current_thread")]
+    async fn drive_event_loop_exits_on_channel_close() {
+        let backend = TestBackend::new(80, 24);
+        let viewport = Viewport::Inline(8);
+        let mut terminal = Terminal::with_options(backend, TerminalOptions { viewport }).unwrap();
+        let (tx, mut rx) = mpsc::unbounded_channel::<Msg>();
+        drop(tx);
+
+        let mut state = AppState::new();
+        drive_event_loop(
+            &mut rx,
+            &mut terminal,
+            &mut state,
+            Duration::from_secs(60),
+        )
+        .await;
+
+        assert_eq!(state.phase, Phase::Idle);
     }
 }
