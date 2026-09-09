@@ -1,0 +1,21 @@
+[package]
+name = "session-history"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+tempfile.workspace = true
+base64.workspace = true
+sha2.workspace = true
+rusqlite = { version = "=0.37.0", features = ["bundled"] }
+zstd = "0.13"
+schemars = "1.0"
+
+[lints]
+workspace = true

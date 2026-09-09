@@ -1,200 +1,64 @@
-# CodeLoops: Installation Guide
+# OpenCode preview installation
 
-CodeLoops can be installed as an **OpenCode plugin** or as an **MCP server** for other clients.
+Run `make install`, or choose a separate prefix with `make install PREFIX=...`.
+The shipped `history.ts` has only a type-only OpenCode dependency and uses Node
+built-ins supported by OpenCode's runtime. No runtime npm install is necessary.
 
-## Prerequisites
+Set these variables in the environment that launches both the service and OpenCode:
 
-- **Node.js**: Version 18 or higher
-  - Download from [nodejs.org](https://nodejs.org) or use a version manager like `nvm`
-  - Verify with: `node --version`
-
-## Installation Steps
-
-### Step 1: Clone the Repository
-
-```bash
-git clone https://github.com/silvabyte/codeloops.git
-cd codeloops
-npm install
+```sh
+export CODELOOPS_BIN="$HOME/.local/codeloops-history-preview/bin/codeloops"
+export CODELOOPS_DATA_DIR="$HOME/.local/share/codeloops-history/preview"
+export CODELOOPS_ADDRESS="127.0.0.1:47823"
+export CODELOOPS_OPENCODE_VERSION="$(opencode --version)"
 ```
 
----
-
-## Option A: OpenCode Plugin Installation
-
-The OpenCode plugin provides memory tools directly in your OpenCode sessions.
-
-### Install the Plugin
-
-```bash
-npm run plugin:install
-```
-
-This creates a symlink from `~/.config/opencode/plugin/memory.ts` to your local plugin.
-
-### Verify Installation
-
-Start OpenCode in any project. You should see the memory tools available:
-
-- `memory_store`
-- `memory_recall`
-- `memory_forget`
-- `memory_context`
-- `memory_projects`
-
-### Auto-Capture Events
-
-The plugin automatically captures:
-
-- **File edits** - Every file.edited event is logged
-- **Todo updates** - Todo list changes are tracked
-- **Session start** - Loads recent memories when a session begins
-
----
-
-## Option B: MCP Server Installation
-
-The MCP server works with Claude Desktop, Cursor, and other MCP-compatible clients.
-
-### Stdio Transport (Recommended)
-
-Add to your MCP client configuration:
-
-**Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+For a project-scoped trial, merge the following entries into that project's
+`opencode.json`. Replace `/absolute/prefix` with your actual installation prefix.
+Preserve existing plugin and MCP entries.
 
 ```json
 {
-  "mcpServers": {
-    "codeloops": {
-      "command": "npx",
-      "args": ["-y", "tsx", "/absolute/path/to/codeloops/src"]
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["file:///absolute/prefix/share/codeloops/adapters/opencode/history.ts"],
+  "mcp": {
+    "codeloops-history": {
+      "type": "local",
+      "command": ["/absolute/prefix/bin/codeloops", "mcp"],
+      "enabled": true
     }
   }
 }
 ```
 
-**Cursor** (`.cursor/mcp.json` in your project):
+Start `"$CODELOOPS_BIN" serve` in another terminal, then quit and restart OpenCode.
+Ask it to search a distinctive phrase through `history_query`. The plugin records
+new native events only; it does not enumerate or import prior conversations.
 
-```json
-{
-  "mcpServers": {
-    "codeloops": {
-      "command": "npx",
-      "args": ["-y", "tsx", "/absolute/path/to/codeloops/src"]
-    }
-  }
-}
-```
+If a desktop launch does not inherit shell variables, configure those variables
+in its launcher environment. `CODELOOPS_OPENCODE_VERSION` is explicit because
+OpenCode's v1 plugin SDK lacks a runtime-version API; without it the archive says
+`unknown`. A version supplied here is operator-reported, not automatically detected.
 
-### HTTP Transport
+## Capture health and recovery
 
-For clients that support HTTP transport:
+The adapter uses a synchronous `codeloops capture-opencode` subprocess to durably
+enqueue each observed event, with a 15-second process timeout. The collector owns
+the SQLite spool and persistent device/installation identities. The service drains
+up to 100 queued captures every 250 ms. There is no network dependency in the hook.
 
-1. Start the server:
+`codeloops health --json` reports pending/rejected deliveries, delivered count,
+enqueue failure count, and the most recent error. A rejected envelope remains in
+the spool for inspection. Transient archive failures leave deliveries queued for
+retry. Errors during enqueue go to OpenCode's log and stderr and are also recorded
+in the spool when it remains writable. Failure to launch the collector or to write
+the spool can only be reported by the client; those events were not captured.
 
-   ```bash
-   npm run start:http
-   # or with custom port
-   npx -y tsx src --http --port 8080
-   ```
+After a service outage, start it again or run `codeloops flush`. A crash between
+archive commit and queue deletion is safe: the same durable delivery ID is replayed.
+Do not delete the spool to clear health; it contains capture state and identities.
 
-2. Configure your client to connect to `http://localhost:3000` (or your custom port)
-
-### Available MCP Tools
-
-| Tool              | Description                                |
-| ----------------- | ------------------------------------------ |
-| `memory_store`    | Store a memory with content, project, tags |
-| `memory_recall`   | Query memories by text, tags, project      |
-| `memory_forget`   | Soft-delete a memory by ID                 |
-| `memory_context`  | Get recent memories for current project    |
-| `memory_projects` | List all projects with memories            |
-
----
-
-## Data Storage
-
-All memories are stored locally as NDJSON files:
-
-| Platform | Location                                                |
-| -------- | ------------------------------------------------------- |
-| Linux    | `~/.local/share/codeloops/memory.ndjson`                |
-| macOS    | `~/Library/Application Support/codeloops/memory.ndjson` |
-| Windows  | `%APPDATA%/codeloops/memory.ndjson`                     |
-
-Deleted memories are moved to `memory.deleted.ndjson` in the same directory.
-
----
-
-## Troubleshooting
-
-### Plugin not loading in OpenCode
-
-1. Verify the symlink exists:
-
-   ```bash
-   ls -la ~/.config/opencode/plugin/
-   ```
-
-2. Check that the source file exists:
-
-   ```bash
-   ls -la /path/to/codeloops/plugin/memory.ts
-   ```
-
-3. Reinstall:
-   ```bash
-   npm run plugin:install
-   ```
-
-### MCP server connection issues
-
-1. Check the server is running:
-
-   ```bash
-   npm start
-   # or for HTTP
-   npm run start:http
-   ```
-
-2. Verify the path in your MCP config is absolute (starts with `/`)
-
-3. Check logs in the `logs/` directory
-
-### Data not persisting
-
-1. Verify the data directory exists:
-
-   ```bash
-   # Linux
-   ls ~/.local/share/codeloops/
-
-   # macOS
-   ls ~/Library/Application\ Support/codeloops/
-   ```
-
-2. Check file permissions
-
----
-
-## Uninstalling
-
-### Remove OpenCode Plugin
-
-```bash
-rm ~/.config/opencode/plugin/memory.ts
-```
-
-### Remove MCP Server Config
-
-Remove the `codeloops` entry from your MCP client configuration.
-
-### Remove Data (Optional)
-
-```bash
-# Linux
-rm -rf ~/.local/share/codeloops/
-
-# macOS
-rm -rf ~/Library/Application\ Support/codeloops/
-```
+Automatic `make setup`, `make e2e`, and `make uninstall` arrive with the final
+installation/recovery slice. For this preview, remove the two entries you added
+from OpenCode's configuration and restart it to stop integration. Remove the
+isolated install prefix if desired. Preserve `CODELOOPS_DATA_DIR` to retain history.
