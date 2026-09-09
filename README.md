@@ -3,10 +3,13 @@
 Durable local conversation history for coding agents. Capture a conversation,
 restart the service, and find it again through the CLI, MCP, or REST.
 
-This integration branch is a **Rust preview**. The first delivery slice supports
-live OpenCode messages, streaming revisions, lifecycle observations, and original
-source payloads. Cursor capture, normalized tool history, self-contained Git
-checkpoints, automated client setup, and portable export follow in dependent slices.
+This integration branch is a **Rust preview**. It captures live OpenCode messages,
+streaming revisions, lifecycle observations, and original source payloads. The
+Cursor slice adds command-hook capture for prompts, completed assistant messages,
+and lifecycle observations into the same archive. Desktop verification is still
+required; see [Cursor coverage](docs/verification-cursor.md). Normalized tool history,
+self-contained Git checkpoints, automated client setup, and portable export follow
+in dependent slices.
 
 ## Try the preview
 
@@ -23,7 +26,7 @@ make install
 `make check` installs locked development dependencies when needed and runs Rust
 formatting, Clippy, persistence/transport integration tests, and bridge checks.
 `make install` builds with `Cargo.lock` and copies the binary and client-loadable
-TypeScript asset; it does not run an npm/Bun build.
+TypeScript asset plus a Cursor hook configuration example; it does not run an npm/Bun build.
 
 The default prefix is `~/.local/codeloops-history-preview`, separate from an
 existing CodeLoops executable. Override it with `make install PREFIX=/your/path`.
@@ -40,6 +43,8 @@ Register the installed plugin and MCP server using the [preview installation
 guide](docs/INSTALL_GUIDE.md), then **restart OpenCode** with those environment
 variables. Capture works while the service is offline; the service drains the
 local spool after startup. `codeloops flush` also drains it explicitly.
+The guide also covers Cursor hooks/MCP and retrieving each client's history from
+the other. Both clients must use the same data directory and service address.
 
 ## Retrieve history
 
@@ -47,6 +52,7 @@ Use the installed executable (or add its `bin` directory to your PATH):
 
 ```sh
 codeloops history list --source opencode --json
+codeloops history list --source cursor --json
 codeloops history search "database migration" --role assistant --json
 codeloops history show <session-uuid> --limit 20 --json
 codeloops history entry <entry-uuid> --json
