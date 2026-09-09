@@ -3,6 +3,10 @@
 Verified on Linux on 2026-09-09 with Rust/Cargo 1.97.1, OpenCode 1.18.30,
 `openai/gpt-6-astra`, and the official Rust MCP SDK 3.2.0.
 
+Application code revision: `9d66243`. PR:
+https://github.com/silvabyte/codeloops/pull/51 (base `feat/session-memory-rust`).
+GitHub CI run `34382799825` passed both `make check` and the isolated release install.
+
 ## Automated checks
 
 `make check` exercises real SQLite/artifact persistence, replay/conflict semantics,
