@@ -1,155 +1,91 @@
-![CodeLoops](../media/svg/codeloops_banner.svg)
+# Session-history architecture and contracts
 
-# CodeLoops - Overview
+`crates/session-history` owns schema migration, immutable capture records, current
+message projections, full-text indexing, and compressed content-addressed artifacts.
+Its public boundary is `History::open`, `History::ingest`, and `History::query`, with
+versioned models in `model`. Database handles and artifact paths are private.
 
-A lightweight, persistent memory layer for AI coding agents.
+`crates/codeloops` owns process lifecycle, private data directories, credentials,
+the OpenCode collector/outbox, CLI, HTTP, and MCP transports. The tiny
+`adapters/opencode/history.ts` forwards native JSON without mutating prompts,
+tool arguments, or outputs. Tools remain in original payloads in this slice.
 
-## The Problem
+## Ingress version 1
 
-AI coding agents are powerful but suffer from **session amnesia**:
+`capture` reads one JSON envelope from stdin and submits it through HTTP. MCP's
+`history_ingest` accepts the same envelope in its `capture` argument. Required fields:
 
-| Problem              | Symptom                                          |
-| -------------------- | ------------------------------------------------ |
-| **Context loss**     | Forgotten APIs, duplicated components, dead code |
-| **No learning**      | Same mistakes repeated across sessions           |
-| **Lost decisions**   | Rationale for choices not preserved              |
-| **Preference drift** | User preferences forgotten                       |
+| Field | Meaning |
+| --- | --- |
+| `schema_version` | `1` |
+| `delivery_id` | Canonical UUID persisted by the producer before retry |
+| `origin` | `device_id`, `installation_id`, `source`, `source_version` |
+| `sequence` | Positive signed-64-bit-range observation sequence within an installation |
+| `native_session_id` | Source conversation ID, scoped by device/installation/source |
+| `project_id`, `workspace_id` | Canonical archive UUIDs |
+| `observed_at` | Adapter observation time in Unix milliseconds |
+| `occurred_at` | Source time if provided, otherwise null |
+| `change` | Normalized change, described below |
+| `source_payload` | Original source JSON, including unknown fields |
 
-Every new session starts from scratch. The agent has no memory of what worked, what failed, or what you prefer.
+Changes are tagged by `type`:
 
-## The Solution
+- `message`: `native_id`, `role`, nullable `parent_native_id`, `removed`.
+- `part`: `message_id`, `native_id`, `kind`, `text`, `removed`.
+- `lifecycle`: nullable `state`, `title`, `parent_native_id`. A null state is a
+  metadata observation; it does not reset the lifecycle state. Known states are
+  active, idle, ended, interrupted, and unknown.
 
-CodeLoops provides a simple, append-only memory store that persists across sessions:
+Roles are user, assistant, system, and unknown. An envelope or readable message
+projection is limited to 4 MiB; source IDs to 1024 bytes and titles to 4096 bytes.
+Oversized captures fail explicitly and the client reports the coverage loss.
 
-```
-┌─────────────────────────────────────────────────────┐
-│                    AI Coding Agent                   │
-└──────────────────────┬──────────────────────────────┘
-                       │
-         ┌─────────────┴─────────────┐
-         │                           │
-         ▼                           ▼
-┌─────────────────┐       ┌─────────────────┐
-│   MCP Server    │       │ OpenCode Plugin │
-└────────┬────────┘       └────────┬────────┘
-         │                         │
-         └───────────┬─────────────┘
-                     │
-                     ▼
-          ┌─────────────────┐
-          │   MemoryStore   │
-          │  (NDJSON file)  │
-          └─────────────────┘
-```
+## Durability and projection
 
-## Core Concepts
+The same delivery ID and envelope returns the original receipt, including stable
+archive IDs and recorded time. Different content under that delivery ID conflicts.
+Two equal prompts with different native message IDs remain two entries.
 
-### Memory Entries
+Message metadata and each part have independent revision sequences. Late snapshots
+remain immutable capture records but do not replace newer projections. The
+OpenCode collector serializes observation sequences across local processes and
+persists delta accumulation alongside queue insertion in one SQLite transaction.
+Independent duplicate source notifications are not promised to deduplicate; queue
+retries are. A delta without an observed baseline is an explicit capture failure.
 
-Each memory is a simple JSON object:
+The source payload is stored once by SHA-256. The stored envelope artifact refers
+to it through `source_payload_hash` in place of inline `source_payload`. Capture
+listing returns both `envelope_hash` and `source_payload_hash`. Message content is
+a separate artifact referenced by `content_hash`. Zstandard blobs are atomically
+published and fsynced before database references commit; reads verify content hashes.
+An interrupted transaction may leave an unreferenced blob but cannot advertise a
+capture whose required publication failed. Entry/FTS updates commit together.
 
-```json
-{
-  "id": "abc123",
-  "project": "my-app",
-  "content": "User prefers functional components over class components",
-  "tags": ["preference", "react"],
-  "createdAt": "2024-01-15T10:30:00.000Z",
-  "sessionId": "session-xyz",
-  "source": "user-input"
-}
-```
+Text and reasoning parts project into one readable message in native part-ID order
+(OpenCode IDs are ordered). Other kinds stay in source payloads with explicit
+coverage. Removal events hide entries from search while retaining prior records.
+Receipt order is distinct from source occurrence time and does not establish
+causality or authorship.
 
-### Project Scoping
+Project association uses the source's project ID within the installation. OpenCode's
+non-Git `global` project uses the full workspace path, not its basename. Workspaces
+have separate UUIDs; sessions retain all observed workspace associations.
 
-Memories are scoped by project name (derived from directory path). This keeps memories relevant to the current codebase.
+## Retrieval and coverage
 
-### Tags
+All transports call the same library operations. `list`, `search`, `show`, `entry`,
+`captures`, and `artifact` have matching JSON results. Pages have explicit bounds,
+query-bound continuation cursors, and current projections within a receipt-order
+membership boundary. Cursors are opaque navigation tokens, not public record IDs.
+They do not freeze live revisions. Artifact chunks use byte offsets and base64,
+so offsets can fall inside a UTF-8 sequence without losing bytes.
 
-Use tags for flexible categorization:
+Errors distinguish `invalid_request`, `unknown_id`, `delivery_conflict`,
+`unavailable_artifact`, and `storage_failure`. HTTP also reports `unauthorized`;
+CLI/MCP report `service_unavailable` when the service cannot be reached.
 
-- `decision` - Architectural or design decisions
-- `preference` - User preferences and conventions
-- `error` - Error patterns and solutions
-- `context` - Important project context
-- `file-edit` - Auto-captured file changes
-- `todo` - Auto-captured todo updates
-
-### Auto-Capture (OpenCode Plugin)
-
-The plugin automatically captures:
-
-- **File edits** - Every saved file is logged
-- **Todo updates** - Todo list changes are tracked
-- **Session start** - Recent memories load automatically
-
-## How It Works
-
-### Storing Memories
-
-```
-Agent: "We decided to use PostgreSQL for ACID compliance"
-→ memory_store(content="...", tags=["decision", "database"])
-→ Saved to memory.ndjson
-```
-
-### Recalling Context
-
-```
-Agent: "What database did we choose?"
-→ memory_recall(query="database", tags=["decision"])
-→ Returns matching memories
-```
-
-### Session Continuity
-
-```
-New session starts
-→ memory_context(limit=5)
-→ Agent receives recent project context
-→ Continues where it left off
-```
-
-## Integration Options
-
-### MCP Server
-
-For Claude Desktop, Cursor, and other MCP clients:
-
-- Stdio transport (default)
-- HTTP transport (for web clients)
-
-### OpenCode Plugin
-
-For OpenCode users:
-
-- Native tool integration
-- Event hooks for auto-capture
-- Session-aware context loading
-
-## Data Storage
-
-All data is stored locally as NDJSON (newline-delimited JSON):
-
-| Platform | Location                                   |
-| -------- | ------------------------------------------ |
-| Linux    | `~/.local/share/codeloops/`                |
-| macOS    | `~/Library/Application Support/codeloops/` |
-| Windows  | `%APPDATA%/codeloops/`                     |
-
-Files:
-
-- `memory.ndjson` - Active memories
-- `memory.deleted.ndjson` - Soft-deleted memories
-
-## Design Principles
-
-1. **Simple** - Just an append-only log, no complex database
-2. **Local** - Your data stays on your machine
-3. **Portable** - NDJSON is human-readable and easy to backup
-4. **Lightweight** - Minimal dependencies, fast startup
-5. **Flexible** - Tags over rigid schemas
-
-## License
-
-MIT - see [LICENSE](../LICENSE)
+This slice returns `checkpoint.status = not_captured`, attachment coverage
+`metadata_only`, and tool coverage `source_payload_only`. An idle event ends a turn,
+not a session. Session deletion is retained as an observation, not successful
+completion. Later Git capture must preserve this distinction and never assign a
+late snapshot to an earlier queued event as if it were contemporaneous.

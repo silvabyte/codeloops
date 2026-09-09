@@ -1,0 +1,24 @@
+[package]
+name = "codeloops"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+session-history = { path = "../session-history" }
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+tempfile.workspace = true
+clap = { version = "4.5", features = ["derive", "env"] }
+tokio = { version = "1.48", features = ["macros", "rt-multi-thread", "net", "signal", "io-std", "process"] }
+axum = "0.8"
+reqwest = { version = "=0.12.28", default-features = false, features = ["json"] }
+rmcp = { version = "=3.2.0", features = ["transport-io", "client", "transport-child-process"] }
+schemars = "1.0"
+rusqlite = { version = "=0.37.0", features = ["bundled"] }
+
+[lints]
+workspace = true
