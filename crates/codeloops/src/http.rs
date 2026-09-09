@@ -1,4 +1,4 @@
-use crate::{AppResult, config::Config, opencode};
+use crate::{AppResult, config::Config, outbox};
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, State, rejection::JsonRejection},
@@ -102,7 +102,7 @@ async fn ingest(
 
 async fn health(State(config): State<Config>, headers: HeaderMap) -> Result<Json<Value>, ApiError> {
     authorize(&config, &headers)?;
-    tokio::task::spawn_blocking(move || opencode::health(&config))
+    tokio::task::spawn_blocking(move || outbox::health(&config))
         .await
         .map_err(|_| ApiError {
             code: "storage_failure".into(),
@@ -129,7 +129,7 @@ pub async fn serve(config: Config) -> AppResult<()> {
         loop {
             interval.tick().await;
             let config = worker_config.clone();
-            match tokio::task::spawn_blocking(move || opencode::flush(&config)).await {
+            match tokio::task::spawn_blocking(move || outbox::flush(&config)).await {
                 Ok(Ok(())) => {}
                 Ok(Err(error)) => eprintln!("capture flush failed: {error}"),
                 Err(error) => eprintln!("capture worker failed: {error}"),

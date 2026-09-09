@@ -1,7 +1,9 @@
 mod config;
+mod cursor;
 mod http;
 mod mcp;
 mod opencode;
+mod outbox;
 
 use clap::{Args, Parser, Subcommand};
 use config::Config;
@@ -37,6 +39,8 @@ enum Command {
     Capture,
     /// Durably queue one native OpenCode event from stdin (works while offline).
     CaptureOpencode,
+    /// Observe one Cursor command-hook payload; always emit neutral hook output.
+    CaptureCursor,
     /// Drain the durable adapter queue into the archive.
     Flush,
     Health,
@@ -192,20 +196,33 @@ async fn run(cli: Cli) -> AppResult<()> {
                 .post("/v1/history/ingest", &stdin::<Capture>()?)
                 .await?
         }
-        Command::CaptureOpencode => match stdin()
-            .and_then(|input| opencode::enqueue(&config, input))
-        {
-            Ok(receipt) => receipt,
-            Err(error) => {
-                if let Err(health_error) = opencode::record_failure(&config, &error.to_string()) {
+        Command::CaptureOpencode => {
+            match stdin().and_then(|input| opencode::enqueue(&config, input)) {
+                Ok(receipt) => receipt,
+                Err(error) => {
+                    if let Err(health_error) =
+                        outbox::record_failure(&config, "opencode", &error.to_string())
+                    {
+                        eprintln!("could not record capture failure: {health_error}");
+                    }
+                    return Err(error);
+                }
+            }
+        }
+        Command::CaptureCursor => {
+            if let Err(error) = stdin().and_then(|input| cursor::enqueue(&config, input)) {
+                if let Err(health_error) =
+                    outbox::record_failure(&config, "cursor", &error.to_string())
+                {
                     eprintln!("could not record capture failure: {health_error}");
                 }
                 return Err(error);
             }
-        },
+            json!({})
+        }
         Command::Flush => {
-            opencode::flush(&config)?;
-            opencode::health(&config)?
+            outbox::flush(&config)?;
+            outbox::health(&config)?
         }
         Command::Health => client.post("/v1/health", &json!({})).await?,
         Command::History { command } => {
@@ -224,7 +241,9 @@ async fn run(cli: Cli) -> AppResult<()> {
 
 #[tokio::main]
 async fn main() {
-    if let Err(error) = run(Cli::parse()).await {
+    let cli = Cli::parse();
+    let cursor_hook = matches!(cli.command, Command::CaptureCursor);
+    if let Err(error) = run(cli).await {
         if let Some(api) = error.downcast_ref::<http::ApiError>() {
             eprintln!("{}", json!({"error":api}));
         } else {
@@ -233,6 +252,12 @@ async fn main() {
                 json!({"error":{"code":"command_failed","message":error.to_string()}})
             );
         }
-        std::process::exit(1);
+        if cursor_hook {
+            // Even initialization/parse/storage failures must not gate a prompt,
+            // supply context, or schedule another turn. Diagnostics stay on stderr.
+            println!("{{}}");
+        } else {
+            std::process::exit(1);
+        }
     }
 }

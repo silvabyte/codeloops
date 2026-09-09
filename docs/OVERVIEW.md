@@ -6,9 +6,14 @@ Its public boundary is `History::open`, `History::ingest`, and `History::query`,
 versioned models in `model`. Database handles and artifact paths are private.
 
 `crates/codeloops` owns process lifecycle, private data directories, credentials,
-the OpenCode collector/outbox, CLI, HTTP, and MCP transports. The tiny
+the OpenCode and Cursor collectors, shared outbox, CLI, HTTP, and MCP transports. The tiny
 `adapters/opencode/history.ts` forwards native JSON without mutating prompts,
 tool arguments, or outputs. Tools remain in original payloads in this slice.
+
+`codeloops capture-cursor` accepts Cursor's documented hook JSON directly on stdin.
+It returns only the neutral hook response `{}`. Both collectors use the same
+outbox implementation and archive ingestion API; client event translation stays
+in the application rather than the storage library.
 
 ## Ingress version 1
 
@@ -70,6 +75,50 @@ causality or authorship.
 Project association uses the source's project ID within the installation. OpenCode's
 non-Git `global` project uses the full workspace path, not its basename. Workspaces
 have separate UUIDs; sessions retain all observed workspace associations.
+
+## Cursor hook identity and coverage
+
+`beforeSubmitPrompt` captures `prompt`, and `afterAgentResponse` captures `text`.
+Each invocation atomically queues message metadata, one text part, and a lifecycle
+observation. Message IDs have a `hook-message:` UUID prefix: they are collector
+identities, not native Cursor message IDs. `conversation_id` remains the native
+session ID; `generation_id`, `cursor_version`, model details, attachments, and
+unknown fields remain in the original payload. When a prompt from the same
+conversation/generation has been captured, its ID becomes the assistant message's
+`parent_native_id`. Missing generation or earlier prompt capture leaves that link
+absent. Identical prompts and multiple completed messages in one generation stay
+distinct. Queue retries reuse the same durable delivery IDs; independently invoking
+the hook twice is two observations, even with identical input.
+
+The two clients share a persistent device identity and have separate installation
+identities. This preserves distinct sessions even when native IDs are identical.
+Cursor projects use a sorted, unique workspace-root set, scoped to Cursor; they
+are not automatically equated with OpenCode's native project IDs. Full root paths
+map to shared device-local workspace UUIDs. All roots are retained as associations
+(at most 32 input roots per hook); extra roots produce metadata observations rather
+than duplicate messages. A rootless chat receives a session-specific unknown
+workspace/project association. Paths remain provenance, not retrieval requirements.
+
+`stop(completed)` means idle, while aborted/error stops mean interrupted.
+`sessionEnd` records ended for completed/window-close/user-close reasons, interrupted
+for aborted/error, and unknown for unfamiliar reasons. Missing sessionEnd does not
+imply completion. A delayed fire-and-forget `sessionStart` cannot reset an already
+observed session's state. Other late lifecycle events reflect local observation
+order; the source does not supply universal ordering or event identities.
+
+Subagent start/stop payloads are retained without changing the parent's state or
+claiming a full child transcript. An explicitly distinct `conversation_id` with a
+`parent_conversation_id` becomes a session relationship. A `subagent_id` alone is
+not treated as a conversation ID. Optional `transcript_path` and
+`agent_transcript_path` are retained as metadata, never read; absent, null, or stale
+paths do not disable prompt/response capture. No historical import is performed.
+
+The current hook set does not capture intermediate streaming fragments, thoughts,
+or normalized tools. Only completed assistant messages exposed by
+`afterAgentResponse` are covered; interrupted output without that hook is missing.
+Attachments have metadata-only coverage. Source occurrence timestamps are unknown;
+collector observation and archive recording times are retained. Missing client
+version is reported as `unknown`.
 
 ## Retrieval and coverage
 

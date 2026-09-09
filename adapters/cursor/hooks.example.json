@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [{ "command": "\"/absolute/prefix/bin/codeloops\" --data-dir \"/absolute/data\" capture-cursor" }],
+    "afterAgentResponse": [{ "command": "\"/absolute/prefix/bin/codeloops\" --data-dir \"/absolute/data\" capture-cursor" }],
+    "stop": [{ "command": "\"/absolute/prefix/bin/codeloops\" --data-dir \"/absolute/data\" capture-cursor" }],
+    "sessionStart": [{ "command": "\"/absolute/prefix/bin/codeloops\" --data-dir \"/absolute/data\" capture-cursor" }],
+    "sessionEnd": [{ "command": "\"/absolute/prefix/bin/codeloops\" --data-dir \"/absolute/data\" capture-cursor" }],
+    "subagentStart": [{ "command": "\"/absolute/prefix/bin/codeloops\" --data-dir \"/absolute/data\" capture-cursor" }],
+    "subagentStop": [{ "command": "\"/absolute/prefix/bin/codeloops\" --data-dir \"/absolute/data\" capture-cursor" }]
+  }
+}

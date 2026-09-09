@@ -15,9 +15,10 @@ node_modules/.package-lock.json: package.json package-lock.json
 
 install:
 	$(CARGO) build --release --locked -p codeloops
-	install -d "$(PREFIX)/bin" "$(PREFIX)/share/codeloops/adapters/opencode"
+	install -d "$(PREFIX)/bin" "$(PREFIX)/share/codeloops/adapters/opencode" "$(PREFIX)/share/codeloops/adapters/cursor"
 	install -m 755 target/release/codeloops "$(PREFIX)/bin/codeloops"
 	install -m 644 adapters/opencode/history.ts "$(PREFIX)/share/codeloops/adapters/opencode/history.ts"
+	install -m 644 adapters/cursor/hooks.example.json "$(PREFIX)/share/codeloops/adapters/cursor/hooks.example.json"
 
 run:
 	$(CARGO) run --locked -p codeloops -- serve
