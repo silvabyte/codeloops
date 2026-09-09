@@ -51,6 +51,9 @@ installation prefix and `CODELOOPS_DATA_DIR`. Append each hook definition to the
 corresponding array in a trusted project's `.cursor/hooks.json`, or your existing
 `~/.cursor/hooks.json`. Preserve all existing hooks and settings. Register each
 CodeLoops hook once, at one level: configuring it at both levels captures twice.
+Prefer project scope for a trial. Cursor 3.18.25 instantiated global hooks once
+per open window during verification, so three open windows delivered each event
+three times; moving the same definitions to project scope restored one delivery.
 The quoted absolute executable/data paths also work with spaces and desktop
 launchers that do not inherit shell environment variables.
 

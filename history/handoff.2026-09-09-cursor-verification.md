@@ -2,13 +2,12 @@
 
 ## At a glance
 
-Continue `codeloops-vvb.2` on `feat/history-cursor` using a machine with Cursor
-desktop Agent Chat installed and authenticated. The implementation, automated
-tests, installation instructions, and this handoff are on this branch. First run
-`git status --short --branch` and `git rev-parse HEAD`, then follow
-`docs/INSTALL_GUIDE.md` to install an isolated preview shared by Cursor and
-OpenCode. The remaining acceptance work is real Cursor hook delivery and
-bidirectional MCP recall; update `docs/verification-cursor.md` with the results.
+Real-client acceptance for `codeloops-vvb.2` passed on `feat/history-cursor` at
+commit `9539259f5f1c4e5b302df5486dedbf0581b88c9e`. Cursor desktop hook delivery,
+bidirectional MCP recall, service restart stability, and two distinct native
+submissions with identical user text are recorded in
+`docs/verification-cursor.md`. Close the issue, run final checks, and prepare the
+slice PR against `feat/session-memory-rust`.
 
 ## Get the branch on the other machine
 
@@ -52,16 +51,18 @@ export CODELOOPS_OPENCODE_VERSION="$(opencode --version)"
 - The Make interface currently provides `check`, `install`, and `run`; automatic
   `setup`, `e2e`, and `uninstall` belong to the final delivery slice.
 
-## Finish the acceptance work
+## Acceptance result
 
-Use the scenarios under **Completing real-client acceptance** in
-`docs/verification-cursor.md`. That document is the source of truth for completed
-checks, tested versions, source coverage, and the remaining observations to make.
+The same prompt was submitted twice in archive session
+`1eebe8ce-9ed4-4220-86c1-b1ee71a0b4e4`. Entries
+`a139f5cf-f790-41d7-b1fd-173dae94f3e5` and
+`d89d77d5-7a2e-4433-819e-9d4d96cc6fb9` have the same content hash and distinct
+generation-scoped native IDs. Archive health remained clean.
 
-Start with a distinctive phrase in a new OpenCode conversation. Ask Cursor to
-retrieve its assistant entry through `history_query`, then have OpenCode retrieve
-the new Cursor assistant entry. Save the tool results and stable archive UUIDs.
-The new machine has a fresh archive: it must create its own sample conversations.
+Cross-client recall is already established. Cursor retrieved OpenCode assistant
+entry `70413a02-fd5b-4c05-b1db-4b60f60d5890`; OpenCode retrieved Cursor assistant
+entry `6911fb99-ed9d-4fc4-ae7a-c479b8e59120`. CLI and REST returned the same IDs
+after service restart.
 
 Useful installed checks:
 
@@ -74,10 +75,11 @@ Useful installed checks:
 "$CODELOOPS_BIN" history captures <session-uuid> --json
 ```
 
-If a hook is missing or its payload differs, preserve a minimal redacted fixture,
-fix the source translation, and rerun the relevant tests plus the live scenario.
-Record the actual desktop version, hook timing, configuration scope, tested commit,
-health counts, and CLI/MCP/REST agreement in `docs/verification-cursor.md`.
+The isolated preview remains installed under
+`~/.local/codeloops-cursor-preview`, and the shared archive remains under
+`~/.local/share/codeloops-history/cursor-verification`. Additive MCP/plugin entries
+remain in the user configs. The temporary project-scoped CodeLoops capture hooks
+were removed after acceptance without changing the existing project hooks.
 
 ## State and implementation references
 

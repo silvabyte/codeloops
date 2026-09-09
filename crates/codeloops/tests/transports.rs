@@ -474,7 +474,8 @@ fn concurrent_cursor_hooks_keep_identity_roots_and_optional_transcripts() {
     let mut child = cursor_event("sessionStart", "distinct-child-conversation", "child");
     child["parent_conversation_id"] = "same-native-id".into();
     cli(root, "127.0.0.1:47823", &["capture-cursor"], Some(&child));
-    cli(root, "127.0.0.1:47823", &["flush"], None);
+    let health = cli(root, "127.0.0.1:47823", &["flush"], None);
+    assert_eq!(health["sources"]["cursor"]["enqueue_failures"], 0);
     let history = History::open(root.join("archive")).unwrap();
     let found = history
         .query(Query::Search {

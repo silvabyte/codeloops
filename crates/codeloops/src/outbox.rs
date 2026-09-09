@@ -10,8 +10,25 @@ use session_history::{
 };
 use uuid::Uuid;
 
+const OPEN_RETRIES: usize = 100;
+const OPEN_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(10);
+
 pub fn open(config: &Config) -> AppResult<Connection> {
-    let db = Connection::open(config.root.join("opencode-spool.sqlite3"))?;
+    let path = config.root.join("opencode-spool.sqlite3");
+    for attempt in 0..OPEN_RETRIES {
+        match open_once(&path) {
+            Ok(db) => return Ok(db),
+            Err(error) if is_lock_contention(&error) && attempt + 1 < OPEN_RETRIES => {
+                std::thread::sleep(OPEN_RETRY_DELAY);
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+    unreachable!("the outbox open loop always returns")
+}
+
+fn open_once(path: &std::path::Path) -> rusqlite::Result<Connection> {
+    let db = Connection::open(path)?;
     db.busy_timeout(std::time::Duration::from_secs(10))?;
     db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
       CREATE TABLE IF NOT EXISTS identities(key TEXT PRIMARY KEY,id TEXT NOT NULL);
@@ -28,6 +45,17 @@ pub fn open(config: &Config) -> AppResult<Connection> {
       CREATE TABLE IF NOT EXISTS cursor_prompts(session TEXT,generation TEXT,message TEXT NOT NULL,PRIMARY KEY(session,generation));
       CREATE TABLE IF NOT EXISTS cursor_sessions(session TEXT PRIMARY KEY);")?;
     Ok(db)
+}
+
+fn is_lock_contention(error: &rusqlite::Error) -> bool {
+    matches!(
+        error,
+        rusqlite::Error::SqliteFailure(failure, _)
+            if matches!(
+                failure.code,
+                rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
+            )
+    )
 }
 
 pub fn identity(tx: &Transaction<'_>, key: &str) -> AppResult<String> {
