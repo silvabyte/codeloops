@@ -17,6 +17,7 @@ struct Cursor {
 
 pub(crate) fn query(h: &History, q: Query) -> Result<Value> {
     match q {
+        Query::Export { session_id } => h.export(&session_id),
         Query::Checkpoint { checkpoint_id } => crate::checkpoints::get(h, &checkpoint_id),
         Query::Compare {
             before,

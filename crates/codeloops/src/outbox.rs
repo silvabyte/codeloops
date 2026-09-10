@@ -173,6 +173,22 @@ pub fn flush(config: &Config) -> AppResult<()> {
     Ok(())
 }
 
+/// Explicit operator recovery drains every available batch, stopping when a
+/// transient failure makes no progress. The foreground worker remains bounded.
+pub fn drain(config: &Config) -> AppResult<Value> {
+    let mut previous = health(config)?;
+    loop {
+        flush(config)?;
+        let current = health(config)?;
+        if current["pending"] == current["rejected"]
+            || current["delivered"] == previous["delivered"]
+        {
+            return Ok(current);
+        }
+        previous = current;
+    }
+}
+
 pub fn health(config: &Config) -> AppResult<Value> {
     let db = open(config)?;
     let (pending, rejected): (u64, u64) =

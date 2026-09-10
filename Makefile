@@ -1,7 +1,11 @@
 PREFIX ?= $(HOME)/.local/codeloops-history-preview
 CARGO ?= cargo
+PROFILE ?= preview
+DATA_DIR ?= $(HOME)/.local/share/codeloops-history/$(PROFILE)
+ADDRESS ?= 127.0.0.1:47823
+SETUP_ARGS ?=
 
-.PHONY: check install run
+.PHONY: check install setup run e2e uninstall
 check: node_modules/.package-lock.json
 	$(CARGO) fmt --all -- --check
 	$(CARGO) clippy --workspace --all-targets --locked -- -D warnings
@@ -15,10 +19,23 @@ node_modules/.package-lock.json: package.json package-lock.json
 
 install:
 	$(CARGO) build --release --locked -p codeloops
-	install -d "$(PREFIX)/bin" "$(PREFIX)/share/codeloops/adapters/opencode" "$(PREFIX)/share/codeloops/adapters/cursor"
-	install -m 755 target/release/codeloops "$(PREFIX)/bin/codeloops"
-	install -m 644 adapters/opencode/history.ts "$(PREFIX)/share/codeloops/adapters/opencode/history.ts"
-	install -m 644 adapters/cursor/hooks.example.json "$(PREFIX)/share/codeloops/adapters/cursor/hooks.example.json"
+	target/release/codeloops install --prefix "$(PREFIX)"
+
+setup:
+	"$(PREFIX)/bin/codeloops" --data-dir "$(DATA_DIR)" --address "$(ADDRESS)" setup --profile "$(PROFILE)" $(SETUP_ARGS)
 
 run:
-	$(CARGO) run --locked -p codeloops -- serve
+	"$(PREFIX)/bin/codeloops" serve
+
+e2e:
+	$(CARGO) build --release --locked -p codeloops
+	CODELOOPS_E2E_BINARY="$(CURDIR)/target/release/codeloops" $(CARGO) test --locked -p codeloops --test installation -- --nocapture
+
+uninstall:
+	@if test -x "$(PREFIX)/bin/codeloops"; then \
+		"$(PREFIX)/bin/codeloops" uninstall; \
+	elif test -f "$(PREFIX)/share/codeloops/setup.json" || \
+		test -f "$(PREFIX)/share/codeloops/install.json" || \
+		test -f "$(PREFIX)/share/codeloops/install-pending.json"; then \
+		$(CARGO) run --locked -p codeloops -- uninstall --prefix "$(PREFIX)"; \
+	fi

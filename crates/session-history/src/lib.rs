@@ -2,6 +2,7 @@
 //! SQLite, projections, indexing and artifact publication remain private.
 mod artifacts;
 mod checkpoints;
+mod export;
 mod ingest;
 pub mod model;
 mod query;
@@ -94,6 +95,12 @@ impl History {
     }
     pub fn query(&self, query: Query) -> Result<Value> {
         query::query(self, query)
+    }
+
+    /// Freeze portable records and verify their complete artifact graph.
+    /// Returns an immutable manifest reference readable through artifact queries.
+    pub fn export(&self, session_id: &str) -> Result<Value> {
+        export::export(self, session_id)
     }
 
     /// Observe now and publish only after all referenced file artifacts are durable.

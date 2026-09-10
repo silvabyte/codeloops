@@ -16,6 +16,7 @@ test("forwards unchanged native JSON to a durable command before the hook yields
     `#!/usr/bin/env node
 const fs = require('node:fs');
 fs.writeFileSync(${JSON.stringify(saved)}, fs.readFileSync(0));
+fs.writeFileSync(${JSON.stringify(`${saved}.args`)}, JSON.stringify(process.argv.slice(2)));
 `,
     { mode: 0o700 }
   );
@@ -73,6 +74,32 @@ fs.writeFileSync(${JSON.stringify(saved)}, fs.readFileSync(0));
       JSON.parse(readFileSync(saved, "utf8")).event.type,
       "history.tool.after"
     );
+    const configured = await HistoryPlugin(
+      {
+        client: {},
+        project: { id: "project-id" },
+        directory,
+      } as PluginInput,
+      {
+        executable,
+        dataDir: join(directory, "isolated data"),
+        address: "127.0.0.1:47899",
+        sourceVersion: "configured-version",
+      }
+    );
+    await configured.event?.({ event });
+    assert.equal(
+      JSON.parse(readFileSync(saved, "utf8")).source_version,
+      "configured-version"
+    );
+    assert.deepEqual(JSON.parse(readFileSync(`${saved}.args`, "utf8")), [
+      "capture-opencode",
+      "--json",
+      "--data-dir",
+      join(directory, "isolated data"),
+      "--address",
+      "127.0.0.1:47899",
+    ]);
   } finally {
     if (previous === undefined) {
       Reflect.deleteProperty(process.env, "CODELOOPS_BIN");

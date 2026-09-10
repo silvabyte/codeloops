@@ -1,7 +1,10 @@
 mod boundary;
 mod config;
+mod config_edits;
 mod cursor;
+mod export;
 mod http;
+mod installation;
 mod mcp;
 mod opencode;
 mod outbox;
@@ -19,13 +22,8 @@ pub type AppResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 struct Cli {
     #[arg(long, env = "CODELOOPS_DATA_DIR", global = true)]
     data_dir: Option<PathBuf>,
-    #[arg(
-        long,
-        env = "CODELOOPS_ADDRESS",
-        default_value = "127.0.0.1:47823",
-        global = true
-    )]
-    address: SocketAddr,
+    #[arg(long, env = "CODELOOPS_ADDRESS", global = true)]
+    address: Option<SocketAddr>,
     #[arg(long, global = true)]
     json: bool,
     #[command(subcommand)]
@@ -34,6 +32,23 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Install this binary and embedded client assets into a separate prefix.
+    Install {
+        #[arg(long)]
+        prefix: PathBuf,
+    },
+    /// Register capture and MCP once in both clients' user-global settings.
+    Setup(installation::SetupArgs),
+    /// Remove this installation's owned registration and assets; keep history.
+    Uninstall {
+        /// Recover even when interrupted removal deleted the installed binary.
+        #[arg(long)]
+        prefix: Option<PathBuf>,
+    },
+    /// Verify a portable export without the service or original source checkout.
+    VerifyExport {
+        directory: PathBuf,
+    },
     Serve,
     Mcp,
     /// Read one versioned envelope from stdin and submit it to the service.
@@ -103,6 +118,12 @@ impl From<Filtering> for Filter {
 
 #[derive(Subcommand)]
 enum HistoryCommand {
+    Export {
+        session_id: String,
+        /// Download a self-contained bundle into a new directory.
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
     Checkpoint {
         checkpoint_id: String,
     },
@@ -175,6 +196,7 @@ enum HistoryCommand {
 impl From<HistoryCommand> for Query {
     fn from(c: HistoryCommand) -> Self {
         match c {
+            HistoryCommand::Export { session_id, .. } => Self::Export { session_id },
             HistoryCommand::Checkpoint { checkpoint_id } => Self::Checkpoint { checkpoint_id },
             HistoryCommand::Compare {
                 before,
@@ -272,12 +294,40 @@ fn stdin<T: serde::de::DeserializeOwned>() -> AppResult<T> {
 }
 
 async fn run(cli: Cli) -> AppResult<()> {
+    match &cli.command {
+        Command::Install { prefix } => return print(installation::install(prefix)?, cli.json),
+        Command::Uninstall { prefix } => {
+            return print(installation::uninstall(prefix.as_deref())?, cli.json);
+        }
+        Command::VerifyExport { directory } => return print(export::verify(directory)?, cli.json),
+        _ => {}
+    }
+    let settings = installation::settings()?;
     let config = Config::open(
-        cli.data_dir.unwrap_or_else(config::default_root),
-        cli.address,
+        cli.data_dir
+            .or_else(|| settings.as_ref().map(|settings| settings.root.clone()))
+            .unwrap_or_else(config::default_root),
+        cli.address
+            .or_else(|| settings.as_ref().map(|settings| settings.address))
+            .unwrap_or_else(|| "127.0.0.1:47823".parse().expect("fixed loopback address")),
     )?;
     let client = http::Client::new(config.clone())?;
     let value: Value = match cli.command {
+        Command::Install { .. } | Command::Uninstall { .. } | Command::VerifyExport { .. } => {
+            unreachable!()
+        }
+        Command::Setup(args) => {
+            let mut report = installation::setup(&config, args)?;
+            report["capture_health"] = outbox::health(&config)?;
+            report["service_health"] = match client.post("/v1/health", &json!({})).await {
+                Ok(health) => health,
+                Err(error) => json!({
+                    "available": false,
+                    "error": error,
+                }),
+            };
+            report
+        }
         Command::Serve => return http::serve(config).await,
         Command::Mcp => return mcp::serve(client).await,
         Command::Capture => {
@@ -309,18 +359,27 @@ async fn run(cli: Cli) -> AppResult<()> {
             }
             json!({})
         }
-        Command::Flush => {
-            outbox::flush(&config)?;
-            outbox::health(&config)?
-        }
+        Command::Flush => outbox::drain(&config)?,
         Command::Health => client.post("/v1/health", &json!({})).await?,
         Command::History { command } => {
-            client
+            let output = match command.as_ref() {
+                HistoryCommand::Export { output, .. } => output.clone(),
+                _ => None,
+            };
+            let result = client
                 .post("/v1/history/query", &Query::from(*command))
-                .await?
+                .await?;
+            match output {
+                Some(output) => export::download_bundle(&client, result, &output).await?,
+                None => result,
+            }
         }
     };
-    if cli.json {
+    print(value, cli.json)
+}
+
+fn print(value: Value, compact: bool) -> AppResult<()> {
+    if compact {
         println!("{}", serde_json::to_string(&value)?);
     } else {
         println!("{}", serde_json::to_string_pretty(&value)?);

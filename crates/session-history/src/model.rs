@@ -104,6 +104,9 @@ impl Default for Page {
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Query {
+    Export {
+        session_id: String,
+    },
     Checkpoint {
         checkpoint_id: String,
     },
