@@ -1,7 +1,8 @@
 # Install CodeLoops
 
-Capture across projects with one user-global setup. Use Cursor, OpenCode, or both.
-You do not need to install OpenCode to use Cursor.
+Set up a shared history for your coding agents. This guide configures automatic
+capture for Cursor and OpenCode across projects. You do not need to install
+OpenCode to use Cursor. Other harnesses can [connect through MCP](USAGE.md#connect-another-coding-harness).
 
 ## 1. Build and install
 

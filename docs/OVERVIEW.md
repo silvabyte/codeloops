@@ -5,6 +5,12 @@ For commands, read [usage](USAGE.md). For setup and recovery, read
 
 ## Client coverage
 
+MCP is the shared access layer for coding harnesses. Any harness that supports
+local stdio MCP servers can [connect to the archive](USAGE.md#connect-another-coding-harness).
+Automatic conversation capture uses harness-specific integrations. Cursor and
+OpenCode are the first; additional integrations use the same ingestion and query
+contracts.
+
 | Surface | Capture and evidence |
 | --- | --- |
 | OpenCode | Native messages, part revisions/deltas, lifecycle, and exposed tools. Live Linux 1.18.30 checks cover capture, Git changes, restart, and recall. |

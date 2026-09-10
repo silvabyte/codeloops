@@ -120,8 +120,9 @@ For snapshot and size bounds, see the [export contract](OVERVIEW.md#snapshot-exp
 
 ## Query through MCP
 
-Setup registers `codeloops mcp` for your client. It exposes `history_query` and
-`history_ingest`. Query arguments wrap the operation in `request`:
+`codeloops mcp` gives coding agents shared access to your history through
+`history_query` and `history_ingest`. Setup registers it automatically for Cursor
+and OpenCode. Query arguments wrap the operation in `request`:
 
 ```json
 {
@@ -135,9 +136,32 @@ Setup registers `codeloops mcp` for your client. It exposes `history_query` and
 ```
 
 For a session, use `{"request":{"operation":"show","session_id":"SESSION_ID"}}`.
-Both clients can query the same archive on one machine. Source filters select
-which client's records to retrieve. Use the [agent instruction template](AGENTS_TEMPLATE.md)
+Connected agents can query the same archive on one machine. Source filters select
+which harness's records to retrieve. Use the [agent instruction template](AGENTS_TEMPLATE.md)
 to make this workflow discoverable in a project.
+
+### Connect another coding harness
+
+In a harness that supports local stdio MCP servers, add a server with these values:
+
+| Setting | Value |
+| --- | --- |
+| Name | `codeloops-history` |
+| Transport | stdio |
+| Executable | `/absolute/install/prefix/bin/codeloops` |
+| Arguments | `mcp` |
+
+Use the full installed executable path. With the default installation, that is
+`/home/YOU/.local/codeloops-history-preview/bin/codeloops` on Linux or
+`/Users/YOU/.local/codeloops-history-preview/bin/codeloops` on macOS. The binary
+reads the data path and address saved by setup. Keep the history service running,
+reload the harness's MCP connection, and ask it to find an earlier conversation
+using `history_query`.
+
+MCP provides recall and explicit ingestion through `history_ingest`. Automatic
+capture of that harness's conversations requires a capture integration. See the
+[current capture coverage](OVERVIEW.md#client-coverage) and
+[ingestion contract](OVERVIEW.md#ingress-version-1).
 
 ## Query through REST
 

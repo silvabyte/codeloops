@@ -1,16 +1,20 @@
 # CodeLoops
 
-Keep your coding-agent history. Find it from the next chat.
+Unified conversation history across all your coding agents.
 
-CodeLoops captures OpenCode and Cursor conversations, tool results, and observed
-Git file changes into a local archive. Search through the CLI, MCP, or REST. Read
-captured file bytes after the source checkout is gone. Export a session and verify
-it offline.
+Switch agents without starting from scratch. Find past conversations, revisit
+decisions, and give your next agent the context to keep going.
+
+One local archive, shared through MCP. Built for every AI coding harness, with
+automatic capture for Cursor and OpenCode today.
 
 ## Get started
 
 [Install and connect your client](docs/INSTALL_GUIDE.md). The guide takes you from
 clone to one captured conversation and a fresh-chat recall check.
+
+Using another harness? [Connect it through MCP](docs/USAGE.md#connect-another-coding-harness)
+to give it access to your history.
 
 Build from source with Rust **1.97.1**, Git, Make, and a C compiler/linker. No
 database server or npm install is needed for installation. Linux and macOS have

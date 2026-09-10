@@ -1,6 +1,7 @@
 # Work on CodeLoops
 
-CodeLoops is local session history for OpenCode and Cursor. Read
+CodeLoops provides unified conversation history across coding agents. MCP is the
+shared access layer; Cursor and OpenCode are today's automatic capture integrations. Read
 [development](docs/DEVELOPMENT.md) for commands and the code map, and
 [contracts](docs/OVERVIEW.md) before changing capture, storage, or retrieval.
 
@@ -56,6 +57,10 @@ Review the required UBS scan before committing.
 Write terse, direct docs with concrete commands. No em dashes. Keep current user
 instructions separate from revision-specific verification evidence. Record what
 was tested without upgrading older results to new acceptance.
+
+Product positioning: "Unified conversation history across all your coding agents."
+Lead with continuity across harnesses. Keep current capture integrations in the
+support details; they do not define the product's scope.
 
 Store new AI planning/design artifacts under `history/`, not the repository root.
 Only read existing `history/` content when asked to review past planning. Preserve
