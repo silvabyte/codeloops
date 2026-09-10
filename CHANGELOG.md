@@ -1,5 +1,28 @@
 # Changelog
 
+## Session-history main: 2026-09-10
+
+`main` now contains the Rust session-history implementation, promoted at
+`36582b50ea54b0592066f61f2036606e00801674` after user acceptance.
+
+- Capture OpenCode and Cursor conversations with durable offline queues.
+- Retrieve messages, tool results, and self-contained Git checkpoints through
+  CLI, MCP, and REST.
+- Install and register clients globally with repeatable, ownership-aware setup.
+- Export sessions with verified artifacts and preserve history on uninstall.
+
+The former actor-critic `main` is preserved at
+[`archive/actor-critic-2026-09-10-4f12b13`](https://github.com/silvabyte/codeloops/tree/archive/actor-critic-2026-09-10-4f12b13),
+exactly `4f12b1300e28076c267060597bac43acefea1af6`. Its code and installation
+instructions belong to that archive.
+
+This was a branch cutover, not a version tag or GitHub Release. The versions below,
+including the existing `v0.5.1` release, describe the legacy implementation.
+Use the current [source installation](docs/INSTALL_GUIDE.md) for session history.
+See [acceptance and CI evidence](docs/verification-install-recovery.md).
+
+## Legacy releases
+
 ## [0.5.1] - 2025-06-06
 
 * feat: add diff control options to resume command (#43)
@@ -169,4 +192,3 @@
 * fix: types and format
 * feat: initial commit
 * Initial commit
-

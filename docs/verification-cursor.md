@@ -1,5 +1,9 @@
 # Cursor slice verification
 
+Historical slice report. Hook counts, identity behavior, and manual configuration
+below describe this revision. See [current acceptance](verification-install-recovery.md),
+[global setup](INSTALL_GUIDE.md), and the [current identity contract](OVERVIEW.md#cursor-hook-identity-and-coverage).
+
 Date: 2026-09-09. Branch: `feat/history-cursor`, based on integrated commit
 `82564c06a70ce689b17e246c3e5c173d4079796a`. The base's integrated GitHub CI run
 [`34386427461`](https://github.com/silvabyte/codeloops/actions/runs/34386427461)
@@ -73,8 +77,8 @@ Desktop subagent relationships were not exposed during this run.
 Global hook configuration produced three deliveries per native event while three
 Cursor windows were open. The payloads had identical conversation and generation
 IDs, so the archive projected one message. Moving the definitions to the trusted
-project restored one hook delivery per event. The installation guide now recommends
-project scope for trials. Existing global and project hooks were restored after the
+project restored one hook delivery per event. The installation guide at that time
+recommended project scope for trials. Existing global and project hooks were restored after the
 trial; the additive MCP/plugin entries remain configured.
 
 Final health after restart was 484 delivered, zero pending/rejected/enqueue

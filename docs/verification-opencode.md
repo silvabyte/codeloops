@@ -1,5 +1,9 @@
 # OpenCode verification
 
+Historical slice report. Results below apply to the recorded revision, not every
+later build. See [current acceptance](verification-install-recovery.md) and
+[current setup](INSTALL_GUIDE.md).
+
 Verified on Linux on 2026-09-09 with Rust/Cargo 1.97.1, OpenCode 1.18.30,
 `openai/gpt-6-astra`, and the official Rust MCP SDK 3.2.0.
 

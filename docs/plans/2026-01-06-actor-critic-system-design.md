@@ -1,5 +1,9 @@
 # Actor-Critic System Design for OpenCode
 
+Historical design for the archived implementation. See [release history](../../CHANGELOG.md)
+for the archive and [current architecture](../OVERVIEW.md) for session history.
+The approval status and design below are retained as originally recorded.
+
 **Date:** 2026-01-06
 **Status:** Approved
 

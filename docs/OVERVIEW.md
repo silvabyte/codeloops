@@ -1,9 +1,47 @@
 # Session-history architecture and contracts
 
+For commands, read [usage](USAGE.md). For setup and recovery, read
+[installation](INSTALL_GUIDE.md).
+
+## Client coverage
+
+MCP is the shared access layer for coding harnesses. Any harness that supports
+local stdio MCP servers can [connect to the archive](USAGE.md#connect-another-coding-harness).
+Automatic conversation capture uses harness-specific integrations. Cursor and
+OpenCode are the first; additional integrations use the same ingestion and query
+contracts.
+
+| Surface | Capture and evidence |
+| --- | --- |
+| OpenCode | Native messages, part revisions/deltas, lifecycle, and exposed tools. Live Linux 1.18.30 checks cover capture, Git changes, restart, and recall. |
+| Cursor desktop Agent Chat | Prompt and response hooks, lifecycle, and generic tool hooks where emitted. Final Cursor 3.18.25 acceptance on macOS covers conversation capture and fresh-chat MCP recall. |
+| Cursor Agent CLI | Separate hook surface. A `2026.09.08-6caf4ff` probe delivered lifecycle/tool hooks but no prompt/response/stop hooks. Do not assume desktop conversation coverage. |
+
+See [verification](verification-install-recovery.md) for exact revisions, earlier
+cross-client tests, and evidence boundaries.
+
+### Limits
+
+- Local-first: clients sharing one machine's archive can recall each other's
+  history. There is no cross-machine sync.
+- Capture starts with newly observed events. No historical transcript import,
+  complete subagent transcript, or attachment-byte capture is implemented.
+- Coverage depends on the hooks the client emits. Interrupted Cursor output
+  without a response hook is missing. Independent duplicate hook invocations
+  remain separate observations; durable queue retries are idempotent.
+- Git checkpoints are non-atomic observations, not proof of agent authorship.
+  Read the timing and file-content coverage on each result.
+- Per-event collector/fsync cost and large-repository latency are unbenchmarked.
+
+The sections below define the detailed limits, identity rules, and wire formats.
+
+## Module boundaries
+
 `crates/session-history` owns schema migration, immutable capture records, current
 message projections, full-text indexing, and compressed content-addressed artifacts.
-Its public boundary is `History::open`, `History::ingest`, `History::checkpoint`, and `History::query`, with
-versioned models in `model`. Database handles and artifact paths are private.
+Its public boundary includes `History::open`, `History::ingest`, `History::checkpoint`,
+`History::query`, and `History::export`, with versioned models in `model`. Database
+handles and artifact paths are private.
 
 `crates/codeloops` owns process lifecycle, private data directories, credentials,
 the OpenCode and Cursor collectors, shared outbox, CLI, HTTP, and MCP transports. The tiny
@@ -178,7 +216,7 @@ Two scans detect observable changes during capture. This is not an atomic snapsh
 changes created and undone between observations are invisible, and changes never
 establish agent authorship. Conflicted indexes retain stage records; submodules,
 LFS pointers, unsupported or unreadable files, and size exclusions report partial
-coverage. This preview limits individual files/manifests/patches to 8 MiB and Git
+coverage. The implementation limits individual files/manifests/patches to 8 MiB and Git
 enumeration output to 32 MiB. Larger files have explicit unavailable records;
 oversized patches leave before/after bytes available. Place the archive outside
 the observed repository to avoid capturing its own database/artifacts. Non-Git or
@@ -229,8 +267,8 @@ CLI's `history export SESSION --output DIRECTORY` downloads and verifies raw byt
 through the public artifact endpoint, then writes the completion descriptor last.
 `verify-export DIRECTORY` works offline. Record pages and the root inventory are
 bounded to 8 MiB each, with explicit failure rather than truncation. The sum of
-artifact bytes has no corresponding 8 MiB cap. See the installation guide for the
-bundle layout and failure/retry behavior.
+artifact bytes has no corresponding 8 MiB cap. See [export usage](USAGE.md#export-a-session)
+for the bundle layout and failure/retry behavior.
 
 ## Installation ownership
 
