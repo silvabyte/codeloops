@@ -39,6 +39,8 @@ impl Server {
             changes by session_id or entry_id plus workspace_id; \
             file bytes by checkpoint_id and base64 path; \
             artifact chunks for tool input/output/error and patches. \
+            Export by session_id returns an immutable manifest_hash; retrieve it \
+            and every artifact in its inventory through artifact queries. \
             Follow next_cursor/next_offset. Check boundary and checkpoint coverage: \
             observations do not attribute authorship."
     )]

@@ -199,3 +199,56 @@ return unavailable/not-captured status. Comparisons preserve endpoint coverage.
 
 An idle event ends a turn, not a session. Session deletion remains an observation,
 not successful completion. Attachments retain metadata-only coverage.
+
+## Snapshot export
+
+`History::export(session_id)` is a capability operation; `Query::Export` exposes it
+through CLI, MCP and authenticated REST. It freezes committed session/entry/capture
+records and checkpoint selection within one SQLite WAL read transaction. Record
+pages and the final manifest are immutable content-addressed artifacts, so later
+pagination/download cannot combine projections from different moments.
+
+The version-1 `codeloops-session-export` manifest contains session provenance,
+receipt-ordered record-page references and a SHA-256-to-byte-length inventory.
+Entry pages expose the same projection and explicit excerpt coverage as queries;
+full content hashes and every stored capture envelope preserve the original data
+and revision history. Capture pages include stable delivery/capture/session/entry
+IDs, original capture hashes and receipt timestamps. All checkpoint IDs appearing
+in current or historical links are included, with typed traversal through every
+HEAD/index/worktree manifest, nested directory and conflicted index stage.
+
+No path reconstruction requires the source machine: manifests retain base64 path
+bytes, while bundle artifact filenames are SHA-256 hashes. Existing raw payloads
+retain source-reported paths as provenance. Profile settings, credentials, SQLite
+files, unreferenced artifacts and other sessions are outside the export boundary.
+Pending deliveries are outside the committed snapshot. Partial/late/missing capture
+coverage is preserved, not upgraded to completeness by export.
+
+The root manifest is published only after every required artifact verifies. The
+CLI's `history export SESSION --output DIRECTORY` downloads and verifies raw bytes
+through the public artifact endpoint, then writes the completion descriptor last.
+`verify-export DIRECTORY` works offline. Record pages and the root inventory are
+bounded to 8 MiB each, with explicit failure rather than truncation. The sum of
+artifact bytes has no corresponding 8 MiB cap. See the installation guide for the
+bundle layout and failure/retry behavior.
+
+## Installation ownership
+
+Installation/configuration belongs to the application, not the history library.
+The binary embeds client-loadable adapter assets; Make wraps locked Cargo builds
+and installed CLI commands. A prefix holds one named profile with explicit data
+and service defaults. The generated OpenCode wrapper passes per-installation
+options without changing process-global environment variables. Both clients are
+registered once at user-global scope.
+
+Setup edits individual JSONC properties/array entries while preserving unrelated
+configuration and comments. A write-ahead ownership record permits finishing or
+removing a partially applied setup. Per-prefix and per-config-directory locks
+serialize CodeLoops writers; rechecking original bytes detects external edits
+before replacement. Client editors do not participate in these locks, so users
+should avoid simultaneous edits to the same configuration during setup.
+
+Uninstall removes exact owned entries and only unchanged assets, preserving data,
+spool identities and unrelated files. Conflicting edits are surfaced. Cursor hook
+source identity research (`codeloops-udq`) is separate: repeated setup is idempotent,
+but independent native hook invocations are not deduplicated by equal text.

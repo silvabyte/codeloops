@@ -3,17 +3,16 @@
 Durable local conversation history for coding agents. Capture a conversation,
 restart the service, and find it again through the CLI, MCP, or REST.
 
-This integration branch is a **Rust preview**. It captures live OpenCode messages,
-streaming revisions, lifecycle observations, and original source payloads. The
-Cursor slice adds command-hook capture for prompts, completed assistant messages,
-and lifecycle observations into the same archive. Desktop verification is still
-required; see [Cursor coverage](docs/verification-cursor.md). Normalized tool history,
-self-contained Git checkpoints, automated client setup, and portable export follow
-in dependent slices.
+This integration branch is a **Rust preview**. It captures live OpenCode and Cursor
+conversations, source-exposed tool outcomes, and self-contained Git checkpoints.
+Global setup registers both clients; portable exports retain records and captured
+bytes independently of the source checkout. See [client coverage](docs/OVERVIEW.md)
+and [installation/recovery verification](docs/verification-install-recovery.md)
+for automated evidence and final integrated real-client acceptance status.
 
 ## Try the preview
 
-Build/install requires Rust **1.97.1**, a C compiler/linker, Make, and standard
+Build/install requires Rust **1.97.1**, Git, a C compiler/linker, Make, and standard
 Unix installation tools. SQLite and Zstandard compile from bundled sources;
 no database server or system SQLite package is required. Linux is the verified
 platform. Development checks additionally require Node **22.18+** and npm.
@@ -21,30 +20,29 @@ platform. Development checks additionally require Node **22.18+** and npm.
 ```sh
 make check
 make install
+make setup
+make run
 ```
 
 `make check` installs locked development dependencies when needed and runs Rust
 formatting, Clippy, persistence/transport integration tests, and bridge checks.
-`make install` builds with `Cargo.lock` and copies the binary and client-loadable
-TypeScript asset plus a Cursor hook configuration example; it does not run an npm/Bun build.
+`make install` builds with `Cargo.lock` and installs the binary and client-loadable
+adapter assets without an npm/Bun build. `make setup` registers capture and MCP in
+both clients' user-global settings once, preserving other plugins, hooks, servers,
+and JSONC comments. `make run` starts the installed service in the foreground.
 
 The default prefix is `~/.local/codeloops-history-preview`, separate from an
 existing CodeLoops executable. Override it with `make install PREFIX=/your/path`.
 
-```sh
-export CODELOOPS_BIN="$HOME/.local/codeloops-history-preview/bin/codeloops"
-export CODELOOPS_DATA_DIR="$HOME/.local/share/codeloops-history/preview"
-export CODELOOPS_ADDRESS="127.0.0.1:47823"
-export CODELOOPS_OPENCODE_VERSION="$(opencode --version)"
-"$CODELOOPS_BIN" serve
-```
+**Quit and restart OpenCode** after setup. Open a new Cursor Agent Chat and verify
+its MCP connection. Generated integrations carry explicit executable/data paths;
+desktop launches do not need shell environment variables. Capture works while the
+service is offline; restart it or run `codeloops flush` to deliver queued events.
 
-Register the installed plugin and MCP server using the [preview installation
-guide](docs/INSTALL_GUIDE.md), then **restart OpenCode** with those environment
-variables. Capture works while the service is offline; the service drains the
-local spool after startup. `codeloops flush` also drains it explicitly.
-The guide also covers Cursor hooks/MCP and retrieving each client's history from
-the other. Both clients must use the same data directory and service address.
+`make e2e` verifies installed CLI/MCP/REST behavior in temporary state. It complements
+the real conversations in both clients. `make uninstall` removes owned integration
+entries and assets while preserving the archive, spool and persistent identities.
+See the [installation guide](docs/INSTALL_GUIDE.md) for profiles and recovery.
 
 ## Retrieve history
 
@@ -58,6 +56,8 @@ codeloops history show <session-uuid> --limit 20 --json
 codeloops history entry <entry-uuid> --json
 codeloops history captures <session-uuid> --json
 codeloops history artifact <sha256> --offset 0 --limit 65536 --json
+codeloops history export <session-uuid> --output /path/to/new-export-directory --json
+codeloops verify-export /path/to/new-export-directory --json
 codeloops health --json
 ```
 

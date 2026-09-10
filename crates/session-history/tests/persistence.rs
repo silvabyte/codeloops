@@ -47,6 +47,138 @@ fn part(base: &Capture, sequence: u64, message: &str, text: &str) -> Capture {
     }
 }
 
+fn artifact_bytes(history: &History, hash: &str) -> Vec<u8> {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    let mut bytes = Vec::new();
+    loop {
+        let chunk = history
+            .query(Query::Artifact {
+                hash: hash.into(),
+                offset: bytes.len(),
+                limit: 65536,
+            })
+            .unwrap();
+        bytes.extend(STANDARD.decode(chunk["data"].as_str().unwrap()).unwrap());
+        if chunk["next_offset"].is_null() {
+            return bytes;
+        }
+    }
+}
+
+fn export_records(
+    history: &History,
+    manifest: &serde_json::Value,
+    kind: &str,
+) -> Vec<serde_json::Value> {
+    manifest["record_pages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|page| page["kind"] == kind)
+        .flat_map(|page| {
+            let bytes = artifact_bytes(history, page["hash"].as_str().unwrap());
+            let page: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            page["items"].as_array().unwrap().clone()
+        })
+        .collect()
+}
+
+#[test]
+fn export_preserves_all_pages_revisions_and_freezes_a_consistent_snapshot() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut history = History::open(directory.path()).unwrap();
+    let base = capture();
+    let receipt = history.ingest(base.clone()).unwrap();
+    let long_text = "long text ".repeat(8000);
+    history.ingest(part(&base, 2, "msg_a", &long_text)).unwrap();
+    for sequence in 3..108 {
+        history
+            .ingest(part(
+                &base,
+                sequence,
+                &format!("msg_{sequence}"),
+                "equal legitimate content",
+            ))
+            .unwrap();
+    }
+    let descriptor = history.export(&receipt.session_id).unwrap();
+    let hash = descriptor["manifest_hash"].as_str().unwrap();
+    let frozen = artifact_bytes(&history, hash);
+    let manifest: serde_json::Value = serde_json::from_slice(&frozen).unwrap();
+    assert_eq!(export_records(&history, &manifest, "entries").len(), 106);
+    assert_eq!(export_records(&history, &manifest, "captures").len(), 107);
+    let entries = export_records(&history, &manifest, "entries");
+    let message = entries
+        .iter()
+        .find(|entry| entry["native_id"] == "msg_a")
+        .unwrap();
+    assert_eq!(message["truncated"], true);
+    assert_eq!(
+        artifact_bytes(&history, message["content_hash"].as_str().unwrap()),
+        long_text.as_bytes()
+    );
+
+    let writer_path = directory.path().to_owned();
+    let writer = std::thread::spawn(move || {
+        let mut history = History::open(writer_path).unwrap();
+        for sequence in 1000..1040 {
+            history
+                .ingest(part(
+                    &base,
+                    sequence,
+                    "msg_a",
+                    &format!("revision {sequence}"),
+                ))
+                .unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+    });
+    for _ in 0..5 {
+        let descriptor = history.export(&receipt.session_id).unwrap();
+        let manifest: serde_json::Value = serde_json::from_slice(&artifact_bytes(
+            &history,
+            descriptor["manifest_hash"].as_str().unwrap(),
+        ))
+        .unwrap();
+        let captures = export_records(&history, &manifest, "captures");
+        let latest = captures
+            .iter()
+            .map(|capture| {
+                serde_json::from_slice::<serde_json::Value>(&artifact_bytes(
+                    &history,
+                    capture["envelope_hash"].as_str().unwrap(),
+                ))
+                .unwrap()
+            })
+            .filter(|envelope| envelope["change"]["message_id"] == "msg_a")
+            .max_by_key(|envelope| envelope["sequence"].as_u64().unwrap())
+            .unwrap();
+        let entries = export_records(&history, &manifest, "entries");
+        let message = entries
+            .iter()
+            .find(|entry| entry["native_id"] == "msg_a")
+            .unwrap();
+        assert_eq!(
+            artifact_bytes(&history, message["content_hash"].as_str().unwrap()),
+            latest["change"]["text"].as_str().unwrap().as_bytes(),
+        );
+    }
+    writer.join().unwrap();
+    assert_eq!(artifact_bytes(&history, hash), frozen);
+    let missing = entries[0]["content_hash"].as_str().unwrap();
+    std::fs::remove_file(directory.path().join("artifacts").join(missing)).unwrap();
+    // The missing old projection is not referenced by current records. A required
+    // capture envelope, however, must make a new export fail explicitly.
+    let captures = export_records(&history, &manifest, "captures");
+    let missing = captures[0]["envelope_hash"].as_str().unwrap();
+    std::fs::remove_file(directory.path().join("artifacts").join(missing)).unwrap();
+    assert!(matches!(
+        history.export(&receipt.session_id),
+        Err(Error::UnavailableArtifact(_))
+    ));
+    assert!(matches!(history.export("unknown"), Err(Error::Unknown(_))));
+}
+
 #[test]
 fn retry_revision_repeat_and_restart_preserve_identity_and_provenance() {
     let dir = tempfile::tempdir().unwrap();

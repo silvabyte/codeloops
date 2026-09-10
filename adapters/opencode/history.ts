@@ -1,17 +1,38 @@
 import { spawnSync } from "node:child_process";
-import type { Hooks, Plugin } from "@opencode-ai/plugin";
+import type { Hooks, Plugin, PluginInput } from "@opencode-ai/plugin";
+
+type InstallationOptions = {
+  executable?: string;
+  dataDir?: string;
+  address?: string;
+  sourceVersion?: string;
+};
 
 // OpenCode 1.18.30 invokes event hooks without awaiting their promises. Keep the
 // durable enqueue synchronous so process disposal cannot strand pending promises.
 // Boundary commands archive files before enqueue; draining never resamples files.
-const HistoryPlugin: Plugin = ({ client, project, directory }) => {
-  const executable = process.env.CODELOOPS_BIN ?? "codeloops";
+const HistoryPlugin = (
+  { client, project, directory }: PluginInput,
+  options: InstallationOptions = {}
+) => {
+  const executable =
+    options.executable ?? process.env.CODELOOPS_BIN ?? "codeloops";
   // The v1 plugin SDK has no runtime-version API. Setup supplies the tested
   // version; absence is reported honestly rather than inferring from SDK types.
-  const sourceVersion = process.env.CODELOOPS_OPENCODE_VERSION ?? "unknown";
+  const sourceVersion =
+    options.sourceVersion ??
+    process.env.CODELOOPS_OPENCODE_VERSION ??
+    "unknown";
+  const args = ["capture-opencode", "--json"];
+  if (options.dataDir) {
+    args.push("--data-dir", options.dataDir);
+  }
+  if (options.address) {
+    args.push("--address", options.address);
+  }
 
   const capture = async (event: unknown) => {
-    const result = spawnSync(executable, ["capture-opencode", "--json"], {
+    const result = spawnSync(executable, args, {
       input: JSON.stringify({
         source_version: sourceVersion,
         observed_at: Date.now(),
@@ -72,4 +93,4 @@ const HistoryPlugin: Plugin = ({ client, project, directory }) => {
   return Promise.resolve(hooks);
 };
 
-export default HistoryPlugin;
+export default HistoryPlugin satisfies Plugin;

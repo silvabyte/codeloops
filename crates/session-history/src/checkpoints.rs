@@ -46,6 +46,41 @@ type Manifest = BTreeMap<String, Node>;
 type Files = BTreeMap<Vec<u8>, File>;
 type ObjectCache = BTreeMap<(String, String), File>;
 
+/// Traverse the same typed graph used for file retrieval, including conflict stages.
+pub(crate) fn export_hashes(h: &History, checkpoint: &Value) -> Result<BTreeSet<String>> {
+    fn file_hashes(file: File, hashes: &mut BTreeSet<String>) {
+        if let Some(hash) = file.hash {
+            hashes.insert(hash);
+        }
+        for stage in file.stages.into_values() {
+            file_hashes(*stage, hashes);
+        }
+    }
+    let mut hashes = BTreeSet::new();
+    let mut visited = BTreeSet::new();
+    let mut pending = Vec::new();
+    for layer in ["head", "index", "worktree"] {
+        let hash = checkpoint["manifests"][layer]
+            .as_str()
+            .ok_or_else(|| Error::Invalid("missing checkpoint manifest".into()))?;
+        pending.push(hash.to_owned());
+    }
+    while let Some(hash) = pending.pop() {
+        if !visited.insert(hash.clone()) {
+            continue;
+        }
+        let node: Manifest = serde_json::from_slice(&h.artifacts.get(&hash)?)?;
+        hashes.insert(hash);
+        for node in node.into_values() {
+            match node {
+                Node::Directory { hash } => pending.push(hash),
+                Node::File(file) => file_hashes(file, &mut hashes),
+            }
+        }
+    }
+    Ok(hashes)
+}
+
 fn git(root: &Path, args: &[&str], limit: usize) -> Result<Vec<u8>> {
     // No optional index refresh, replacement objects, prompts or lazy fetching.
     let mut child = Command::new("git")
