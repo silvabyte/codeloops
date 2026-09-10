@@ -59,8 +59,11 @@ instructions separate from revision-specific verification evidence. Record what
 was tested without upgrading older results to new acceptance.
 
 Product positioning: "Unified conversation history across all your coding agents."
-Lead with continuity across harnesses. Keep current capture integrations in the
-support details; they do not define the product's scope.
+Lead with the user's problem: "Hey Claude, refer to that session I just had in
+Cursor for context." Show the frustration of re-explaining work when switching
+agents before describing the product. Use the founder's direct, personal voice
+and supplied humor. Keep current capture integrations in the support details;
+they do not define the product's scope.
 
 Store new AI planning/design artifacts under `history/`, not the repository root.
 Only read existing `history/` content when asked to review past planning. Preserve

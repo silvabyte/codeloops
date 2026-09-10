@@ -1,14 +1,30 @@
 # CodeLoops
 
-Unified conversation history across all your coding agents.
+Ever wish you could just say:
 
-Switch agents without starting from scratch. Find past conversations, revisit
-decisions, and give your next agent the context to keep going.
+> Hey Claude, refer to that session I just had in Cursor for context.
 
-One local archive, shared through MCP. Built for every AI coding harness, with
-automatic capture for Cursor and OpenCode today.
+You already explained the problem. Worked through the tradeoffs. Made the
+decisions. Then you switch agents and have to explain it all again.
+
+CodeLoops gives you **unified conversation history across all your coding agents**.
+Your agent can find and read those earlier sessions through MCP.
+
+**[Get CodeLoops](docs/INSTALL_GUIDE.md). It's free, you bum.**
+
+## Why this exists
+
+I started CodeLoops about two years ago, then dropped it because I figured this
+would be a solved problem by now.
+
+How is it still this hard to use a conversation from one coding agent in another?
+
+That's why I'm working on CodeLoops again.
 
 ## Get started
+
+Your history stays local. Automatic capture supports Cursor and OpenCode today;
+CodeLoops is built for every AI coding harness through its shared MCP layer.
 
 [Install and connect your client](docs/INSTALL_GUIDE.md). The guide takes you from
 clone to one captured conversation and a fresh-chat recall check.
