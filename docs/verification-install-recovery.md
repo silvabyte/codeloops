@@ -1,26 +1,44 @@
 # Installation, recovery and export verification
 
-Date: 2026-09-10. Slice: `codeloops-vvb.4`. Branch:
-`feat/history-install-recovery`, based on integrated commit
-`b05d410a0a459f5807e90dbf94c73e0af653ad4c`.
+Updated: 2026-09-10. This is the acceptance record for session-history `main`.
+Earlier slice reports retain their original test scope:
+
+- [OpenCode capture and recall](verification-opencode.md)
+- [Cursor and same-machine cross-client recall](verification-cursor.md)
+- [Tool history and Git checkpoints](verification-git-checkpoints.md)
 
 ## Status
 
-Implementation and local automated/installed-interface verification are available.
-The real OpenCode run below tested an uncommitted installation/recovery build.
-The completed integration commit and its final two-client acceptance must be
-recorded after integration. Earlier Cursor acceptance is user-confirmed and remains
-recorded in `verification-cursor.md`; it is not a new desktop run of this slice.
+Accepted implementation: `36582b50ea54b0592066f61f2036606e00801674`.
+The user accepted live Cursor capture and fresh-chat MCP recall on the installed
+Mac build, then authorized the [main cutover](../CHANGELOG.md#session-history-main-2026-09-10).
+Delivery epic `codeloops-vvb`, installation slice `codeloops-vvb.4`, and release
+operation `codeloops-6u3` are closed.
+
+| Evidence | Scope |
+| --- | --- |
+| [Integrated CI](https://github.com/silvabyte/codeloops/actions/runs/34498642646) | Accepted commit after PR #54 merged: `make check`, isolated install, and `make e2e` passed |
+| [Main CI](https://github.com/silvabyte/codeloops/actions/runs/34503249545) | Same accepted commit after cutover: all three checks passed |
+| [Final Mac acceptance](#final-integrated-acceptance) | Cursor desktop 3.18.25 conversation capture and user-confirmed MCP recall on the accepted commit |
+| [Earlier live OpenCode run](#real-opencode-installed-verification) | Installation/recovery development build on Linux, including edits, offline replay, source removal, restart, MCP export/recall, and uninstall |
+
+Earlier OpenCode, cross-client, checkpoint, and recovery tests support the release.
+They were not repeated as a full manual two-client run on the final commit. The
+final marker chat was not a Git workspace and did not test file changes.
 
 ## Automated verification
+
+The following local results were recorded on `feat/history-install-recovery`,
+based on `b05d410a0a459f5807e90dbf94c73e0af653ad4c`. Integrated CI is linked above.
 
 - `make check`: 19 Rust integration tests, Clippy with warnings denied, Rust
   formatting, TypeScript typechecking, the Ultracite Biome preset and the bridge
   integration test.
 - `make e2e`: three installed-interface tests using a locked release binary copied
   through the public `install` command into temporary prefixes.
-- CI now runs `make e2e` after the existing check/install jobs on integration-branch
-  PRs and pushes.
+- The [current CI workflow](../.github/workflows/ci.yml) runs checks, isolated
+  installation, and installed-interface tests for `main` and the retained
+  integration branch.
 
 The installed tests use isolated home/config/data directories and cover:
 
@@ -56,6 +74,9 @@ a lint error while returning success during development, so it could not reliabl
 gate `make check`.
 
 ## Real OpenCode installed verification
+
+This run tested an uncommitted installation/recovery build, not the final
+integrated commit.
 
 Client: **OpenCode 1.18.30**, model `openai/gpt-6-astra`, Linux.
 
@@ -110,7 +131,7 @@ plugin/team configuration was not inspected, so cross-root dispatch and overlapp
 registration remain unresolved. Global setup remains the default; no content-only
 deduplication was added. Original client configuration was restored and hash-verified.
 
-Full findings are recorded in `codeloops-udq` comments 3–5. Redacted native evidence
+Full findings are recorded in `codeloops-udq` comments 3 through 5. Redacted native evidence
 is at `/tmp/opencode/codeloops-cursor-identity-desktop-redacted.json`; the desktop
 report is `/tmp/opencode/codeloops-cursor-identity-desktop-findings.md`. This evidence
 concerns source-hook behavior, not exact-commit installed acceptance of this slice.
@@ -138,16 +159,42 @@ No confirmed new defect was identified. Scan summary:
 
 ## Final integrated acceptance
 
-After this slice is integrated, record the exact `git rev-parse HEAD`, OpenCode
-version and Cursor desktop About version with the user's run. Install/setup/run
-that integration revision, then exercise the approved cross-client story: capture
-conversation and successful/failed edits in each client, retrieve the other
-client's messages and file changes through MCP, export and verify a session, and
-confirm history survives service restart and uninstall.
+Source: canonical `codeloops-vvb.4` comments 8 through 11 and `codeloops-6u3`
+comment 13. No new interactive run was performed for this docs refresh.
 
-The local Linux machine has no Cursor desktop; the user's Mac is reachable through
-`ssh-mbpdmi`, and the native-hook follow-up above used that machine. Adapter fixtures
-and those hook probes do not replace the final integrated installed-client run.
-Remaining per-hook identity and repeated-delivery research in `codeloops-udq` does
-not block this slice or reopen prior acceptance.
-Promotion to `main` remains the separately authorized `codeloops-6u3` operation.
+On 2026-09-10, the exact accepted commit was built with Rust 1.97.1 and installed
+from a clean Mac checkout using `make install`.
+
+| Item | Recorded value |
+| --- | --- |
+| Commit | `36582b50ea54b0592066f61f2036606e00801674` |
+| Installed binary SHA-256 | `5db4c941039afc18920d8e8f982027d70073a9b41d8a96682bbd5f6ffb7cae55` |
+| Prefix | `~/.local/codeloops-history-preview` |
+| Reused data | `~/.local/share/codeloops-history/cursor-verification` |
+| Service | `127.0.0.1:47823`, started separately as a detached process |
+| Cursor desktop | `3.18.25` |
+| OpenCode CLI inventory | `1.17.9`, not a new live OpenCode test |
+
+`make setup` registered user-global capture/MCP and explicitly selected
+`opencode.json` because both config filenames existed. Only exactly matched older
+manual CodeLoops registrations were removed. Semantic comparison confirmed
+unrelated settings and the existing `herdr` hook were preserved; `opencode.jsonc`
+was byte-unchanged. Private backups and the receipt remain on the Mac under
+`~/.local/state/codeloops-acceptance-36582b5-wvrhekor/`.
+
+The user's Cursor marker `mac-36582b5-cursor` produced one matching prompt and one
+assistant reply in session `f934f9a0-8a08-491f-867d-d9a98479a264`:
+
+- User entry: `7bde74cf-5611-4370-aebc-06e4a3a40e4c`
+- Assistant entry: `c87ae296-3d48-4e5e-b4bf-15e65cbf54db`, linked to the prompt
+
+The native workspace was an earlier temporary research directory. Direct
+`git rev-parse` confirmed it was not a Git repository, explaining the failed
+checkpoint link. Conversation delivery worked; no rejected deliveries or enqueue
+failures were observed during the check.
+
+After the fresh-chat archive lookup instruction, the user confirmed MCP recall:
+"yup its working fine... what is next?" This completes the recorded installed
+Cursor experience. It does not add a final-commit manual test of file changes,
+cross-client recall, restart, export, or uninstall to the earlier evidence.
+Independent Cursor identity research in `codeloops-udq` remains nonblocking.

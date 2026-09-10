@@ -1,5 +1,10 @@
 # Tool history and Git checkpoint verification
 
+Historical slice report. `codeloops-vvb.3` is closed. The user confirmed prior-PR
+Cursor testing on 2026-09-10 (issue comment 2); this does not establish a new desktop
+run of this checkpoint revision. See [final acceptance](verification-install-recovery.md)
+and [current setup](INSTALL_GUIDE.md).
+
 Development branch: `feat/history-git-checkpoints`, based on integration commit
 `9b5d590544f578d62859bd59c0cdbea9c045935d`. The baseline's integrated CI run
 [34417404742](https://github.com/silvabyte/codeloops/actions/runs/34417404742)
@@ -77,11 +82,12 @@ An initial harness attempt expected exactly three calls but OpenCode first ran
 `ls` to verify the directory. That attempt captured correctly; the successful
 harness asserts the required writes and failure without assuming an exact count.
 
-## Remaining Cursor desktop acceptance
+## Historical Cursor desktop test plan
 
-This Linux environment has no Cursor desktop IDE. The earlier desktop evidence in
-`verification-cursor.md` predates generic tool/checkpoint hooks and does **not**
-verify this slice. `codeloops-vvb.3` remains in progress pending this acceptance.
+The following was the proposed walkthrough at the time of this slice. It is not
+a completed test report or an outstanding release gate. The earlier desktop
+evidence in [Cursor verification](verification-cursor.md) predates generic
+tool/checkpoint hooks and does not independently verify them.
 
 On a desktop-capable machine, install this implementation revision and register
 the ten hooks from the installed example, preferably project-scoped. Use isolated
@@ -103,6 +109,7 @@ Record the exact implementation commit, Cursor version and OpenCode version.
 6. Include interruption/failed tools; record actual status/timing evidence and
    health. Fixtures supplement this walkthrough but cannot replace it.
 
-Preview limits are explicit in `OVERVIEW.md`: non-atomic scans, 8 MiB individual
-file/manifests/patch bounds, 32 MiB Git enumeration bounds, and partial coverage
-for unsupported content. Large-repository latency is not benchmarked.
+Implementation limits are explicit in
+[the Git contract](OVERVIEW.md#git-observations-and-changes): non-atomic scans,
+8 MiB individual file/manifests/patch bounds, 32 MiB Git enumeration bounds, and
+partial coverage for unsupported content. Large-repository latency is not benchmarked.
