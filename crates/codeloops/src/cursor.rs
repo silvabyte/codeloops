@@ -86,7 +86,11 @@ fn changes(tx: &Transaction<'_>, event: &Value, session: &str) -> AppResult<Vec<
         let mut parent_message = None;
         if let Some(generation) = generation {
             if is_user {
-                tx.execute("INSERT INTO cursor_prompts VALUES(?,?,?) ON CONFLICT(session,generation) DO UPDATE SET message=excluded.message", params![session,generation,message])?;
+                tx.execute(
+                    "INSERT INTO cursor_prompts VALUES(?, ?, ?)
+                     ON CONFLICT(session, generation) DO UPDATE SET message = excluded.message",
+                    params![session, generation, message],
+                )?;
             } else {
                 parent_message = tx
                     .query_row(

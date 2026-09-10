@@ -334,11 +334,16 @@ async fn main() {
     let cursor_hook = matches!(cli.command, Command::CaptureCursor);
     if let Err(error) = run(cli).await {
         if let Some(api) = error.downcast_ref::<http::ApiError>() {
-            eprintln!("{}", json!({"error":api}));
+            eprintln!("{}", json!({"error": api}));
         } else {
             eprintln!(
                 "{}",
-                json!({"error":{"code":"command_failed","message":error.to_string()}})
+                json!({
+                    "error": {
+                        "code": "command_failed",
+                        "message": error.to_string(),
+                    },
+                })
             );
         }
         if cursor_hook {

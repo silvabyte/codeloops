@@ -39,7 +39,7 @@ impl IntoResponse for ApiError {
             "unavailable_artifact" => StatusCode::SERVICE_UNAVAILABLE,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
-        (status, Json(json!({"error":self}))).into_response()
+        (status, Json(json!({"error": self}))).into_response()
     }
 }
 

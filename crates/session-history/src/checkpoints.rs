@@ -391,12 +391,34 @@ pub(crate) fn capture(h: &mut History, directory: &Path, workspace: &str) -> Res
     if unstable {
         issues.insert("changed_during_scan".into());
     }
+    let status = if unstable {
+        "unstable"
+    } else if issues.is_empty() {
+        "complete"
+    } else {
+        "partial"
+    };
     let record = json!({
-        "id":Uuid::new_v4().to_string(), "workspace_id":workspace, "started_at":started, "finished_at":now_ms(),
-        "status":if unstable { "unstable" } else if issues.is_empty() { "complete" } else { "partial" },
-        "issues":issues, "head":first.head, "branch":first.branch,
-        "manifests":{"head":manifest(&h.artifacts, &first.head_files)?, "index":manifest(&h.artifacts, &first.index_files)?, "worktree":manifest(&h.artifacts, &first.work_files)?},
-        "coverage":{"atomic":false,"authorship":"not_attributed","intermediate_writes":"not_observed","untracked":"non_ignored","max_file_bytes":MAX_FILE}
+        "id": Uuid::new_v4().to_string(),
+        "workspace_id": workspace,
+        "started_at": started,
+        "finished_at": now_ms(),
+        "status": status,
+        "issues": issues,
+        "head": first.head,
+        "branch": first.branch,
+        "manifests": {
+            "head": manifest(&h.artifacts, &first.head_files)?,
+            "index": manifest(&h.artifacts, &first.index_files)?,
+            "worktree": manifest(&h.artifacts, &first.work_files)?,
+        },
+        "coverage": {
+            "atomic": false,
+            "authorship": "not_attributed",
+            "intermediate_writes": "not_observed",
+            "untracked": "non_ignored",
+            "max_file_bytes": MAX_FILE,
+        },
     });
     h.connection.execute(
         "INSERT INTO checkpoints VALUES(?,?,?)",
@@ -456,7 +478,11 @@ pub(crate) fn file(
         .get(&raw)
         .ok_or_else(|| Error::Unknown(format!("file {path} in {id}")))?;
     let Some(hash) = &file.hash else {
-        return Ok(json!({"file":file,"status":"unavailable","checkpoint":checkpoint}));
+        return Ok(json!({
+            "file": file,
+            "status": "unavailable",
+            "checkpoint": checkpoint,
+        }));
     };
     let mut chunk = crate::query::query(
         h,
@@ -473,7 +499,7 @@ pub(crate) fn file(
 
 fn patch(a: &Artifacts, before: Option<&File>, after: Option<&File>) -> Result<Value> {
     if before.into_iter().chain(after).any(|f| f.hash.is_none()) {
-        return Ok(json!({"status":"unavailable"}));
+        return Ok(json!({"status": "unavailable"}));
     }
     let old = before
         .and_then(|f| f.hash.as_ref())
@@ -486,13 +512,13 @@ fn patch(a: &Artifacts, before: Option<&File>, after: Option<&File>) -> Result<V
         .transpose()?
         .unwrap_or_default();
     let (Ok(old), Ok(new)) = (std::str::from_utf8(&old), std::str::from_utf8(&new)) else {
-        return Ok(json!({"status":"binary"}));
+        return Ok(json!({"status": "binary"}));
     };
     if old.contains('\0') || new.contains('\0') {
-        return Ok(json!({"status":"binary"}));
+        return Ok(json!({"status": "binary"}));
     }
     if old == new {
-        return Ok(json!({"status":"metadata_only"}));
+        return Ok(json!({"status": "metadata_only"}));
     }
     let count = |s: &str| s.split_inclusive('\n').count();
     let range = |n: usize| {
@@ -517,11 +543,17 @@ fn patch(a: &Artifacts, before: Option<&File>, after: Option<&File>) -> Result<V
         }
     }
     if patch.len() > MAX_FILE {
-        return Ok(json!({"status":"patch_size_limit","file_bytes_available":true}));
+        return Ok(json!({
+            "status": "patch_size_limit",
+            "file_bytes_available": true,
+        }));
     }
-    Ok(
-        json!({"status":"available","hash":a.put(patch.as_bytes())?,"bytes":patch.len(),"format":"unified_full_file"}),
-    )
+    Ok(json!({
+        "status": "available",
+        "hash": a.put(patch.as_bytes())?,
+        "bytes": patch.len(),
+        "format": "unified_full_file",
+    }))
 }
 
 pub(crate) fn compare(
@@ -577,9 +609,27 @@ pub(crate) fn compare(
     for path in &changed[start..end] {
         let before = old.get(*path);
         let after = new.get(*path);
-        items.push(json!({"path":B64.encode(path),"path_encoding":"base64","display_path":String::from_utf8_lossy(path),"before":before,"after":after,"patch":patch(&h.artifacts,before,after)?}));
+        items.push(json!({
+            "path": B64.encode(path),
+            "path_encoding": "base64",
+            "display_path": String::from_utf8_lossy(path),
+            "before": before,
+            "after": after,
+            "patch": patch(&h.artifacts, before, after)?,
+        }));
     }
-    Ok(
-        json!({"before":first,"after":last,"items":items,"has_more":end<changed.len(),"next_cursor":if end<changed.len(){Some(format!("{fingerprint}:{end}"))}else{None},"limit":page.limit,"authorship":"not_attributed"}),
-    )
+    let next_cursor = if end < changed.len() {
+        Some(format!("{fingerprint}:{end}"))
+    } else {
+        None
+    };
+    Ok(json!({
+        "before": first,
+        "after": last,
+        "items": items,
+        "has_more": end < changed.len(),
+        "next_cursor": next_cursor,
+        "limit": page.limit,
+        "authorship": "not_attributed",
+    }))
 }

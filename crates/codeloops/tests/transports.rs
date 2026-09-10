@@ -90,7 +90,12 @@ async fn start(root: &Path, address: &str) -> Service {
 }
 
 fn native(event: Value) -> Value {
-    json!({"source_version":"1.18.30-fixture","directory":"/workspace with spaces","project":"native-project","event":event})
+    json!({
+        "source_version": "1.18.30-fixture",
+        "directory": "/workspace with spaces",
+        "project": "native-project",
+        "event": event,
+    })
 }
 
 #[tokio::test]
@@ -101,12 +106,57 @@ async fn offline_capture_restart_and_real_mcp_cli_rest_have_equal_results() {
     let address = listener.local_addr().unwrap().to_string();
     drop(listener);
     let events = [
-        json!({"type":"session.created","properties":{"info":{"id":"ses_one","title":"Round trip"}}}),
-        json!({"type":"message.updated","properties":{"info":{"id":"msg_one","sessionID":"ses_one","role":"user","time":{"created":10}}}}),
-        json!({"type":"message.part.updated","properties":{"part":{"id":"part_one","messageID":"msg_one","sessionID":"ses_one","type":"text","text":"find "},"unknown":"kept"}}),
-        json!({"type":"message.part.delta","properties":{"partID":"part_one","messageID":"msg_one","sessionID":"ses_one","field":"text","delta":"my archived conversation"}}),
-        json!({"type":"message.part.updated","properties":{"part":{"id":"part_one","messageID":"msg_one","sessionID":"ses_one","type":"text","text":"find my archived conversation"}}}),
-        json!({"type":"session.idle","properties":{"sessionID":"ses_one"}}),
+        json!({
+            "type": "session.created",
+            "properties": {"info": {"id": "ses_one", "title": "Round trip"}},
+        }),
+        json!({
+            "type": "message.updated",
+            "properties": {
+                "info": {
+                    "id": "msg_one",
+                    "sessionID": "ses_one",
+                    "role": "user",
+                    "time": {"created": 10},
+                },
+            },
+        }),
+        json!({
+            "type": "message.part.updated",
+            "properties": {
+                "part": {
+                    "id": "part_one",
+                    "messageID": "msg_one",
+                    "sessionID": "ses_one",
+                    "type": "text",
+                    "text": "find ",
+                },
+                "unknown": "kept",
+            },
+        }),
+        json!({
+            "type": "message.part.delta",
+            "properties": {
+                "partID": "part_one",
+                "messageID": "msg_one",
+                "sessionID": "ses_one",
+                "field": "text",
+                "delta": "my archived conversation",
+            },
+        }),
+        json!({
+            "type": "message.part.updated",
+            "properties": {
+                "part": {
+                    "id": "part_one",
+                    "messageID": "msg_one",
+                    "sessionID": "ses_one",
+                    "type": "text",
+                    "text": "find my archived conversation",
+                },
+            },
+        }),
+        json!({"type": "session.idle", "properties": {"sessionID": "ses_one"}}),
     ];
     for event in events {
         assert_eq!(
@@ -163,7 +213,7 @@ async fn offline_capture_restart_and_real_mcp_cli_rest_have_equal_results() {
     );
     let token = std::fs::read_to_string(root.join("credential")).unwrap();
     let client = reqwest::Client::new();
-    let request = json!({"operation":"search","text":"archived conversation"});
+    let request = json!({"operation": "search", "text": "archived conversation"});
     let url = format!("http://{address}/v1/history/query");
     assert_eq!(
         client
@@ -196,11 +246,14 @@ async fn offline_capture_restart_and_real_mcp_cli_rest_have_equal_results() {
     let tools = mcp.list_all_tools().await.unwrap();
     assert!(tools.iter().any(|t| t.name == "history_query"));
     let call = CallToolRequestParams::new("history_query")
-        .with_arguments(json!({"request":request}).as_object().unwrap().clone());
+        .with_arguments(json!({"request": request}).as_object().unwrap().clone());
     let result = mcp.call_tool(call).await.unwrap();
     assert_eq!(result.structured_content.unwrap(), rest);
-    let cursor_search =
-        json!({"operation":"search","text":"sapphire","filter":{"source":"cursor"}});
+    let cursor_search = json!({
+        "operation": "search",
+        "text": "sapphire",
+        "filter": {"source": "cursor"},
+    });
     let cursor_rest: Value = client
         .post(&url)
         .bearer_auth(&token)
@@ -225,7 +278,7 @@ async fn offline_capture_restart_and_real_mcp_cli_rest_have_equal_results() {
     let cursor_mcp = mcp
         .call_tool(
             CallToolRequestParams::new("history_query").with_arguments(
-                json!({"request":cursor_search})
+                json!({"request": cursor_search})
                     .as_object()
                     .unwrap()
                     .clone(),
@@ -234,11 +287,19 @@ async fn offline_capture_restart_and_real_mcp_cli_rest_have_equal_results() {
         .await
         .unwrap();
     assert_eq!(cursor_mcp.structured_content.unwrap(), cursor_rest);
-    let page_request = json!({"operation":"show","session_id":session,"page":{"limit":1}});
+    let page_request = json!({
+        "operation": "show",
+        "session_id": session,
+        "page": {"limit": 1},
+    });
     let mcp_page = mcp
         .call_tool(
-            CallToolRequestParams::new("history_query")
-                .with_arguments(json!({"request":page_request}).as_object().unwrap().clone()),
+            CallToolRequestParams::new("history_query").with_arguments(
+                json!({"request": page_request})
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
         )
         .await
         .unwrap();
@@ -252,7 +313,7 @@ async fn offline_capture_restart_and_real_mcp_cli_rest_have_equal_results() {
         )
     );
 
-    let invalid = json!({"operation":"entry","entry_id":"missing"});
+    let invalid = json!({"operation": "entry", "entry_id": "missing"});
     let response = client
         .post(&url)
         .bearer_auth(&token)
@@ -265,7 +326,7 @@ async fn offline_capture_restart_and_real_mcp_cli_rest_have_equal_results() {
     let mcp_error = mcp
         .call_tool(
             CallToolRequestParams::new("history_query")
-                .with_arguments(json!({"request":invalid}).as_object().unwrap().clone()),
+                .with_arguments(json!({"request": invalid}).as_object().unwrap().clone()),
         )
         .await
         .unwrap();
@@ -302,8 +363,14 @@ async fn offline_capture_restart_and_real_mcp_cli_rest_have_equal_results() {
 }
 
 fn cursor_event(hook: &str, session: &str, generation: &str) -> Value {
-    json!({"hook_event_name":hook,"conversation_id":session,"generation_id":generation,
-        "cursor_version":"documented-fixture","workspace_roots":["/workspace with spaces"],"unknown":{"retained":true}})
+    json!({
+        "hook_event_name": hook,
+        "conversation_id": session,
+        "generation_id": generation,
+        "cursor_version": "documented-fixture",
+        "workspace_roots": ["/workspace with spaces"],
+        "unknown": {"retained": true},
+    })
 }
 
 #[test]
@@ -555,22 +622,46 @@ fn shared_outbox_upgrades_legacy_identity_health_and_delta_baseline() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     let db = rusqlite::Connection::open(root.join("opencode-spool.sqlite3")).unwrap();
-    db.execute_batch("CREATE TABLE identities(key TEXT PRIMARY KEY,id TEXT NOT NULL);
-      INSERT INTO identities VALUES('device','00000000-0000-4000-8000-000000000001'),('opencode','00000000-0000-4000-8000-000000000002');
-      CREATE TABLE counter(value INTEGER NOT NULL); INSERT INTO counter VALUES(50);
-      CREATE TABLE parts(session TEXT,message TEXT,part TEXT,kind TEXT,text TEXT,PRIMARY KEY(session,message,part));
-      INSERT INTO parts VALUES('session','message','part','text','old ');
-      CREATE TABLE health(id INTEGER PRIMARY KEY CHECK(id=1),delivered INTEGER NOT NULL DEFAULT 0,last_error TEXT);
-      INSERT INTO health VALUES(1,12,'legacy failure');
-      CREATE TABLE failures(id INTEGER PRIMARY KEY AUTOINCREMENT,observed INTEGER NOT NULL,message TEXT NOT NULL);
-      INSERT INTO failures(observed,message) VALUES(1,'legacy failure');").unwrap();
+    db.execute_batch(
+        "CREATE TABLE identities(key TEXT PRIMARY KEY, id TEXT NOT NULL);
+         INSERT INTO identities VALUES
+             ('device', '00000000-0000-4000-8000-000000000001'),
+             ('opencode', '00000000-0000-4000-8000-000000000002');
+
+         CREATE TABLE counter(value INTEGER NOT NULL);
+         INSERT INTO counter VALUES(50);
+         CREATE TABLE parts(
+             session TEXT, message TEXT, part TEXT, kind TEXT, text TEXT,
+             PRIMARY KEY(session, message, part)
+         );
+         INSERT INTO parts VALUES('session', 'message', 'part', 'text', 'old ');
+
+         CREATE TABLE health(
+             id INTEGER PRIMARY KEY CHECK(id = 1),
+             delivered INTEGER NOT NULL DEFAULT 0, last_error TEXT
+         );
+         INSERT INTO health VALUES(1, 12, 'legacy failure');
+         CREATE TABLE failures(
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             observed INTEGER NOT NULL, message TEXT NOT NULL
+         );
+         INSERT INTO failures(observed, message) VALUES(1, 'legacy failure');",
+    )
+    .unwrap();
     cli(
         root,
         "127.0.0.1:47823",
         &["capture-opencode"],
-        Some(&native(
-            json!({"type":"message.part.delta","properties":{"sessionID":"session","messageID":"message","partID":"part","field":"text","delta":"text"}}),
-        )),
+        Some(&native(json!({
+            "type": "message.part.delta",
+            "properties": {
+                "sessionID": "session",
+                "messageID": "message",
+                "partID": "part",
+                "field": "text",
+                "delta": "text",
+            },
+        }))),
     );
     let envelope: String = db
         .query_row("SELECT envelope FROM queue", [], |r| r.get(0))
@@ -620,22 +711,53 @@ async fn tool_boundaries_archive_shell_failures_before_offline_replay_and_match_
         input["workspace_roots"] = json!([repo.path()]);
         input["tool_use_id"] = call.into();
         input["tool_name"] = "Shell".into();
-        input["tool_input"] = json!({"command":"write file; exit 1"});
+        input["tool_input"] = json!({"command": "write file; exit 1"});
         input["error_message"] = "exit 1".into();
         cli(root, &address, &["capture-cursor"], Some(&input));
     };
-    opencode(json!({"type":"history.prompt","properties":{"sessionID":"opencode-tools"}}));
-    opencode(
-        json!({"type":"history.tool.before","properties":{"sessionID":"opencode-tools","callID":"call","tool":"bash","args":{"command":"write file"}}}),
-    );
+    opencode(json!({
+        "type": "history.prompt",
+        "properties": {"sessionID": "opencode-tools"},
+    }));
+    opencode(json!({
+        "type": "history.tool.before",
+        "properties": {
+            "sessionID": "opencode-tools",
+            "callID": "call",
+            "tool": "bash",
+            "args": {"command": "write file"},
+        },
+    }));
     std::fs::write(repo.path().join("file"), b"OpenCode wrote\n").unwrap();
-    opencode(
-        json!({"type":"history.tool.after","properties":{"sessionID":"opencode-tools","callID":"call","tool":"bash","args":{"command":"write file"},"output":"written"}}),
-    );
+    opencode(json!({
+        "type": "history.tool.after",
+        "properties": {
+            "sessionID": "opencode-tools",
+            "callID": "call",
+            "tool": "bash",
+            "args": {"command": "write file"},
+            "output": "written",
+        },
+    }));
     // A normal terminal part revises the same tool without taking another snapshot.
-    opencode(
-        json!({"type":"message.part.updated","properties":{"part":{"id":"part","messageID":"assistant","sessionID":"opencode-tools","type":"tool","callID":"call","tool":"bash","state":{"status":"completed","input":{"command":"write file"},"output":"written"}}}}),
-    );
+    opencode(json!({
+        "type": "message.part.updated",
+        "properties": {
+            "part": {
+                "id": "part",
+                "messageID": "assistant",
+                "sessionID": "opencode-tools",
+                "type": "tool",
+                "callID": "call",
+                "tool": "bash",
+                "state": {
+                    "status": "completed",
+                    "input": {"command": "write file"},
+                    "output": "written",
+                },
+            },
+        },
+    }));
     cursor("preToolUse", "failed-call");
     let failed = Command::new("sh")
         .current_dir(repo.path())
@@ -644,13 +766,34 @@ async fn tool_boundaries_archive_shell_failures_before_offline_replay_and_match_
         .unwrap();
     assert!(!failed.success());
     cursor("postToolUseFailure", "failed-call");
-    opencode(
-        json!({"type":"history.tool.before","properties":{"sessionID":"opencode-tools","callID":"failed","tool":"bash","args":{"command":"write then fail"}}}),
-    );
+    opencode(json!({
+        "type": "history.tool.before",
+        "properties": {
+            "sessionID": "opencode-tools",
+            "callID": "failed",
+            "tool": "bash",
+            "args": {"command": "write then fail"},
+        },
+    }));
     std::fs::write(repo.path().join("file"), b"OpenCode failed but wrote\n").unwrap();
-    opencode(
-        json!({"type":"message.part.updated","properties":{"part":{"id":"failed-part","messageID":"assistant","sessionID":"opencode-tools","type":"tool","callID":"failed","tool":"bash","state":{"status":"error","input":{"command":"write then fail"},"error":"failure"}}}}),
-    );
+    opencode(json!({
+        "type": "message.part.updated",
+        "properties": {
+            "part": {
+                "id": "failed-part",
+                "messageID": "assistant",
+                "sessionID": "opencode-tools",
+                "type": "tool",
+                "callID": "failed",
+                "tool": "bash",
+                "state": {
+                    "status": "error",
+                    "input": {"command": "write then fail"},
+                    "error": "failure",
+                },
+            },
+        },
+    }));
     repo.close().unwrap(); // Source and Git objects gone before the first flush.
     let health = cli(root, &address, &["flush"], None);
     assert_eq!(health["pending"], 0);
@@ -721,7 +864,12 @@ async fn tool_boundaries_archive_shell_failures_before_offline_replay_and_match_
                 None,
             );
             assert_eq!(local["items"].as_array().unwrap().len(), 1);
-            let request = json!({"operation":"changes","entry_id":entry_id,"workspace_id":workspace,"page":{"limit":1}});
+            let request = json!({
+                "operation": "changes",
+                "entry_id": entry_id,
+                "workspace_id": workspace,
+                "page": {"limit": 1},
+            });
             let rest: Value = reqwest::Client::new()
                 .post(format!("http://{address}/v1/history/query"))
                 .bearer_auth(&token)
@@ -736,7 +884,7 @@ async fn tool_boundaries_archive_shell_failures_before_offline_replay_and_match_
             let result = mcp
                 .call_tool(
                     CallToolRequestParams::new("history_query")
-                        .with_arguments(json!({"request":request}).as_object().unwrap().clone()),
+                        .with_arguments(json!({"request": request}).as_object().unwrap().clone()),
                 )
                 .await
                 .unwrap();
@@ -798,7 +946,7 @@ fn missing_baselines_failed_capture_and_overlapping_tools_preserve_honest_covera
         let mut event = cursor_event(hook, session, "generation");
         event["tool_name"] = "Shell".into();
         event["tool_use_id"] = call.into();
-        event["tool_input"] = json!({"command":"observed edit"});
+        event["tool_input"] = json!({"command": "observed edit"});
         event["tool_output"] = "done".into();
         event["prompt"] = "recover baseline".into();
         event["workspace_roots"] = json!([directory]);

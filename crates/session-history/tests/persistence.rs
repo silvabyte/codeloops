@@ -27,7 +27,7 @@ fn capture() -> Capture {
             parent_native_id: None,
             removed: false,
         },
-        source_payload: json!({"unknown_future_field":{"retain":true}}),
+        source_payload: json!({"unknown_future_field": {"retain": true}}),
         checkpoints: vec![],
     }
 }
@@ -57,7 +57,7 @@ fn retry_revision_repeat_and_restart_preserve_identity_and_provenance() {
     assert_eq!(receipt.capture_id, repeated.capture_id);
     assert_eq!(receipt.recorded_at, repeated.recorded_at);
     let mut conflicting = c.clone();
-    conflicting.source_payload = json!({"changed":true});
+    conflicting.source_payload = json!({"changed": true});
     assert!(matches!(h.ingest(conflicting), Err(Error::Conflict(_))));
     h.ingest(part(&c, 3, "msg_a", "needle final")).unwrap();
     h.ingest(part(&c, 2, "msg_a", "needle stale")).unwrap();

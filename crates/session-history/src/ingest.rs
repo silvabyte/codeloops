@@ -166,9 +166,23 @@ pub(crate) fn ingest(history: &mut History, c: Capture) -> Result<Receipt> {
     stored.insert("source_payload_hash".into(), payload_hash.clone().into());
     let envelope_hash = history.artifacts.put(&serde_json::to_vec(&stored)?)?;
     let proposed_session = Uuid::new_v4().to_string();
-    tx.execute("INSERT OR IGNORE INTO sessions(id,device,installation,source,native,project,workspace,source_version,observed) VALUES(?,?,?,?,?,?,?,?,?)",
-        params![proposed_session, c.origin.device_id, c.origin.installation_id, c.origin.source,
-            c.native_session_id, c.project_id, c.workspace_id, c.origin.source_version, c.observed_at])?;
+    tx.execute(
+        "INSERT OR IGNORE INTO sessions(
+             id, device, installation, source, native,
+             project, workspace, source_version, observed
+         ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        params![
+            proposed_session,
+            c.origin.device_id,
+            c.origin.installation_id,
+            c.origin.source,
+            c.native_session_id,
+            c.project_id,
+            c.workspace_id,
+            c.origin.source_version,
+            c.observed_at,
+        ],
+    )?;
     let session: String = tx.query_row(
         "SELECT id FROM sessions WHERE device=? AND installation=? AND source=? AND native=?",
         params![
@@ -239,8 +253,21 @@ pub(crate) fn ingest(history: &mut History, c: Capture) -> Result<Receipt> {
                 error.as_ref().map(ToString::to_string).unwrap_or_default()
             );
             let content_hash = history.artifacts.put(text.as_bytes())?;
-            tx.execute("UPDATE entries SET role='assistant',parent_native=COALESCE(?,parent_native),tool=?,text=?,content_hash=?,sequence=? WHERE id=? AND sequence<?",
-                params![parent_native_id,serde_json::to_string(&tool)?,text,content_hash,c.sequence,entry,c.sequence])?;
+            tx.execute(
+                "UPDATE entries
+                 SET role = 'assistant', parent_native = COALESCE(?, parent_native),
+                     tool = ?, text = ?, content_hash = ?, sequence = ?
+                 WHERE id = ? AND sequence < ?",
+                params![
+                    parent_native_id,
+                    serde_json::to_string(&tool)?,
+                    text,
+                    content_hash,
+                    c.sequence,
+                    entry,
+                    c.sequence,
+                ],
+            )?;
         }
         Change::Message {
             role,
@@ -248,8 +275,19 @@ pub(crate) fn ingest(history: &mut History, c: Capture) -> Result<Receipt> {
             removed,
             ..
         } => {
-            tx.execute("UPDATE entries SET role=?,parent_native=?,removed=?,sequence=? WHERE id=? AND sequence<?",
-                params![role, parent_native_id, removed, c.sequence, entry, c.sequence])?;
+            tx.execute(
+                "UPDATE entries
+                 SET role = ?, parent_native = ?, removed = ?, sequence = ?
+                 WHERE id = ? AND sequence < ?",
+                params![
+                    role,
+                    parent_native_id,
+                    removed,
+                    c.sequence,
+                    entry,
+                    c.sequence
+                ],
+            )?;
         }
         Change::Part {
             native_id,
@@ -258,8 +296,15 @@ pub(crate) fn ingest(history: &mut History, c: Capture) -> Result<Receipt> {
             removed,
             ..
         } => {
-            tx.execute("INSERT INTO parts(entry,native,kind,text,removed,sequence) VALUES(?,?,?,?,?,?) ON CONFLICT(entry,native) DO UPDATE SET kind=excluded.kind,text=excluded.text,removed=excluded.removed,sequence=excluded.sequence WHERE parts.sequence<excluded.sequence",
-                params![entry, native_id, kind, text, removed, c.sequence])?;
+            tx.execute(
+                "INSERT INTO parts(entry, native, kind, text, removed, sequence)
+                 VALUES(?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(entry, native) DO UPDATE
+                 SET kind = excluded.kind, text = excluded.text,
+                     removed = excluded.removed, sequence = excluded.sequence
+                 WHERE parts.sequence < excluded.sequence",
+                params![entry, native_id, kind, text, removed, c.sequence],
+            )?;
         }
         Change::Lifecycle {
             state,
@@ -273,8 +318,20 @@ pub(crate) fn ingest(history: &mut History, c: Capture) -> Result<Receipt> {
                 )?;
             }
             if title.is_some() || parent_native_id.is_some() {
-                tx.execute("UPDATE sessions SET title=COALESCE(?,title),parent_native=COALESCE(?,parent_native),sequence=?,source_version=? WHERE id=? AND sequence<?",
-                    params![title, parent_native_id, c.sequence, c.origin.source_version, session, c.sequence])?;
+                tx.execute(
+                    "UPDATE sessions
+                     SET title = COALESCE(?, title), parent_native = COALESCE(?, parent_native),
+                         sequence = ?, source_version = ?
+                     WHERE id = ? AND sequence < ?",
+                    params![
+                        title,
+                        parent_native_id,
+                        c.sequence,
+                        c.origin.source_version,
+                        session,
+                        c.sequence,
+                    ],
+                )?;
             }
             tx.execute(
                 "UPDATE entries SET role='system',text=?,sequence=? WHERE id=?",
@@ -284,7 +341,16 @@ pub(crate) fn ingest(history: &mut History, c: Capture) -> Result<Receipt> {
     }
     project(&tx, &history.artifacts, &entry, kind)?;
     if !c.checkpoints.is_empty() {
-        tx.execute("UPDATE entries SET checkpoints=?,checkpoint_sequence=? WHERE id=? AND checkpoint_sequence<?", params![serde_json::to_string(&c.checkpoints)?,c.sequence,entry,c.sequence])?;
+        tx.execute(
+            "UPDATE entries SET checkpoints = ?, checkpoint_sequence = ?
+             WHERE id = ? AND checkpoint_sequence < ?",
+            params![
+                serde_json::to_string(&c.checkpoints)?,
+                c.sequence,
+                entry,
+                c.sequence
+            ],
+        )?;
     }
     let receipt = Receipt {
         capture_id: Uuid::new_v4().to_string(),
@@ -292,8 +358,22 @@ pub(crate) fn ingest(history: &mut History, c: Capture) -> Result<Receipt> {
         entry_id: Some(entry),
         recorded_at: now_ms(),
     };
-    tx.execute("INSERT INTO captures(id,delivery,hash,envelope_hash,payload_hash,session,entry,recorded,receipt) VALUES(?,?,?,?,?,?,?,?,?)",
-        params![receipt.capture_id, c.delivery_id, hash, envelope_hash, payload_hash, receipt.session_id, receipt.entry_id, receipt.recorded_at, serde_json::to_string(&receipt)?])?;
+    tx.execute(
+        "INSERT INTO captures(
+             id, delivery, hash, envelope_hash, payload_hash, session, entry, recorded, receipt
+         ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        params![
+            receipt.capture_id,
+            c.delivery_id,
+            hash,
+            envelope_hash,
+            payload_hash,
+            receipt.session_id,
+            receipt.entry_id,
+            receipt.recorded_at,
+            serde_json::to_string(&receipt)?,
+        ],
+    )?;
     tx.execute(
         "UPDATE captures SET checkpoints=? WHERE id=?",
         params![serde_json::to_string(&c.checkpoints)?, receipt.capture_id],
@@ -309,7 +389,11 @@ fn project(
     kind: &str,
 ) -> Result<()> {
     if kind == "message" {
-        let mut statement = tx.prepare("SELECT text FROM parts WHERE entry=? AND removed=0 AND kind IN ('text','reasoning') ORDER BY native")?;
+        let mut statement = tx.prepare(
+            "SELECT text FROM parts
+             WHERE entry = ? AND removed = 0 AND kind IN ('text', 'reasoning')
+             ORDER BY native",
+        )?;
         let texts = statement
             .query_map([entry], |r| r.get::<_, String>(0))?
             .collect::<std::result::Result<Vec<_>, _>>()?;

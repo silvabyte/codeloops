@@ -93,7 +93,12 @@ pub fn enqueue(config: &Config, input: NativeInput) -> AppResult<Value> {
             let native = string(part, "id")?;
             let kind = string(part, "type")?;
             let text = part["text"].as_str().unwrap_or("");
-            tx.execute("INSERT INTO parts VALUES(?,?,?,?,?) ON CONFLICT(session,message,part) DO UPDATE SET kind=excluded.kind,text=excluded.text",params![session,message,native,kind,text])?;
+            tx.execute(
+                "INSERT INTO parts VALUES(?, ?, ?, ?, ?)
+                 ON CONFLICT(session, message, part) DO UPDATE
+                 SET kind = excluded.kind, text = excluded.text",
+                params![session, message, native, kind, text],
+            )?;
             (
                 session.into(),
                 if kind == "tool" {
@@ -268,5 +273,5 @@ pub fn enqueue(config: &Config, input: NativeInput) -> AppResult<Value> {
     };
     outbox::queue(&tx, &capture)?;
     tx.commit()?;
-    Ok(json!({"queued":true,"delivery_id":capture.delivery_id}))
+    Ok(json!({"queued": true, "delivery_id": capture.delivery_id}))
 }

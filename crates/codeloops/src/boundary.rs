@@ -63,14 +63,26 @@ pub fn observe(
     link.concurrent_tools = false;
     match &boundary {
         Boundary::Before(call) => {
-            let active: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM tool_activity WHERE workspace=? AND NOT(scope=? AND call=?))",params![workspace,key,call],|r|r.get(0))?;
+            let active: bool = tx.query_row(
+                "SELECT EXISTS(
+                     SELECT 1 FROM tool_activity
+                     WHERE workspace = ? AND NOT(scope = ? AND call = ?)
+                 )",
+                params![workspace, key, call],
+                |r| r.get(0),
+            )?;
             if active {
                 tx.execute(
                     "UPDATE tool_activity SET overlap=1 WHERE workspace=?",
                     [workspace],
                 )?;
             }
-            tx.execute("INSERT INTO tool_activity VALUES(?,?,?,?) ON CONFLICT(scope,call) DO UPDATE SET overlap=MAX(overlap,excluded.overlap)",params![key,call,workspace,active])?;
+            tx.execute(
+                "INSERT INTO tool_activity VALUES(?, ?, ?, ?)
+                 ON CONFLICT(scope, call) DO UPDATE
+                 SET overlap = MAX(overlap, excluded.overlap)",
+                params![key, call, workspace, active],
+            )?;
             link.concurrent_tools = active;
         }
         Boundary::After { call, .. } => {
@@ -147,8 +159,16 @@ pub fn observe(
         }
     }
     if let Boundary::Before(call) = boundary {
-        tx.execute("INSERT INTO tool_boundaries VALUES(?,?,?) ON CONFLICT(scope,call) DO UPDATE SET checkpoint=excluded.checkpoint", params![key,call,link.checkpoint_id])?;
+        tx.execute(
+            "INSERT INTO tool_boundaries VALUES(?, ?, ?)
+             ON CONFLICT(scope, call) DO UPDATE SET checkpoint = excluded.checkpoint",
+            params![key, call, link.checkpoint_id],
+        )?;
     }
-    tx.execute("INSERT INTO snapshot_state VALUES(?,?) ON CONFLICT(scope) DO UPDATE SET link=excluded.link", params![key,serde_json::to_string(&link)?])?;
+    tx.execute(
+        "INSERT INTO snapshot_state VALUES(?, ?)
+         ON CONFLICT(scope) DO UPDATE SET link = excluded.link",
+        params![key, serde_json::to_string(&link)?],
+    )?;
     Ok(link)
 }
