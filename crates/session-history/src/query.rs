@@ -17,6 +17,27 @@ struct Cursor {
 
 pub(crate) fn query(h: &History, q: Query) -> Result<Value> {
     match q {
+        Query::Checkpoint { checkpoint_id } => crate::checkpoints::get(h, &checkpoint_id),
+        Query::Compare {
+            before,
+            after,
+            before_layer,
+            after_layer,
+            page,
+        } => crate::checkpoints::compare(h, &before, &after, before_layer, after_layer, page),
+        Query::File {
+            checkpoint_id,
+            path,
+            layer,
+            offset,
+            limit,
+        } => crate::checkpoints::file(h, &checkpoint_id, &path, layer, offset, limit),
+        Query::Changes {
+            session_id,
+            entry_id,
+            workspace_id,
+            page,
+        } => changes(h, session_id, entry_id, &workspace_id, page),
         Query::Artifact {
             hash,
             offset,
@@ -126,13 +147,13 @@ fn page_result(mut rows: Vec<(i64, Value)>, page: &Page, mut cursor: Cursor) -> 
     )
 }
 
-const ENTRY_SELECT: &str = "SELECT e.id,e.session,e.native,e.kind,e.role,e.parent_native,e.removed,e.observed,e.text,e.content_hash,e.ordinal FROM entries e JOIN sessions s ON s.id=e.session";
+const ENTRY_SELECT: &str = "SELECT e.id,e.session,e.native,e.kind,e.role,e.parent_native,e.removed,e.observed,e.text,e.content_hash,e.ordinal,e.tool,e.checkpoints FROM entries e JOIN sessions s ON s.id=e.session";
 
 fn entry_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
     let text: String = r.get(8)?;
     let excerpt: String = text.chars().take(EXCERPT_CHARS).collect();
     Ok(
-        json!({"id":r.get::<_,String>(0)?,"session_id":r.get::<_,String>(1)?,"native_id":r.get::<_,String>(2)?,"kind":r.get::<_,String>(3)?,"role":r.get::<_,String>(4)?,"parent_native_id":r.get::<_,Option<String>>(5)?,"removed":r.get::<_,bool>(6)?,"observed_at":r.get::<_,u64>(7)?,"text":excerpt,"text_bytes":text.len(),"truncated":excerpt.len()<text.len(),"content_hash":r.get::<_,Option<String>>(9)?,"checkpoint":{"status":"not_captured"},"coverage":{"attachments":"metadata_only","tools":"source_payload_only"}}),
+        json!({"id":r.get::<_,String>(0)?,"session_id":r.get::<_,String>(1)?,"native_id":r.get::<_,String>(2)?,"kind":r.get::<_,String>(3)?,"role":r.get::<_,String>(4)?,"parent_native_id":r.get::<_,Option<String>>(5)?,"removed":r.get::<_,bool>(6)?,"observed_at":r.get::<_,u64>(7)?,"text":excerpt,"text_bytes":text.len(),"truncated":excerpt.len()<text.len(),"content_hash":r.get::<_,Option<String>>(9)?,"checkpoints":serde_json::from_str::<Value>(&r.get::<_,String>(12)?).unwrap_or(json!([])),"tool":r.get::<_,Option<String>>(11)?.and_then(|s|serde_json::from_str::<Value>(&s).ok()),"coverage":{"attachments":"metadata_only","tools":"source_exposed"}}),
     )
 }
 
@@ -249,12 +270,84 @@ fn sessions(h: &History, filter: Filter, page: Page) -> Result<Value> {
 fn captures(h: &History, session: String, page: Page) -> Result<Value> {
     ensure_session(h, &session)?;
     let cursor = bounds(h, "captures", &page, &json!(["captures", session]))?;
-    let rows = h.connection.prepare("SELECT ordinal,id,entry,envelope_hash,recorded,payload_hash FROM captures WHERE session=? AND ordinal>? AND ordinal<=? ORDER BY ordinal LIMIT ?")?.query_map(params![session,cursor.after,cursor.through,(page.limit+1) as i64], |r| Ok((r.get(0)?,json!({
+    let rows = h.connection.prepare("SELECT ordinal,id,entry,envelope_hash,recorded,payload_hash,checkpoints FROM captures WHERE session=? AND ordinal>? AND ordinal<=? ORDER BY ordinal LIMIT ?")?.query_map(params![session,cursor.after,cursor.through,(page.limit+1) as i64], |r| Ok((r.get(0)?,json!({
         "id":r.get::<_,String>(1)?,
         "entry_id":r.get::<_,Option<String>>(2)?,
         "envelope_hash":r.get::<_,String>(3)?,
         "recorded_at":r.get::<_,u64>(4)?,
-        "source_payload_hash":r.get::<_,String>(5)?
+        "source_payload_hash":r.get::<_,String>(5)?,
+        "checkpoints":serde_json::from_str::<Value>(&r.get::<_,String>(6)?).unwrap_or(json!([]))
     }))))?.collect::<std::result::Result<Vec<_>,_>>()?;
     page_result(rows, &page, cursor)
+}
+
+fn changes(
+    h: &History,
+    session: Option<String>,
+    entry: Option<String>,
+    workspace: &str,
+    page: Page,
+) -> Result<Value> {
+    if page.limit == 0 || page.limit > MAX_PAGE_SIZE {
+        return Err(Error::Invalid("page limit must be 1..100".into()));
+    }
+    use crate::model::{CheckpointLink, Layer};
+    let (sql, id, event) = match (&session, &entry) {
+        (Some(id), None) => {
+            ensure_session(h, id)?;
+            (
+                "SELECT checkpoints FROM captures WHERE session=? ORDER BY ordinal DESC",
+                id,
+                false,
+            )
+        }
+        (None, Some(id)) => {
+            if !h.connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM entries WHERE id=?)",
+                [id],
+                |r| r.get::<_, bool>(0),
+            )? {
+                return Err(Error::Unknown(id.clone()));
+            }
+            (
+                "SELECT checkpoints FROM captures WHERE entry=? ORDER BY ordinal DESC",
+                id,
+                true,
+            )
+        }
+        _ => {
+            return Err(Error::Invalid(
+                "choose exactly one of session_id or entry_id".into(),
+            ));
+        }
+    };
+    let mut stmt = h.connection.prepare(sql)?;
+    let mut rows = stmt.query([id])?;
+    while let Some(row) = rows.next()? {
+        let links: Vec<CheckpointLink> = serde_json::from_str(&row.get::<_, String>(0)?)?;
+        if let Some(link) = links.into_iter().find(|l| l.workspace_id == workspace) {
+            if event && link.status == "reused" {
+                continue;
+            }
+            let before = if event {
+                &link.before_id
+            } else {
+                &link.baseline_id
+            };
+            if let (Some(before), Some(after)) = (before, &link.checkpoint_id) {
+                let mut result = crate::checkpoints::compare(
+                    h,
+                    before,
+                    after,
+                    Layer::Worktree,
+                    Layer::Worktree,
+                    page,
+                )?;
+                result["boundary"] = serde_json::to_value(link)?;
+                return Ok(result);
+            }
+            return Ok(json!({"status":"unavailable","boundary":link,"items":[]}));
+        }
+    }
+    Ok(json!({"status":"not_captured","items":[]}))
 }

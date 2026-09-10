@@ -16,6 +16,21 @@ impl Drop for Service {
     }
 }
 
+fn git_command() -> Command {
+    let mut command = Command::new("git");
+    // Git hooks export repository-local variables. A fixture must never inherit
+    // those or `git init <tempdir>` can reinitialize the checkout running tests.
+    for (key, _) in std::env::vars_os() {
+        if key.to_string_lossy().starts_with("GIT_") {
+            command.env_remove(key);
+        }
+    }
+    command
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null");
+    command
+}
+
 fn command(root: &Path, address: &str) -> Command {
     let mut c = Command::new(env!("CARGO_BIN_EXE_codeloops"));
     c.arg("--data-dir")
@@ -575,4 +590,294 @@ fn shared_outbox_upgrades_legacy_identity_health_and_delta_baseline() {
     assert_eq!(health["sources"]["opencode"]["delivered"], 13);
     assert_eq!(health["sources"]["opencode"]["enqueue_failures"], 1);
     assert_eq!(health["sources"]["cursor"]["delivered"], 0);
+}
+
+#[tokio::test]
+async fn tool_boundaries_archive_shell_failures_before_offline_replay_and_match_transports() {
+    use base64::{Engine, engine::general_purpose::STANDARD as B64};
+    let data = tempfile::tempdir().unwrap();
+    let repo = tempfile::tempdir().unwrap();
+    let root = data.path();
+    assert!(
+        git_command()
+            .args(["init", "-q"])
+            .arg(repo.path())
+            .status()
+            .unwrap()
+            .success()
+    );
+    std::fs::write(repo.path().join("file"), b"dirty baseline\n").unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap().to_string();
+    drop(listener);
+    let opencode = |event: Value| {
+        let mut input = native(event);
+        input["directory"] = json!(repo.path());
+        cli(root, &address, &["capture-opencode"], Some(&input));
+    };
+    let cursor = |hook: &str, call: &str| {
+        let mut input = cursor_event(hook, "cursor-tools", "generation");
+        input["workspace_roots"] = json!([repo.path()]);
+        input["tool_use_id"] = call.into();
+        input["tool_name"] = "Shell".into();
+        input["tool_input"] = json!({"command":"write file; exit 1"});
+        input["error_message"] = "exit 1".into();
+        cli(root, &address, &["capture-cursor"], Some(&input));
+    };
+    opencode(json!({"type":"history.prompt","properties":{"sessionID":"opencode-tools"}}));
+    opencode(
+        json!({"type":"history.tool.before","properties":{"sessionID":"opencode-tools","callID":"call","tool":"bash","args":{"command":"write file"}}}),
+    );
+    std::fs::write(repo.path().join("file"), b"OpenCode wrote\n").unwrap();
+    opencode(
+        json!({"type":"history.tool.after","properties":{"sessionID":"opencode-tools","callID":"call","tool":"bash","args":{"command":"write file"},"output":"written"}}),
+    );
+    // A normal terminal part revises the same tool without taking another snapshot.
+    opencode(
+        json!({"type":"message.part.updated","properties":{"part":{"id":"part","messageID":"assistant","sessionID":"opencode-tools","type":"tool","callID":"call","tool":"bash","state":{"status":"completed","input":{"command":"write file"},"output":"written"}}}}),
+    );
+    cursor("preToolUse", "failed-call");
+    let failed = Command::new("sh")
+        .current_dir(repo.path())
+        .args(["-c", "printf 'Cursor failed but wrote\n' > file; exit 1"])
+        .status()
+        .unwrap();
+    assert!(!failed.success());
+    cursor("postToolUseFailure", "failed-call");
+    opencode(
+        json!({"type":"history.tool.before","properties":{"sessionID":"opencode-tools","callID":"failed","tool":"bash","args":{"command":"write then fail"}}}),
+    );
+    std::fs::write(repo.path().join("file"), b"OpenCode failed but wrote\n").unwrap();
+    opencode(
+        json!({"type":"message.part.updated","properties":{"part":{"id":"failed-part","messageID":"assistant","sessionID":"opencode-tools","type":"tool","callID":"failed","tool":"bash","state":{"status":"error","input":{"command":"write then fail"},"error":"failure"}}}}),
+    );
+    repo.close().unwrap(); // Source and Git objects gone before the first flush.
+    let health = cli(root, &address, &["flush"], None);
+    assert_eq!(health["pending"], 0);
+    assert_eq!(health["rejected"], 0);
+    let service = start(root, &address).await;
+    let sessions = cli(root, &address, &["history", "list"], None);
+    let mut mcp_command = tokio::process::Command::new(env!("CARGO_BIN_EXE_codeloops"));
+    mcp_command
+        .arg("--data-dir")
+        .arg(root)
+        .args(["--address", &address, "mcp"]);
+    let mcp = ().serve(TokioChildProcess::new(mcp_command).unwrap()).await.unwrap();
+    let token = std::fs::read_to_string(root.join("credential")).unwrap();
+    for session in sessions["items"].as_array().unwrap() {
+        let session_id = session["id"].as_str().unwrap();
+        let workspace = session["workspace_id"].as_str().unwrap();
+        let tools = cli(
+            root,
+            &address,
+            &[
+                "history",
+                "search",
+                "bash",
+                "--session-id",
+                session_id,
+                "--kind",
+                "tool",
+            ],
+            None,
+        );
+        let tools = if session["source"] == "cursor" {
+            cli(
+                root,
+                &address,
+                &[
+                    "history",
+                    "search",
+                    "Shell",
+                    "--session-id",
+                    session_id,
+                    "--kind",
+                    "tool",
+                ],
+                None,
+            )
+        } else {
+            tools
+        };
+        assert_eq!(
+            tools["items"].as_array().unwrap().len(),
+            if session["source"] == "cursor" { 1 } else { 2 }
+        );
+        for entry in tools["items"].as_array().unwrap() {
+            let entry_id = entry["id"].as_str().unwrap();
+            let local = cli(
+                root,
+                &address,
+                &[
+                    "history",
+                    "changes",
+                    "--entry-id",
+                    entry_id,
+                    "--workspace-id",
+                    workspace,
+                    "--limit",
+                    "1",
+                ],
+                None,
+            );
+            assert_eq!(local["items"].as_array().unwrap().len(), 1);
+            let request = json!({"operation":"changes","entry_id":entry_id,"workspace_id":workspace,"page":{"limit":1}});
+            let rest: Value = reqwest::Client::new()
+                .post(format!("http://{address}/v1/history/query"))
+                .bearer_auth(&token)
+                .json(&request)
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            assert_eq!(rest, local);
+            let result = mcp
+                .call_tool(
+                    CallToolRequestParams::new("history_query")
+                        .with_arguments(json!({"request":request}).as_object().unwrap().clone()),
+                )
+                .await
+                .unwrap();
+            assert_eq!(result.structured_content.unwrap(), local);
+            let after = local["after"]["id"].as_str().unwrap();
+            let path = B64.encode("file");
+            let file = cli(root, &address, &["history", "file", after, &path], None);
+            let bytes = B64.decode(file["data"].as_str().unwrap()).unwrap();
+            if session["source"] == "cursor" {
+                assert_eq!(entry["tool"]["status"], "failed");
+                assert_eq!(bytes, b"Cursor failed but wrote\n");
+            } else if entry["native_id"] == "failed" {
+                assert_eq!(entry["tool"]["status"], "failed");
+                assert_eq!(local["boundary"]["status"], "late");
+                assert_eq!(bytes, b"OpenCode failed but wrote\n");
+            } else {
+                assert_eq!(bytes, b"OpenCode wrote\n");
+            }
+        }
+        let net = cli(
+            root,
+            &address,
+            &[
+                "history",
+                "changes",
+                "--session-id",
+                session_id,
+                "--workspace-id",
+                workspace,
+            ],
+            None,
+        );
+        assert_eq!(net["items"].as_array().unwrap().len(), 1);
+    }
+    mcp.cancel().await.unwrap();
+    drop(service);
+    let _service = start(root, &address).await;
+    assert_eq!(sessions, cli(root, &address, &["history", "list"], None));
+}
+
+#[test]
+fn missing_baselines_failed_capture_and_overlapping_tools_preserve_honest_coverage() {
+    use session_history::{
+        History,
+        model::{Filter, Page, Query},
+    };
+    let data = tempfile::tempdir().unwrap();
+    let repo = tempfile::tempdir().unwrap();
+    assert!(
+        git_command()
+            .args(["init", "-q"])
+            .arg(repo.path())
+            .status()
+            .unwrap()
+            .success()
+    );
+    std::fs::write(repo.path().join("file"), b"initial").unwrap();
+    let send = |hook: &str, session: &str, call: &str, directory: &Path| {
+        let mut event = cursor_event(hook, session, "generation");
+        event["tool_name"] = "Shell".into();
+        event["tool_use_id"] = call.into();
+        event["tool_input"] = json!({"command":"observed edit"});
+        event["tool_output"] = "done".into();
+        event["prompt"] = "recover baseline".into();
+        event["workspace_roots"] = json!([directory]);
+        cli(
+            data.path(),
+            "127.0.0.1:47823",
+            &["capture-cursor"],
+            Some(&event),
+        );
+    };
+    send("postToolUse", "missing", "no-before", repo.path());
+    send("preToolUse", "overlap-a", "a", repo.path());
+    send("preToolUse", "overlap-b", "b", repo.path());
+    std::fs::write(repo.path().join("file"), b"concurrent changes").unwrap();
+    send("postToolUse", "overlap-a", "a", repo.path());
+    send("postToolUse", "overlap-b", "b", repo.path());
+    send("postToolUse", "outside", "outside", data.path());
+    let recovered = tempfile::tempdir().unwrap();
+    send("beforeSubmitPrompt", "recovery", "", recovered.path());
+    assert!(
+        git_command()
+            .args(["init", "-q"])
+            .arg(recovered.path())
+            .status()
+            .unwrap()
+            .success()
+    );
+    send("beforeSubmitPrompt", "recovery", "", recovered.path());
+    let health = cli(data.path(), "127.0.0.1:47823", &["flush"], None);
+    assert_eq!(health["rejected"], 0);
+    assert_eq!(health["enqueue_failures"], 0);
+    assert_eq!(health["workspaces_with_failed_checkpoint"], 1);
+    let history = History::open(data.path().join("archive")).unwrap();
+    let prompts = history
+        .query(Query::Search {
+            text: "recover baseline".into(),
+            filter: Filter::default(),
+            page: Page::default(),
+        })
+        .unwrap();
+    assert_eq!(prompts["items"].as_array().unwrap().len(), 2);
+    assert_eq!(prompts["items"][0]["checkpoints"][0]["status"], "failed");
+    assert_eq!(prompts["items"][1]["checkpoints"][0]["status"], "fresh");
+    assert_eq!(
+        prompts["items"][1]["checkpoints"][0]["baseline_status"],
+        "late"
+    );
+    let entries = history
+        .query(Query::Search {
+            text: "Shell".into(),
+            filter: Filter {
+                kind: Some("tool".into()),
+                ..Default::default()
+            },
+            page: Page::default(),
+        })
+        .unwrap();
+    for entry in entries["items"].as_array().unwrap() {
+        let link = &entry["checkpoints"][0];
+        match entry["native_id"].as_str().unwrap() {
+            "a" | "b" => assert_eq!(link["concurrent_tools"], true),
+            "no-before" => {
+                assert_eq!(link["baseline_status"], "late");
+                assert!(link["before_id"].is_null());
+                let changes = history
+                    .query(Query::Changes {
+                        session_id: None,
+                        entry_id: Some(entry["id"].as_str().unwrap().into()),
+                        workspace_id: link["workspace_id"].as_str().unwrap().into(),
+                        page: Page::default(),
+                    })
+                    .unwrap();
+                assert_eq!(changes["status"], "unavailable");
+            }
+            "outside" => {
+                assert_eq!(link["status"], "failed");
+                assert!(link["checkpoint_id"].is_null());
+            }
+            native => panic!("unexpected tool: {native}"),
+        }
+    }
 }

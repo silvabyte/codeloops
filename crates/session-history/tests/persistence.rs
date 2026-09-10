@@ -28,6 +28,7 @@ fn capture() -> Capture {
             removed: false,
         },
         source_payload: json!({"unknown_future_field":{"retain":true}}),
+        checkpoints: vec![],
     }
 }
 

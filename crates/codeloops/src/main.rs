@@ -1,3 +1,4 @@
+mod boundary;
 mod config;
 mod cursor;
 mod http;
@@ -102,6 +103,40 @@ impl From<Filtering> for Filter {
 
 #[derive(Subcommand)]
 enum HistoryCommand {
+    Checkpoint {
+        checkpoint_id: String,
+    },
+    Compare {
+        before: String,
+        after: String,
+        #[arg(long, value_enum, default_value = "worktree")]
+        before_layer: CliLayer,
+        #[arg(long, value_enum, default_value = "worktree")]
+        after_layer: CliLayer,
+        #[command(flatten)]
+        page: Paging,
+    },
+    Changes {
+        #[arg(long)]
+        session_id: Option<String>,
+        #[arg(long)]
+        entry_id: Option<String>,
+        #[arg(long)]
+        workspace_id: String,
+        #[command(flatten)]
+        page: Paging,
+    },
+    File {
+        checkpoint_id: String,
+        /// Base64 path returned by a comparison.
+        path: String,
+        #[arg(long, value_enum, default_value = "worktree")]
+        layer: CliLayer,
+        #[arg(long, default_value_t = 0)]
+        offset: usize,
+        #[arg(long, default_value_t = 65536)]
+        limit: usize,
+    },
     List {
         #[command(flatten)]
         filter: Filtering,
@@ -140,6 +175,44 @@ enum HistoryCommand {
 impl From<HistoryCommand> for Query {
     fn from(c: HistoryCommand) -> Self {
         match c {
+            HistoryCommand::Checkpoint { checkpoint_id } => Self::Checkpoint { checkpoint_id },
+            HistoryCommand::Compare {
+                before,
+                after,
+                before_layer,
+                after_layer,
+                page,
+            } => Self::Compare {
+                before,
+                after,
+                before_layer: before_layer.into(),
+                after_layer: after_layer.into(),
+                page: page.into(),
+            },
+            HistoryCommand::Changes {
+                session_id,
+                entry_id,
+                workspace_id,
+                page,
+            } => Self::Changes {
+                session_id,
+                entry_id,
+                workspace_id,
+                page: page.into(),
+            },
+            HistoryCommand::File {
+                checkpoint_id,
+                path,
+                layer,
+                offset,
+                limit,
+            } => Self::File {
+                checkpoint_id,
+                path,
+                layer: layer.into(),
+                offset,
+                limit,
+            },
             HistoryCommand::List { filter, page } => Self::List {
                 filter: filter.into(),
                 page: page.into(),
@@ -167,6 +240,22 @@ impl From<HistoryCommand> for Query {
                 offset,
                 limit,
             },
+        }
+    }
+}
+
+#[derive(Clone, clap::ValueEnum)]
+enum CliLayer {
+    Head,
+    Index,
+    Worktree,
+}
+impl From<CliLayer> for session_history::model::Layer {
+    fn from(value: CliLayer) -> Self {
+        match value {
+            CliLayer::Head => Self::Head,
+            CliLayer::Index => Self::Index,
+            CliLayer::Worktree => Self::Worktree,
         }
     }
 }

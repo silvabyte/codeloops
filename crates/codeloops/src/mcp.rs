@@ -34,7 +34,7 @@ fn result(value: Result<serde_json::Value, ApiError>) -> CallToolResult {
 #[tool_router]
 impl Server {
     #[tool(
-        description = "Retrieve durable session history: list sessions; literal full-text search; show a bounded conversation page; entry by stable ID; capture provenance; or artifact bytes. Follow next_cursor/next_offset for continuation. Checkpoint and attachment coverage is explicit."
+        description = "Retrieve durable session history: list/search/show/entry/captures; checkpoint metadata; compare HEAD/index/worktree layers; changes by session_id or entry_id plus workspace_id; file bytes by checkpoint_id and base64 path; artifact chunks for tool input/output/error and patches. Follow next_cursor/next_offset. Check boundary and checkpoint coverage: observations do not attribute authorship."
     )]
     async fn history_query(&self, Parameters(input): Parameters<QueryInput>) -> CallToolResult {
         result(self.client.post("/v1/history/query", &input.request).await)

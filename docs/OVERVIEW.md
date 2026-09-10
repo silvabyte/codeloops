@@ -2,13 +2,14 @@
 
 `crates/session-history` owns schema migration, immutable capture records, current
 message projections, full-text indexing, and compressed content-addressed artifacts.
-Its public boundary is `History::open`, `History::ingest`, and `History::query`, with
+Its public boundary is `History::open`, `History::ingest`, `History::checkpoint`, and `History::query`, with
 versioned models in `model`. Database handles and artifact paths are private.
 
 `crates/codeloops` owns process lifecycle, private data directories, credentials,
 the OpenCode and Cursor collectors, shared outbox, CLI, HTTP, and MCP transports. The tiny
 `adapters/opencode/history.ts` forwards native JSON without mutating prompts,
-tool arguments, or outputs. Tools remain in original payloads in this slice.
+tool arguments, or outputs. Tool inputs, outputs, failures and revisions have
+normalized entries as well as their original source payloads.
 
 `codeloops capture-cursor` accepts Cursor's documented hook JSON directly on stdin.
 It returns only the neutral hook response `{}`. Both collectors use the same
@@ -32,11 +33,17 @@ in the application rather than the storage library.
 | `occurred_at` | Source time if provided, otherwise null |
 | `change` | Normalized change, described below |
 | `source_payload` | Original source JSON, including unknown fields |
+| `checkpoints` | Optional compact workspace checkpoint links captured before queue publication |
 
 Changes are tagged by `type`:
 
 - `message`: `native_id`, `role`, nullable `parent_native_id`, `removed`.
 - `part`: `message_id`, `native_id`, `kind`, `text`, `removed`.
+- `tool`: `native_id` (call ID), `name`, nullable `parent_native_id`, `status`,
+  optional JSON `input`, `output`, and `error`. Status is pending, running,
+  completed, failed, or unknown, as exposed by the client. A completed shell tool
+  does not necessarily mean exit code zero. Retrieval exposes `tool.input_hash`,
+  `output_hash`, and `error_hash` for bounded JSON artifact retrieval.
 - `lifecycle`: nullable `state`, `title`, `parent_native_id`. A null state is a
   metadata observation; it does not reset the lifecycle state. Known states are
   active, idle, ended, interrupted, and unknown.
@@ -113,8 +120,11 @@ not treated as a conversation ID. Optional `transcript_path` and
 `agent_transcript_path` are retained as metadata, never read; absent, null, or stale
 paths do not disable prompt/response capture. No historical import is performed.
 
-The current hook set does not capture intermediate streaming fragments, thoughts,
-or normalized tools. Only completed assistant messages exposed by
+The current hook set does not capture intermediate streaming fragments or thoughts.
+Generic `preToolUse`, `postToolUse`, and `postToolUseFailure` capture tool records
+and workspace boundaries. A missing `tool_use_id` creates an explicitly unlinked
+collector ID; it cannot establish an event-local before/after pair.
+Only completed assistant messages exposed by
 `afterAgentResponse` are covered; interrupted output without that hook is missing.
 Attachments have metadata-only coverage. Source occurrence timestamps are unknown;
 collector observation and archive recording times are retained. Missing client
@@ -123,7 +133,7 @@ version is reported as `unknown`.
 ## Retrieval and coverage
 
 All transports call the same library operations. `list`, `search`, `show`, `entry`,
-`captures`, and `artifact` have matching JSON results. Pages have explicit bounds,
+`captures`, `artifact`, `checkpoint`, `compare`, `changes`, and `file` have matching JSON results. Pages have explicit bounds,
 query-bound continuation cursors, and current projections within a receipt-order
 membership boundary. Cursors are opaque navigation tokens, not public record IDs.
 They do not freeze live revisions. Artifact chunks use byte offsets and base64,
@@ -133,8 +143,59 @@ Errors distinguish `invalid_request`, `unknown_id`, `delivery_conflict`,
 `unavailable_artifact`, and `storage_failure`. HTTP also reports `unauthorized`;
 CLI/MCP report `service_unavailable` when the service cannot be reached.
 
-This slice returns `checkpoint.status = not_captured`, attachment coverage
-`metadata_only`, and tool coverage `source_payload_only`. An idle event ends a turn,
-not a session. Session deletion is retained as an observation, not successful
-completion. Later Git capture must preserve this distinction and never assign a
-late snapshot to an earlier queued event as if it were contemporaneous.
+## Git observations and changes
+
+Each entry and capture exposes `checkpoints`, an array of compact workspace links.
+An empty array means no checkpoint information was supplied (including old captures).
+Links distinguish `fresh`, `reused`, `late`, `missing`, and `failed` boundary capture;
+`baseline_status` distinguishes `pre_action`, `late`, and `missing`. `before_id`
+is the observed pre-tool checkpoint, `checkpoint_id` the current observation,
+and `baseline_id` the session/workspace baseline. The checkpoint itself separately
+reports complete, partial, or unstable **file-content coverage**. Read both coverage
+levels. `concurrent_tools` reports overlapping observed tool invocations; it does
+not detect all external writers. Abandoned tool starts conservatively remain active.
+
+The collectors synchronously invoke the private Git engine under outbox coordination.
+OpenCode uses awaited `chat.message` and tool before/after hooks; error parts and
+idle/error events are late-callback observations. Cursor uses `beforeSubmitPrompt`
+and generic tool hooks; sessionStart never establishes the baseline. Message
+fragments reuse the latest reference. Files and manifests are durable before their
+checkpoint record commits and before the envelope is enqueued. Flush/retry never
+scans the source filesystem. Snapshot failure preserves the conversation/tool with
+failed coverage, even while the service is offline.
+
+Read-only Git plumbing enumerates HEAD, index stages, and tracked plus non-ignored
+untracked paths. File bytes and directory manifests are compressed SHA-256 artifacts.
+Directory nodes reference child hashes, so unchanged directories and contents are
+shared across checkpoints and layers. File access uses directory handles and
+no-follow opens; symlink targets are archived as bytes. Source index/worktree files
+are never staged, committed, reset, or modified by capture. Detached HEAD and unborn
+repositories are supported. All retrieval survives loss of the checkout and Git
+object database. Source paths are unnecessary: comparisons return base64 path bytes
+plus a lossy human-readable `display_path`.
+
+Two scans detect observable changes during capture. This is not an atomic snapshot:
+changes created and undone between observations are invisible, and changes never
+establish agent authorship. Conflicted indexes retain stage records; submodules,
+LFS pointers, unsupported or unreadable files, and size exclusions report partial
+coverage. This preview limits individual files/manifests/patches to 8 MiB and Git
+enumeration output to 32 MiB. Larger files have explicit unavailable records;
+oversized patches leave before/after bytes available. Place the archive outside
+the observed repository to avoid capturing its own database/artifacts. Non-Git or
+unavailable roots report a failed observation, with the reason retained on the link.
+
+`compare` takes before/after checkpoint IDs, independently chosen `head`, `index`,
+or `worktree` layers (default worktree), and a page. It returns bounded changed-file
+records, before/after hashes/modes/coverage, and on-demand patch artifact references.
+Text patches use a valid full-file unified hunk; binary changes return byte hashes.
+`file` takes checkpoint ID, base64 path, layer, byte offset and limit (1–65536).
+Conflicted index files expose stage hashes for `artifact` retrieval.
+
+`changes` takes exactly one of `session_id` or `entry_id`, a `workspace_id`, and a
+page. Session changes compare the baseline to the latest observed checkpoint;
+event changes require an actual boundary pair from that entry's captures. Reused
+message references alone never invent an event-local difference. Missing pairs
+return unavailable/not-captured status. Comparisons preserve endpoint coverage.
+
+An idle event ends a turn, not a session. Session deletion remains an observation,
+not successful completion. Attachments retain metadata-only coverage.

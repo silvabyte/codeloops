@@ -29,11 +29,22 @@ pub struct Capture {
     pub occurred_at: Option<u64>,
     pub change: Change,
     pub source_payload: Value,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub checkpoints: Vec<CheckpointLink>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Change {
+    Tool {
+        native_id: String,
+        name: String,
+        parent_native_id: Option<String>,
+        status: String,
+        input: Option<Value>,
+        output: Option<Value>,
+        error: Option<Value>,
+    },
     Message {
         native_id: String,
         role: String,
@@ -93,6 +104,37 @@ impl Default for Page {
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Query {
+    Checkpoint {
+        checkpoint_id: String,
+    },
+    Compare {
+        before: String,
+        after: String,
+        #[serde(default)]
+        before_layer: Layer,
+        #[serde(default)]
+        after_layer: Layer,
+        #[serde(default)]
+        page: Page,
+    },
+    Changes {
+        session_id: Option<String>,
+        entry_id: Option<String>,
+        workspace_id: String,
+        #[serde(default)]
+        page: Page,
+    },
+    File {
+        checkpoint_id: String,
+        /// Base64-encoded repository-relative path bytes, as returned by compare.
+        path: String,
+        #[serde(default)]
+        layer: Layer,
+        #[serde(default)]
+        offset: usize,
+        #[serde(default = "default_chunk")]
+        limit: usize,
+    },
     List {
         #[serde(default)]
         filter: Filter,
@@ -138,4 +180,28 @@ pub struct Receipt {
     pub session_id: String,
     pub entry_id: Option<String>,
     pub recorded_at: u64,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Layer {
+    Head,
+    Index,
+    #[default]
+    Worktree,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub struct CheckpointLink {
+    pub workspace_id: String,
+    pub checkpoint_id: Option<String>,
+    pub before_id: Option<String>,
+    pub baseline_id: Option<String>,
+    pub baseline_status: String,
+    /// fresh, reused, late, missing, or failed. This is boundary coverage,
+    /// independent of the checkpoint's file-content coverage.
+    pub status: String,
+    pub reason: Option<String>,
+    #[serde(default)]
+    pub concurrent_tools: bool,
 }

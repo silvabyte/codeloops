@@ -43,7 +43,10 @@ fn open_once(path: &std::path::Path) -> rusqlite::Result<Connection> {
       INSERT OR IGNORE INTO adapter_health SELECT 'opencode',delivered,last_error,(SELECT COUNT(*) FROM failures) FROM health WHERE id=1;
       INSERT OR IGNORE INTO adapter_health VALUES('cursor',0,NULL,0);
       CREATE TABLE IF NOT EXISTS cursor_prompts(session TEXT,generation TEXT,message TEXT NOT NULL,PRIMARY KEY(session,generation));
-      CREATE TABLE IF NOT EXISTS cursor_sessions(session TEXT PRIMARY KEY);")?;
+      CREATE TABLE IF NOT EXISTS cursor_sessions(session TEXT PRIMARY KEY);
+      CREATE TABLE IF NOT EXISTS snapshot_state(scope TEXT PRIMARY KEY,link TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS tool_boundaries(scope TEXT,call TEXT,checkpoint TEXT,PRIMARY KEY(scope,call));
+      CREATE TABLE IF NOT EXISTS tool_activity(scope TEXT,call TEXT,workspace TEXT,overlap INTEGER NOT NULL,PRIMARY KEY(scope,call));")?;
     Ok(db)
 }
 
@@ -151,6 +154,11 @@ pub fn health(config: &Config) -> AppResult<Value> {
         |r| Ok((r.get(0)?, r.get(1)?)),
     )?;
     let failures: u64 = db.query_row("SELECT COUNT(*) FROM failures", [], |r| r.get(0))?;
+    let checkpoint_failures: u64 = db.query_row(
+        "SELECT COUNT(*) FROM snapshot_state WHERE json_extract(link,'$.status')='failed'",
+        [],
+        |r| r.get(0),
+    )?;
     let mut sources = serde_json::Map::new();
     for source in ["opencode", "cursor"] {
         let (delivered, error, failures): (u64, Option<String>, u64) = db.query_row(
@@ -162,7 +170,7 @@ pub fn health(config: &Config) -> AppResult<Value> {
         sources.insert(source.into(), json!({"pending":pending,"rejected":rejected,"delivered":delivered,"last_error":error,"enqueue_failures":failures}));
     }
     Ok(
-        json!({"source":"all","sources":sources,"pending":pending,"rejected":rejected,"delivered":delivered,"last_error":last_error,"enqueue_failures":failures,"checkpoint_capture":"not_implemented","attachment_capture":"metadata_only"}),
+        json!({"source":"all","sources":sources,"pending":pending,"rejected":rejected,"delivered":delivered,"last_error":last_error,"enqueue_failures":failures,"checkpoint_capture":"boundary_observations","workspaces_with_failed_checkpoint":checkpoint_failures,"attachment_capture":"metadata_only"}),
     )
 }
 

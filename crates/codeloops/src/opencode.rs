@@ -36,6 +36,33 @@ pub fn enqueue(config: &Config, input: NativeInput) -> AppResult<Value> {
     let event_type = string(&input.event, "type")?;
     let p = &input.event["properties"];
     let (session, change, occurred_at) = match event_type {
+        "history.prompt" => (
+            string(p, "sessionID")?.into(),
+            Change::Lifecycle {
+                state: Some("active".into()),
+                title: None,
+                parent_native_id: None,
+            },
+            None,
+        ),
+        "history.tool.before" | "history.tool.after" => (
+            string(p, "sessionID")?.into(),
+            Change::Tool {
+                native_id: string(p, "callID")?.into(),
+                name: string(p, "tool")?.into(),
+                parent_native_id: None,
+                status: if event_type == "history.tool.before" {
+                    "running"
+                } else {
+                    "completed"
+                }
+                .into(),
+                input: p.get("args").cloned(),
+                output: p.get("output").cloned(),
+                error: None,
+            },
+            None,
+        ),
         "message.updated" => {
             let info = &p["info"];
             (
@@ -69,12 +96,31 @@ pub fn enqueue(config: &Config, input: NativeInput) -> AppResult<Value> {
             tx.execute("INSERT INTO parts VALUES(?,?,?,?,?) ON CONFLICT(session,message,part) DO UPDATE SET kind=excluded.kind,text=excluded.text",params![session,message,native,kind,text])?;
             (
                 session.into(),
-                Change::Part {
-                    message_id: message.into(),
-                    native_id: native.into(),
-                    kind: kind.into(),
-                    text: text.into(),
-                    removed: false,
+                if kind == "tool" {
+                    Change::Tool {
+                        native_id: string(part, "callID")?.into(),
+                        name: string(part, "tool")?.into(),
+                        parent_native_id: Some(message.into()),
+                        status: match part["state"]["status"].as_str() {
+                            Some("pending") => "pending",
+                            Some("running") => "running",
+                            Some("completed") => "completed",
+                            Some("error") => "failed",
+                            _ => "unknown",
+                        }
+                        .into(),
+                        input: part["state"].get("input").cloned(),
+                        output: part["state"].get("output").cloned(),
+                        error: part["state"].get("error").cloned(),
+                    }
+                } else {
+                    Change::Part {
+                        message_id: message.into(),
+                        native_id: native.into(),
+                        kind: kind.into(),
+                        text: text.into(),
+                        removed: false,
+                    }
                 },
                 part["time"]["start"].as_u64(),
             )
@@ -161,6 +207,35 @@ pub fn enqueue(config: &Config, input: NativeInput) -> AppResult<Value> {
         _ => return Err(format!("unsupported source event: {event_type}").into()),
     };
     let sequence = outbox::sequence(&tx)?;
+    let workspace_id = identity(&tx, &format!("workspace:{}", input.directory))?;
+    use crate::boundary::{self, Boundary};
+    let boundary = match event_type {
+        "history.prompt" => Boundary::Prompt,
+        "history.tool.before" => Boundary::Before(string(p, "callID")?),
+        "history.tool.after" => Boundary::After {
+            call: string(p, "callID")?,
+            late: false,
+        },
+        "message.part.updated"
+            if p["part"]["type"] == "tool" && p["part"]["state"]["status"] == "error" =>
+        {
+            Boundary::After {
+                call: string(&p["part"], "callID")?,
+                late: true,
+            }
+        }
+        "session.idle" | "session.error" => Boundary::Turn,
+        _ => Boundary::Reuse,
+    };
+    let checkpoint = boundary::observe(
+        config,
+        &tx,
+        "opencode",
+        &session,
+        &workspace_id,
+        Some(&input.directory),
+        boundary,
+    )?;
     let capture = Capture {
         schema_version: 1,
         delivery_id: Uuid::new_v4().to_string(),
@@ -184,11 +259,12 @@ pub fn enqueue(config: &Config, input: NativeInput) -> AppResult<Value> {
                 }
             ),
         )?,
-        workspace_id: identity(&tx, &format!("workspace:{}", input.directory))?,
+        workspace_id,
         observed_at: input.observed_at,
         occurred_at,
         change,
         source_payload: input.event,
+        checkpoints: vec![checkpoint],
     };
     outbox::queue(&tx, &capture)?;
     tx.commit()?;
