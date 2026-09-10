@@ -245,6 +245,7 @@ name = "codeloops"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "clap",
  "reqwest",
  "rmcp",
@@ -1225,6 +1226,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "rusqlite",
+ "rustix",
  "schemars",
  "serde",
  "serde_json",

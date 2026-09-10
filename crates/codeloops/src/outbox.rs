@@ -30,20 +30,54 @@ pub fn open(config: &Config) -> AppResult<Connection> {
 fn open_once(path: &std::path::Path) -> rusqlite::Result<Connection> {
     let db = Connection::open(path)?;
     db.busy_timeout(std::time::Duration::from_secs(10))?;
-    db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
-      CREATE TABLE IF NOT EXISTS identities(key TEXT PRIMARY KEY,id TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS counter(value INTEGER NOT NULL);
-      INSERT INTO counter SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM counter);
-      CREATE TABLE IF NOT EXISTS parts(session TEXT,message TEXT,part TEXT,kind TEXT,text TEXT,PRIMARY KEY(session,message,part));
-      CREATE TABLE IF NOT EXISTS queue(sequence INTEGER PRIMARY KEY,envelope TEXT NOT NULL,error TEXT);
-      CREATE TABLE IF NOT EXISTS health(id INTEGER PRIMARY KEY CHECK(id=1),delivered INTEGER NOT NULL DEFAULT 0,last_error TEXT);
-      CREATE TABLE IF NOT EXISTS failures(id INTEGER PRIMARY KEY AUTOINCREMENT,observed INTEGER NOT NULL,message TEXT NOT NULL);
-      INSERT OR IGNORE INTO health(id) VALUES(1);
-      CREATE TABLE IF NOT EXISTS adapter_health(source TEXT PRIMARY KEY,delivered INTEGER NOT NULL,last_error TEXT,enqueue_failures INTEGER NOT NULL);
-      INSERT OR IGNORE INTO adapter_health SELECT 'opencode',delivered,last_error,(SELECT COUNT(*) FROM failures) FROM health WHERE id=1;
-      INSERT OR IGNORE INTO adapter_health VALUES('cursor',0,NULL,0);
-      CREATE TABLE IF NOT EXISTS cursor_prompts(session TEXT,generation TEXT,message TEXT NOT NULL,PRIMARY KEY(session,generation));
-      CREATE TABLE IF NOT EXISTS cursor_sessions(session TEXT PRIMARY KEY);")?;
+    db.execute_batch(
+        "PRAGMA journal_mode = WAL;
+         PRAGMA synchronous = FULL;
+
+         CREATE TABLE IF NOT EXISTS identities(key TEXT PRIMARY KEY, id TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS counter(value INTEGER NOT NULL);
+         INSERT INTO counter SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM counter);
+
+         CREATE TABLE IF NOT EXISTS parts(
+             session TEXT, message TEXT, part TEXT, kind TEXT, text TEXT,
+             PRIMARY KEY(session, message, part)
+         );
+         CREATE TABLE IF NOT EXISTS queue(
+             sequence INTEGER PRIMARY KEY, envelope TEXT NOT NULL, error TEXT
+         );
+         CREATE TABLE IF NOT EXISTS health(
+             id INTEGER PRIMARY KEY CHECK(id = 1),
+             delivered INTEGER NOT NULL DEFAULT 0, last_error TEXT
+         );
+         CREATE TABLE IF NOT EXISTS failures(
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             observed INTEGER NOT NULL, message TEXT NOT NULL
+         );
+         INSERT OR IGNORE INTO health(id) VALUES(1);
+
+         CREATE TABLE IF NOT EXISTS adapter_health(
+             source TEXT PRIMARY KEY, delivered INTEGER NOT NULL,
+             last_error TEXT, enqueue_failures INTEGER NOT NULL
+         );
+         INSERT OR IGNORE INTO adapter_health
+             SELECT 'opencode', delivered, last_error, (SELECT COUNT(*) FROM failures)
+             FROM health WHERE id = 1;
+         INSERT OR IGNORE INTO adapter_health VALUES('cursor', 0, NULL, 0);
+
+         CREATE TABLE IF NOT EXISTS cursor_prompts(
+             session TEXT, generation TEXT, message TEXT NOT NULL,
+             PRIMARY KEY(session, generation)
+         );
+         CREATE TABLE IF NOT EXISTS cursor_sessions(session TEXT PRIMARY KEY);
+         CREATE TABLE IF NOT EXISTS snapshot_state(scope TEXT PRIMARY KEY, link TEXT NOT NULL);
+         CREATE TABLE IF NOT EXISTS tool_boundaries(
+             scope TEXT, call TEXT, checkpoint TEXT, PRIMARY KEY(scope, call)
+         );
+         CREATE TABLE IF NOT EXISTS tool_activity(
+             scope TEXT, call TEXT, workspace TEXT, overlap INTEGER NOT NULL,
+             PRIMARY KEY(scope, call)
+         );",
+    )?;
     Ok(db)
 }
 
@@ -151,6 +185,11 @@ pub fn health(config: &Config) -> AppResult<Value> {
         |r| Ok((r.get(0)?, r.get(1)?)),
     )?;
     let failures: u64 = db.query_row("SELECT COUNT(*) FROM failures", [], |r| r.get(0))?;
+    let checkpoint_failures: u64 = db.query_row(
+        "SELECT COUNT(*) FROM snapshot_state WHERE json_extract(link,'$.status')='failed'",
+        [],
+        |r| r.get(0),
+    )?;
     let mut sources = serde_json::Map::new();
     for source in ["opencode", "cursor"] {
         let (delivered, error, failures): (u64, Option<String>, u64) = db.query_row(
@@ -158,12 +197,35 @@ pub fn health(config: &Config) -> AppResult<Value> {
             [source],
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )?;
-        let (pending, rejected): (u64,u64) = db.query_row("SELECT COUNT(*),COUNT(error) FROM queue WHERE json_extract(envelope,'$.origin.source')=?", [source], |r| Ok((r.get(0)?,r.get(1)?)))?;
-        sources.insert(source.into(), json!({"pending":pending,"rejected":rejected,"delivered":delivered,"last_error":error,"enqueue_failures":failures}));
+        let (pending, rejected): (u64, u64) = db.query_row(
+            "SELECT COUNT(*), COUNT(error) FROM queue
+             WHERE json_extract(envelope, '$.origin.source') = ?",
+            [source],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        sources.insert(
+            source.into(),
+            json!({
+                "pending": pending,
+                "rejected": rejected,
+                "delivered": delivered,
+                "last_error": error,
+                "enqueue_failures": failures,
+            }),
+        );
     }
-    Ok(
-        json!({"source":"all","sources":sources,"pending":pending,"rejected":rejected,"delivered":delivered,"last_error":last_error,"enqueue_failures":failures,"checkpoint_capture":"not_implemented","attachment_capture":"metadata_only"}),
-    )
+    Ok(json!({
+        "source": "all",
+        "sources": sources,
+        "pending": pending,
+        "rejected": rejected,
+        "delivered": delivered,
+        "last_error": last_error,
+        "enqueue_failures": failures,
+        "checkpoint_capture": "boundary_observations",
+        "workspaces_with_failed_checkpoint": checkpoint_failures,
+        "attachment_capture": "metadata_only",
+    }))
 }
 
 pub fn record_failure(config: &Config, source: &str, error: &str) -> AppResult<()> {

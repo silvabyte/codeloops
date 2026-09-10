@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS checkpoints (
+ id TEXT PRIMARY KEY, workspace TEXT NOT NULL, record TEXT NOT NULL
+);
+ALTER TABLE entries ADD COLUMN tool TEXT;
+ALTER TABLE entries ADD COLUMN checkpoints TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE entries ADD COLUMN checkpoint_sequence INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE captures ADD COLUMN checkpoints TEXT NOT NULL DEFAULT '[]';
+PRAGMA user_version = 2;

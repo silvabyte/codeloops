@@ -16,6 +16,7 @@ sha2.workspace = true
 rusqlite = { version = "=0.37.0", features = ["bundled"] }
 zstd = "0.13"
 schemars = "1.0"
+rustix = { version = "1", features = ["fs"] }
 
 [lints]
 workspace = true

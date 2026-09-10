@@ -1,6 +1,24 @@
 {
   "version": 1,
   "hooks": {
+    "preToolUse": [
+      {
+        "command": "\"/absolute/prefix/bin/codeloops\" --data-dir \"/absolute/data\" capture-cursor",
+        "timeout": 60
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "\"/absolute/prefix/bin/codeloops\" --data-dir \"/absolute/data\" capture-cursor",
+        "timeout": 60
+      }
+    ],
+    "postToolUseFailure": [
+      {
+        "command": "\"/absolute/prefix/bin/codeloops\" --data-dir \"/absolute/data\" capture-cursor",
+        "timeout": 60
+      }
+    ],
     "beforeSubmitPrompt": [
       {
         "command": "\"/absolute/prefix/bin/codeloops\" --data-dir \"/absolute/data\" capture-cursor"

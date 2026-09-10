@@ -50,10 +50,29 @@ fn changes(tx: &Transaction<'_>, event: &Value, session: &str) -> AppResult<Vec<
         }),
         // These are observations in the containing conversation, not proof of a
         // distinct child conversation or of the parent's lifecycle transition.
-        "afterAgentResponse" | "subagentStart" | "subagentStop" => None,
+        "afterAgentResponse" | "subagentStart" | "subagentStop" | "preToolUse" | "postToolUse"
+        | "postToolUseFailure" => None,
         _ => return Err(format!("unsupported Cursor hook: {hook}").into()),
     };
     let mut changes = vec![lifecycle(state, parent)];
+    if matches!(hook, "preToolUse" | "postToolUse" | "postToolUseFailure") {
+        changes.push(Change::Tool {
+            native_id: optional(event, "tool_use_id")
+                .map(String::from)
+                .unwrap_or_else(|| format!("unlinked-tool:{}", Uuid::new_v4())),
+            name: required(event, "tool_name")?.into(),
+            parent_native_id: optional(event, "message_id").map(String::from),
+            status: match hook {
+                "preToolUse" => "running",
+                "postToolUse" => "completed",
+                _ => "failed",
+            }
+            .into(),
+            input: event.get("tool_input").cloned(),
+            output: event.get("tool_output").cloned(),
+            error: event.get("error_message").cloned(),
+        });
+    }
     if hook == "beforeSubmitPrompt" || hook == "afterAgentResponse" {
         let is_user = hook == "beforeSubmitPrompt";
         let field = if is_user { "prompt" } else { "text" };
@@ -67,7 +86,11 @@ fn changes(tx: &Transaction<'_>, event: &Value, session: &str) -> AppResult<Vec<
         let mut parent_message = None;
         if let Some(generation) = generation {
             if is_user {
-                tx.execute("INSERT INTO cursor_prompts VALUES(?,?,?) ON CONFLICT(session,generation) DO UPDATE SET message=excluded.message", params![session,generation,message])?;
+                tx.execute(
+                    "INSERT INTO cursor_prompts VALUES(?, ?, ?)
+                     ON CONFLICT(session, generation) DO UPDATE SET message = excluded.message",
+                    params![session, generation, message],
+                )?;
             } else {
                 parent_message = tx
                     .query_row(
@@ -152,7 +175,38 @@ pub fn enqueue(config: &Config, event: Value) -> AppResult<()> {
         occurred_at: None,
         change: lifecycle(None, None),
         source_payload: event.clone(),
+        checkpoints: vec![],
     };
+    use crate::boundary::{self, Boundary};
+    let workspaces: Vec<_> = if roots.is_empty() {
+        vec![(capture.workspace_id.clone(), None)]
+    } else {
+        roots
+            .iter()
+            .map(|root| {
+                Ok((
+                    identity(&tx, &format!("workspace:{root}"))?,
+                    Some(root.as_str()),
+                ))
+            })
+            .collect::<AppResult<_>>()?
+    };
+    for (workspace, directory) in workspaces {
+        let call = optional(&event, "tool_use_id");
+        let boundary = match required(&event, "hook_event_name")? {
+            "beforeSubmitPrompt" => Boundary::Prompt,
+            "preToolUse" => call.map(Boundary::Before).unwrap_or(Boundary::Prompt),
+            "postToolUse" | "postToolUseFailure" => Boundary::After {
+                call: call.unwrap_or(""),
+                late: false,
+            },
+            "stop" => Boundary::Turn,
+            _ => Boundary::Reuse,
+        };
+        capture.checkpoints.push(boundary::observe(
+            config, &tx, "cursor", session, &workspace, directory, boundary,
+        )?);
+    }
     for change in changes {
         capture.change = change;
         queue(&tx, &mut capture)?;

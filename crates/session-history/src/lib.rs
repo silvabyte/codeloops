@@ -1,6 +1,7 @@
 //! Durable session history. Transports and source adapters use this boundary;
 //! SQLite, projections, indexing and artifact publication remain private.
 mod artifacts;
+mod checkpoints;
 mod ingest;
 pub mod model;
 mod query;
@@ -61,22 +62,26 @@ pub struct History {
 impl History {
     pub fn open(root: impl AsRef<Path>) -> Result<Self> {
         std::fs::create_dir_all(root.as_ref())?;
-        let connection = Connection::open(root.as_ref().join("history.sqlite3"))?;
+        let mut connection = Connection::open(root.as_ref().join("history.sqlite3"))?;
         connection.busy_timeout(Duration::from_secs(10))?;
         connection.execute_batch(
             "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;",
         )?;
-        let version: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-        if version > 1 {
+        let transaction =
+            connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let version: u32 = transaction.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        if version > 2 {
             return Err(Error::Invalid(
                 "database requires a newer CodeLoops version".into(),
             ));
         }
         if version == 0 {
-            let transaction = connection.unchecked_transaction()?;
             transaction.execute_batch(include_str!("schema.sql"))?;
-            transaction.commit()?;
         }
+        if version < 2 {
+            transaction.execute_batch(include_str!("schema-v2.sql"))?;
+        }
+        transaction.commit()?;
         let artifacts = Artifacts::open(&root.as_ref().join("artifacts"))?;
         Ok(Self {
             connection,
@@ -89,5 +94,11 @@ impl History {
     }
     pub fn query(&self, query: Query) -> Result<Value> {
         query::query(self, query)
+    }
+
+    /// Observe now and publish only after all referenced file artifacts are durable.
+    /// Call at the action boundary, never while retrying delivery of an old event.
+    pub fn checkpoint(&mut self, directory: &Path, workspace_id: &str) -> Result<Value> {
+        checkpoints::capture(self, directory, workspace_id)
     }
 }

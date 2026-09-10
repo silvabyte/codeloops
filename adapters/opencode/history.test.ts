@@ -48,6 +48,31 @@ fs.writeFileSync(${JSON.stringify(saved)}, fs.readFileSync(0));
     assert.equal(forwarded.directory, directory);
     assert.equal(JSON.stringify(event), original);
     await pending;
+    const input = { sessionID: "session", callID: "call", tool: "bash" };
+    const output = {
+      args: { command: "write then fail", unknown: "preserved" },
+    };
+    const before = JSON.stringify(output);
+    const starting = hooks["tool.execute.before"]?.(input, output);
+    const queued = JSON.parse(readFileSync(saved, "utf8"));
+    assert.equal(queued.event.type, "history.tool.before");
+    assert.deepEqual(queued.event.properties.args, output.args);
+    assert.equal(JSON.stringify(output), before);
+    await starting;
+    const result = { title: "done", output: "literal result", metadata: {} };
+    await hooks["tool.execute.after"]?.(
+      { ...input, args: output.args },
+      result
+    );
+    assert.deepEqual(result, {
+      title: "done",
+      output: "literal result",
+      metadata: {},
+    });
+    assert.equal(
+      JSON.parse(readFileSync(saved, "utf8")).event.type,
+      "history.tool.after"
+    );
   } finally {
     if (previous === undefined) {
       Reflect.deleteProperty(process.env, "CODELOOPS_BIN");

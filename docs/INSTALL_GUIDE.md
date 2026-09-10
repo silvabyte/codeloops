@@ -46,7 +46,7 @@ Use the **same data directory and service address** as OpenCode. Cursor capture 
 built into the Rust binary; it needs no JavaScript runtime or transcript files.
 
 The installed `share/codeloops/adapters/cursor/hooks.example.json` lists this
-slice's seven hooks. Replace `/absolute/prefix` and `/absolute/data` with your
+ten conversation/lifecycle/tool hooks. Replace `/absolute/prefix` and `/absolute/data` with your
 installation prefix and `CODELOOPS_DATA_DIR`. Append each hook definition to the
 corresponding array in a trusted project's `.cursor/hooks.json`, or your existing
 `~/.cursor/hooks.json`. Preserve all existing hooks and settings. Register each
@@ -95,7 +95,10 @@ MCP server you added. Preserve other settings and the data directory.
 ## Capture health and recovery
 
 The OpenCode adapter uses a synchronous `codeloops capture-opencode` subprocess to durably
-enqueue each observed event, with a 15-second process timeout. The collector owns
+enqueue each observed event, with a 60-second process timeout. Awaited pre-action
+and tool-completion hooks archive Git file state before returning. Error/turn
+callbacks carry explicit late timing coverage. Keep the data directory outside
+the observed Git worktree. The collector owns
 the shared SQLite spool and persistent device/installation identities. Its legacy
 filename `opencode-spool.sqlite3` is retained to preserve installed preview data.
 Cursor invokes `capture-cursor` directly and atomically queues message metadata,
@@ -104,6 +107,9 @@ up to 100 queued captures every 250 ms. There is no network dependency in the ho
 
 `codeloops health --json` reports pending/rejected deliveries, delivered count,
 enqueue failure count, and the most recent error, both in aggregate and by source.
+`workspaces_with_failed_checkpoint` counts session/workspace states whose last
+attempt failed; inspect entry/capture checkpoint links for the reason. File-content
+exclusions and detected instability are reported by `history checkpoint <id>`.
 A rejected envelope remains in
 the spool for inspection. Transient archive failures leave deliveries queued for
 retry. Errors during enqueue go to OpenCode's log and stderr and are also recorded
@@ -118,3 +124,24 @@ Automatic `make setup`, `make e2e`, and `make uninstall` arrive with the final
 installation/recovery slice. For this preview, remove the two entries you added
 from OpenCode's configuration and restart it to stop integration. Remove the
 isolated install prefix if desired. Preserve `CODELOOPS_DATA_DIR` to retain history.
+
+## Retrieve observed file changes
+
+Use session and workspace IDs from `history list`, or a tool entry ID from search:
+
+```sh
+codeloops history search "your tool command" --kind tool --json
+codeloops history changes --session-id SESSION --workspace-id WORKSPACE --json
+codeloops history changes --entry-id TOOL_ENTRY --workspace-id WORKSPACE --json
+codeloops history checkpoint CHECKPOINT --json
+codeloops history compare BASELINE BASELINE --before-layer head --after-layer index --json
+codeloops history compare BASELINE BASELINE --before-layer index --after-layer worktree --json
+codeloops history file CHECKPOINT BASE64_PATH --layer worktree --offset 0 --limit 65536 --json
+codeloops history artifact INPUT_OUTPUT_ERROR_OR_PATCH_HASH --json
+```
+
+MCP `history_query` and `/v1/history/query` accept the corresponding `operation`
+and snake_case fields. Follow `next_cursor`/`next_offset`. See
+[checkpoint verification](verification-git-checkpoints.md) for tested behavior and
+the remaining real Cursor desktop acceptance walkthrough. After installing the
+updated OpenCode adapter, quit and restart OpenCode to load its new hooks.
