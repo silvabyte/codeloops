@@ -1,6 +1,17 @@
 # Use your history
 
-These examples use the [installed binary](INSTALL_GUIDE.md) and a running service:
+- Using coding agents? [Use MCP](#query-through-mcp).
+- Don't like MCP? [Use the CLI](#find-a-conversation).
+- Can't run shell commands? [Use the REST API](#query-through-rest).
+
+**NO MORE EXCUSES LIL BRO!!!!**
+
+Same history. Same results. Pick what works for you.
+
+## Before you query
+
+Start the [installed history service](INSTALL_GUIDE.md). If you're using the CLI,
+add the installed binary to your shell's PATH:
 
 ```sh
 export PATH="$HOME/.local/codeloops-history-preview/bin:$PATH"
@@ -169,17 +180,24 @@ All endpoints use POST and require `Authorization: Bearer TOKEN`, where TOKEN is
 the content of your data directory's `credential` file. The service binds only to
 loopback. CLI and MCP read the credential themselves.
 
-This example uses the default profile and curl:
+Send this from your app or HTTP client. No shell required:
 
-```sh
-TOKEN="$(cat "$HOME/.local/share/codeloops-history/preview/credential")"
-curl --fail-with-body --silent --show-error \
-  -H "Authorization: Bearer $TOKEN" \
-  -H 'Content-Type: application/json' \
-  --data '{"operation":"search","text":"database migration","filter":{"source":"opencode"},"page":{"limit":20}}' \
-  http://127.0.0.1:47823/v1/history/query
-unset TOKEN
+```http
+POST /v1/history/query HTTP/1.1
+Host: 127.0.0.1:47823
+Authorization: Bearer TOKEN
+Content-Type: application/json
+
+{
+  "operation": "search",
+  "text": "database migration",
+  "filter": { "source": "opencode" },
+  "page": { "limit": 20 }
+}
 ```
+
+The full URL is `http://127.0.0.1:47823/v1/history/query` with the default setup.
+Replace `TOKEN` with the credential above. Send the query object as the JSON body.
 
 | Endpoint | Body |
 | --- | --- |

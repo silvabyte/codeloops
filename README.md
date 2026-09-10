@@ -21,6 +21,14 @@ How is it still this hard to use a conversation from one coding agent in another
 
 That's why I'm working on CodeLoops again.
 
+## Pick your way in
+
+- Using coding agents? [Use MCP](docs/USAGE.md#query-through-mcp).
+- Don't like MCP? [Use the CLI](docs/USAGE.md#find-a-conversation).
+- Can't run shell commands? [Use the REST API](docs/USAGE.md#query-through-rest).
+
+**NO MORE EXCUSES LIL BRO!!!!**
+
 ## Get started
 
 Your history stays local. Automatic capture supports Cursor and OpenCode today;
