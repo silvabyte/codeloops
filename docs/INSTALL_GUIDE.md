@@ -71,7 +71,14 @@ paths, so desktop launches do not need your shell's PATH or environment variable
 | OpenCode config | `$XDG_CONFIG_HOME/opencode/opencode.json` or `.jsonc`, normally under `~/.config` |
 | Cursor config | `~/.cursor/hooks.json` and `~/.cursor/mcp.json` |
 
-If both OpenCode config filenames exist, choose the one to edit:
+If both OpenCode config filenames exist, setup uses `opencode.jsonc` for new MCP
+entries, matching OpenCode's precedence. It adds the capture plugin to the highest-priority
+existing plugin list (`opencode.jsonc`, `opencode.json`, then legacy `config.json`)
+so inherited plugins stay active. If no list exists, it creates one in the selected
+config. Existing MCP entries keep their ownership/conflict checks in their source
+file. No config-selection flag is needed for the normal quick start.
+
+To explicitly select a different OpenCode config file:
 
 ```sh
 make start SETUP_ARGS="--opencode-config '$HOME/.config/opencode/opencode.json'"

@@ -16,6 +16,23 @@ pub struct Edit {
     pub array: bool,
 }
 
+pub fn contains(text: &str, path: &[&str]) -> AppResult<bool> {
+    let root = CstRootNode::parse(text, &ParseOptions::default())?;
+    let mut object = root
+        .object_value()
+        .ok_or("client configuration must be an object")?;
+    let (name, parents) = path.split_last().ok_or("empty configuration path")?;
+    for parent in parents {
+        let Some(property) = object.get(parent) else {
+            return Ok(false);
+        };
+        object = property
+            .object_value()
+            .ok_or("configuration parent must be an object")?;
+    }
+    Ok(object.get(name).is_some())
+}
+
 fn input(value: &Value) -> CstInputValue {
     match value {
         Value::Null => CstInputValue::Null,
