@@ -89,7 +89,13 @@ fn dirty_staged_binary_symlink_and_path_bytes_survive_repository_removal() {
     fs::write(root.join("tracked"), b"tracked despite ignore").unwrap();
     fs::write(root.join("binary"), [0, 255, 4]).unwrap();
     symlink("missing target", root.join("link")).unwrap();
-    let raw_path = b"raw-\xff";
+    // APFS requires valid UTF-8 filenames. Keep non-ASCII path-byte coverage
+    // there, and exercise arbitrary non-UTF-8 bytes on Linux filesystems.
+    let raw_path: &[u8] = if cfg!(target_os = "macos") {
+        "raw-🦀".as_bytes()
+    } else {
+        b"raw-\xff"
+    };
     fs::write(
         root.join(OsString::from_vec(raw_path.to_vec())),
         b"raw name",
