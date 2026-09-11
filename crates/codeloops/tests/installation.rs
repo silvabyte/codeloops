@@ -5,9 +5,10 @@ use std::{
     fs,
     io::Write,
     net::TcpListener,
+    os::unix::process::CommandExt,
     path::{Path, PathBuf},
     process::{Child, Command, Output, Stdio},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 struct Service(Child);
@@ -37,22 +38,7 @@ fn checked(output: Output) -> Value {
 
 impl Fixture {
     fn new() -> Self {
-        let temporary = tempfile::tempdir().unwrap();
-        let root = temporary.path();
-        let prefix = root.join("preview install 'quoted'");
-        let home = root.join("home");
-        let data = root.join("data 'isolated'");
-        fs::create_dir_all(home.join(".config/opencode")).unwrap();
-        fs::create_dir_all(home.join(".cursor")).unwrap();
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let address = listener.local_addr().unwrap().to_string();
-        let fixture = Self {
-            temporary,
-            prefix,
-            home,
-            data,
-            address,
-        };
+        let fixture = Self::uninstalled();
         let source = std::env::var_os("CODELOOPS_E2E_BINARY")
             .map(PathBuf::from)
             .unwrap_or_else(|| env!("CARGO_BIN_EXE_codeloops").into());
@@ -64,6 +50,25 @@ impl Fixture {
                 .unwrap(),
         );
         fixture
+    }
+
+    fn uninstalled() -> Self {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path();
+        let prefix = root.join("preview install 'quoted'");
+        let home = root.join("home");
+        let data = root.join("data 'isolated'");
+        fs::create_dir_all(home.join(".config/opencode")).unwrap();
+        fs::create_dir_all(home.join(".cursor")).unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap().to_string();
+        Self {
+            temporary,
+            prefix,
+            home,
+            data,
+            address,
+        }
     }
 
     fn binary(&self) -> PathBuf {
@@ -164,6 +169,212 @@ impl Fixture {
         }
         panic!("installed service failed to start");
     }
+}
+
+// Exercise the user's Make entry point, including the real release build. Keep
+// the toolchain available while all runtime and client state uses the fixture.
+fn make(fixture: &Fixture, target: &str) -> Command {
+    let home = PathBuf::from(std::env::var_os("HOME").unwrap());
+    let mut command = Command::new("make");
+    command
+        .current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
+        .args(["--no-print-directory", "-j4", target])
+        .arg(format!("PREFIX={}", fixture.prefix.display()))
+        .arg(format!("DATA_DIR={}", fixture.data.display()))
+        .arg(format!("ADDRESS={}", fixture.address))
+        .arg("PROFILE=quickstart")
+        .arg("SETUP_ARGS=--opencode-version fixture")
+        .env("HOME", &fixture.home)
+        .env("XDG_CONFIG_HOME", fixture.home.join(".config"))
+        .env("XDG_DATA_HOME", fixture.home.join(".local/share"))
+        .env(
+            "CARGO_HOME",
+            std::env::var_os("CARGO_HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| home.join(".cargo")),
+        )
+        .env(
+            "RUSTUP_HOME",
+            std::env::var_os("RUSTUP_HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| home.join(".rustup")),
+        )
+        .env_remove("CODELOOPS_DATA_DIR")
+        .env_remove("CODELOOPS_ADDRESS")
+        .env_remove("MAKEFLAGS")
+        .env_remove("MFLAGS")
+        .env_remove("CARGO_MAKEFLAGS");
+    command
+}
+
+struct MakeService(Child);
+
+impl MakeService {
+    fn interrupt(mut self) {
+        assert!(
+            Command::new("kill")
+                .args(["-s", "INT", "--", &format!("-{}", self.0.id())])
+                .status()
+                .unwrap()
+                .success()
+        );
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while Instant::now() < deadline {
+            if self.0.try_wait().unwrap().is_some() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        panic!("make start did not stop on Ctrl+C");
+    }
+}
+
+impl Drop for MakeService {
+    fn drop(&mut self) {
+        // Make owns a shell and service below it. Signal the isolated process
+        // group so a failing assertion cannot leave a service running.
+        let _ = Command::new("kill")
+            .args(["-s", "TERM", "--", &format!("-{}", self.0.id())])
+            .output();
+        let _ = self.0.wait();
+    }
+}
+
+fn make_start(fixture: &Fixture) -> (MakeService, PathBuf) {
+    let path = fixture.temporary.path().join("make-start.log");
+    let log = fs::File::create(&path).unwrap();
+    let mut service = MakeService(
+        make(fixture, "start")
+            .stdout(log.try_clone().unwrap())
+            .stderr(log)
+            .process_group(0)
+            .spawn()
+            .unwrap(),
+    );
+    let deadline = Instant::now() + Duration::from_secs(600);
+    while Instant::now() < deadline {
+        assert!(
+            service.0.try_wait().unwrap().is_none(),
+            "make start exited before service readiness:\n{}",
+            fs::read_to_string(&path).unwrap()
+        );
+        if fixture.binary().exists()
+            && fixture
+                .command()
+                .arg("health")
+                .output()
+                .is_ok_and(|output| output.status.success())
+        {
+            return (service, path);
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    panic!(
+        "make start never became healthy:\n{}",
+        fs::read_to_string(path).unwrap()
+    );
+}
+
+#[test]
+fn make_setup_bootstraps_and_repeats_without_duplicate_registrations() {
+    let fixture = Fixture::uninstalled();
+    let config = fixture.home.join(".config/opencode/opencode.jsonc");
+    fs::write(
+        &config,
+        "{\n// keep my settings\n\"plugin\": [\"my-plugin\"]\n}\n",
+    )
+    .unwrap();
+    let other_config = fixture.home.join(".config/opencode/opencode.json");
+    fs::write(&other_config, "{\"plugin\": [\"other-plugin\"]}").unwrap();
+    assert!(!fixture.binary().exists());
+    let setup = || {
+        let output = make(&fixture, "setup")
+            .arg(format!(
+                "SETUP_ARGS=--opencode-version fixture --opencode-config \"{}\" --cursor-config-dir \"{}\"",
+                config.display(),
+                fixture.home.join(".cursor").display(),
+            ))
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    };
+    setup();
+    let first = fs::read_to_string(&config).unwrap();
+    let hooks = fs::read(fixture.home.join(".cursor/hooks.json")).unwrap();
+    assert!(first.contains("// keep my settings"));
+    assert!(first.contains("my-plugin"));
+    assert!(first.contains("codeloops-history-quickstart"));
+    setup();
+    assert_eq!(fs::read_to_string(config).unwrap(), first);
+    assert_eq!(
+        fs::read(fixture.home.join(".cursor/hooks.json")).unwrap(),
+        hooks
+    );
+    assert!(fixture.binary().is_file());
+    assert_eq!(
+        fs::read_to_string(other_config).unwrap(),
+        "{\"plugin\": [\"other-plugin\"]}"
+    );
+    assert!(
+        TcpListener::bind(&fixture.address).is_ok(),
+        "setup must not start a service"
+    );
+}
+
+#[test]
+fn make_start_from_fresh_prefix_captures_and_recalls_after_restart() {
+    let fixture = Fixture::uninstalled();
+    let (service, log) = make_start(&fixture);
+    fixture.hook(&json!({
+        "hook_event_name": "afterAgentResponse",
+        "conversation_id": "quickstart-conversation",
+        "generation_id": "quickstart-turn",
+        "text": "codeloops first recall check",
+    }));
+    fixture.run(&["flush"], None);
+    let args = [
+        "history",
+        "search",
+        "codeloops first recall check",
+        "--role",
+        "assistant",
+    ];
+    let result = fixture.run(&args, None);
+    assert_eq!(result["items"].as_array().unwrap().len(), 1);
+    let output = fs::read_to_string(log).unwrap();
+    assert!(output.contains("CodeLoops listening at"));
+    assert!(output.contains("Restart OpenCode"));
+    assert!(!output.contains("service_unavailable"));
+    service.interrupt();
+    assert!(TcpListener::bind(&fixture.address).is_ok());
+    let (_service, _) = make_start(&fixture);
+    assert_eq!(fixture.run(&args, None), result);
+}
+
+#[test]
+fn make_start_stops_when_build_or_setup_fails() {
+    let fixture = Fixture::uninstalled();
+    let failed_build = make(&fixture, "start").arg("CARGO=false").output().unwrap();
+    assert!(!failed_build.status.success());
+    assert!(String::from_utf8_lossy(&failed_build.stderr).contains("Building CodeLoops"));
+    assert!(!fixture.binary().exists());
+    assert!(!fixture.home.join(".cursor/hooks.json").exists());
+
+    let config = fixture.home.join(".config/opencode/opencode.json");
+    fs::write(&config, "invalid json").unwrap();
+    let output = make(&fixture, "start").output().unwrap();
+    assert!(!output.status.success());
+    assert!(
+        fixture.binary().exists(),
+        "build/install must succeed before testing setup failure"
+    );
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("CodeLoops listening at"));
+    assert_eq!(fs::read_to_string(config).unwrap(), "invalid json");
+    assert!(TcpListener::bind(&fixture.address).is_ok());
 }
 
 fn git(repo: &Path, args: &[&str]) {

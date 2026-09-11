@@ -4,7 +4,7 @@ Set up a shared history for your coding agents. This guide configures automatic
 capture for Cursor and OpenCode across projects. You do not need to install
 OpenCode to use Cursor. Other harnesses can [connect through MCP](USAGE.md#connect-another-coding-harness).
 
-## 1. Build and install
+## Quick start
 
 You need Rust/Cargo **1.97.1**, Git, Make, a C compiler/linker, and standard Unix
 build tools. With rustup installed, the checkout selects the pinned toolchain.
@@ -14,21 +14,48 @@ needed. SQLite and Zstandard build from bundled sources.
 ```sh
 git clone https://github.com/silvabyte/codeloops.git
 cd codeloops
-make install
-export PATH="$HOME/.local/codeloops-history-preview/bin:$PATH"
+make start
 ```
 
-The PATH change applies to this shell. Add it to your shell configuration for
-future terminals, or call `~/.local/codeloops-history-preview/bin/codeloops` directly.
-The `preview` name remains the installation default on current `main`.
+`make start` builds and installs CodeLoops, registers capture and MCP for both
+clients, then starts the history service in the foreground. The first build can
+take a few minutes. When you see `CodeLoops listening at ...`, keep that terminal
+open and reload your client:
+
+- **OpenCode:** quit and restart.
+- **Cursor desktop:** open a new Agent Chat. Restart Cursor if the
+  `codeloops-history-preview` MCP server does not appear enabled and connected.
+
+Send:
+
+> Reply with exactly: codeloops first recall check
+
+Then open a fresh chat and ask:
+
+> Use CodeLoops history_query to find the earlier assistant message containing
+> "codeloops first recall check". Return its text, session ID, and entry ID.
+> Retrieve it from history, not from this chat.
+
+Expect the earlier reply and its archive IDs. Capture starts with new events;
+older client conversations are not imported.
+
+Ctrl+C stops the service. Restart it with `make run`. Reload clients after setup
+or an adapter upgrade. The service runs in this terminal; setup does not install
+a login service or start a background daemon.
 
 Node and npm are only needed for [contributor checks](DEVELOPMENT.md).
 
-## 2. Register capture and MCP
+## Commands and configuration
 
-```sh
-make setup
-```
+| Command | What it does |
+| --- | --- |
+| `make start` | Build, install, register clients, and start the service |
+| `make setup` | Build, install, and register clients without starting the service |
+| `make install` | Build and install the binary and adapters without editing client configs |
+| `make run` | Start the installed service with its saved settings |
+
+Repeating `make start` after stopping the service is supported. Cargo reuses its
+build cache, and setup preserves existing registrations without duplicating them.
 
 Setup writes capture and MCP entries into both clients' user-global configuration,
 even if only one client is installed. It preserves unrelated plugins, hooks, MCP
@@ -47,7 +74,7 @@ paths, so desktop launches do not need your shell's PATH or environment variable
 If both OpenCode config filenames exist, choose the one to edit:
 
 ```sh
-make setup SETUP_ARGS="--opencode-config '$HOME/.config/opencode/opencode.json'"
+make start SETUP_ARGS="--opencode-config '$HOME/.config/opencode/opencode.json'"
 ```
 
 Use that same option when repeating setup. `--cursor-config-dir DIRECTORY` selects
@@ -55,42 +82,29 @@ a different Cursor config directory. `--opencode-version VERSION` supplies sourc
 version metadata; otherwise setup tries `opencode --version` and records `unknown`
 if unavailable.
 
-Setup prints the selected paths, capture health, and service availability. An
-unavailable service is expected before the next step. If you have an earlier
-manual installation, follow [migration](#migrate-a-manual-preview) first.
-
-## 3. Start the service and reload your client
-
-```sh
-make run
-```
-
-Keep this terminal open. `make run` starts the installed service in the foreground;
-Ctrl+C stops it. Setup does not install a login service or start a background
-daemon. Outside the checkout, run `codeloops serve` with the installed binary.
-
-- **Cursor desktop:** open a new Agent Chat. Check that `codeloops-history-preview`
-  is enabled and connected in MCP settings. Restart Cursor if needed.
-- **OpenCode:** quit and restart after setup or an adapter upgrade. Check that the
-  same MCP server is connected.
+Make prints progress and reports failures. For a detailed JSON setup report, call
+the installed binary's `setup --json` command with the same profile and config
+options. Service unavailability in that report is expected while the service is
+stopped. If you have an earlier manual installation, follow
+[migration](#migrate-a-manual-preview) first.
 
 `codeloops mcp` is the stdio bridge started by the client. It needs the separate
 history service for queries. See [client coverage](OVERVIEW.md#client-coverage)
 before relying on Cursor Agent CLI hooks.
 
-## 4. Check capture and recall
+## Use the CLI and check capture
 
-In your client, send:
-
-> Reply with exactly: codeloops first recall check
-
-In a second terminal:
+After the quick-start conversation, run in a second terminal:
 
 ```sh
 export PATH="$HOME/.local/codeloops-history-preview/bin:$PATH"
 codeloops health --json
 codeloops history search "codeloops first recall check" --role assistant --json
 ```
+
+The PATH change applies to this shell. Add it to your shell configuration for
+future terminals, or call `~/.local/codeloops-history-preview/bin/codeloops` directly.
+Outside the checkout, `codeloops serve` starts the installed service.
 
 Expect the assistant entry with archive session/entry IDs. Then open a fresh chat:
 
@@ -107,10 +121,10 @@ recall. To inspect file checkpoints, use a Git workspace and the
 Each prefix holds one profile. For a separate archive and service:
 
 ```sh
-make install PREFIX="$HOME/.local/codeloops-review"
-make setup PREFIX="$HOME/.local/codeloops-review" PROFILE=review ADDRESS=127.0.0.1:47824
-make run PREFIX="$HOME/.local/codeloops-review"
+make start PREFIX="$HOME/.local/codeloops-review" PROFILE=review ADDRESS=127.0.0.1:47824
 ```
+
+After stopping it, restart with `make run PREFIX="$HOME/.local/codeloops-review"`.
 
 Use that prefix's binary for queries. Its saved setup selects the data directory
 and address. Separate registered profiles each capture into their own archive;
@@ -176,9 +190,9 @@ writable, the spool health record; check the terminal running the service too.
 
 ## Upgrade or recover setup
 
-Stop the service, update the checkout, then repeat `make install` and `make setup`
-with the original prefix/profile/path options. Start it again and reload your
-client. Installation replaces owned, unchanged assets and keeps the archive.
+Stop the service, update the checkout, then repeat `make start` with the original
+prefix/profile/path/config options. Reload your client. Installation replaces
+owned, unchanged assets and keeps the archive.
 
 If installation or setup is interrupted, repeat the same command. Ownership
 records under `PREFIX/share/codeloops/` let it finish partial work. Setup refuses
