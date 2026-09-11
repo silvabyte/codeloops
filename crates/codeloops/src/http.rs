@@ -123,6 +123,10 @@ pub async fn serve(config: Config) -> AppResult<()> {
         listener.local_addr()?,
         config.root.display()
     );
+    eprintln!("Keep this terminal open. Ctrl+C stops the service.");
+    eprintln!(
+        "Restart OpenCode or open a new Cursor Agent Chat to load your configured integration."
+    );
     let worker_config = config.clone();
     let worker = tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_millis(250));

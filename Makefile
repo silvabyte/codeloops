@@ -5,7 +5,7 @@ DATA_DIR ?= $(HOME)/.local/share/codeloops-history/$(PROFILE)
 ADDRESS ?= 127.0.0.1:47823
 SETUP_ARGS ?=
 
-.PHONY: check install setup run e2e uninstall
+.PHONY: check install setup start run e2e uninstall
 check: node_modules/.package-lock.json
 	$(CARGO) fmt --all -- --check
 	$(CARGO) clippy --workspace --all-targets --locked -- -D warnings
@@ -18,14 +18,25 @@ node_modules/.package-lock.json: package.json package-lock.json
 	npm ci
 
 install:
-	$(CARGO) build --release --locked -p codeloops
-	target/release/codeloops install --prefix "$(PREFIX)"
+	@printf '%s\n' 'Building CodeLoops (the first build can take a few minutes)...' >&2
+	@$(CARGO) build --release --locked -p codeloops
+	@printf 'Installing CodeLoops into %s...\n' "$(PREFIX)" >&2
+	@target/release/codeloops install --prefix "$(PREFIX)" > /dev/null
 
-setup:
-	"$(PREFIX)/bin/codeloops" --data-dir "$(DATA_DIR)" --address "$(ADDRESS)" setup --profile "$(PROFILE)" $(SETUP_ARGS)
+setup: install
+	@printf '%s\n' 'Registering capture and MCP for Cursor and OpenCode...' >&2
+	@"$(PREFIX)/bin/codeloops" --data-dir "$(DATA_DIR)" --address "$(ADDRESS)" setup --profile "$(PROFILE)" $(SETUP_ARGS) > /dev/null
+	@printf '%s\n' 'Capture and MCP registered.' >&2
 
-run:
-	"$(PREFIX)/bin/codeloops" serve
+start: setup
+
+start run:
+	@if ! test -x "$(PREFIX)/bin/codeloops"; then \
+		printf '%s\n' 'CodeLoops is not installed. Run make start to build, configure, and launch it.' >&2; \
+		exit 1; \
+	fi
+	@printf '%s\n' 'Starting the history service...' >&2
+	@exec "$(PREFIX)/bin/codeloops" serve
 
 e2e:
 	$(CARGO) build --release --locked -p codeloops

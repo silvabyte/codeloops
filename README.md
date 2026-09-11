@@ -10,7 +10,42 @@ decisions. Then you switch agents and have to explain it all again.
 CodeLoops gives you **unified conversation history across all your coding agents**.
 Your agent can find and read those earlier sessions through MCP.
 
-**[Get CodeLoops](docs/INSTALL_GUIDE.md). It's free, you bum.**
+**[Get CodeLoops](#quick-start). It's free, you bum.**
+
+## Quick start
+
+You'll need Rust/Cargo **1.97.1**, Git, Make, and a C compiler/linker on Linux or macOS.
+
+```sh
+git clone https://github.com/silvabyte/codeloops.git
+cd codeloops
+make start
+```
+
+That builds CodeLoops, installs it, connects capture and MCP to your clients, and
+starts the history service. The first build can take a few minutes. When you see
+`CodeLoops listening at ...`, you're up and running. Keep that terminal open.
+
+**Restart OpenCode or open a new Cursor Agent Chat**, then send:
+
+> Reply with exactly: codeloops first recall check
+
+Open a **fresh chat** and ask:
+
+> Use CodeLoops history_query to find the earlier assistant message containing
+> "codeloops first recall check". Return its text, session ID, and entry ID.
+> Retrieve it from history, not from this chat.
+
+You should get the earlier reply back with its archive IDs. That's your first
+conversation recalled across chats. Now try it from your other agent.
+
+Automatic capture supports **Cursor desktop and OpenCode** today. Your history
+stays local, and capture starts with new messages. Other harnesses can
+[connect through MCP](docs/USAGE.md#connect-another-coding-harness) to read it.
+
+Ctrl+C stops the service. Run `make run` to start it again.
+For custom paths, configuration conflicts, or upgrades, see the
+[installation guide](docs/INSTALL_GUIDE.md).
 
 ## Why this exists
 
@@ -29,33 +64,15 @@ That's why I'm working on CodeLoops again.
 
 **NO MORE EXCUSES LIL BRO!!!!**
 
-## Get started
+### Prefer the terminal?
 
-Your history stays local. Automatic capture supports Cursor and OpenCode today;
-CodeLoops is built for every AI coding harness through its shared MCP layer.
-
-[Install and connect your client](docs/INSTALL_GUIDE.md). The guide takes you from
-clone to one captured conversation and a fresh-chat recall check.
-
-Using another harness? [Connect it through MCP](docs/USAGE.md#connect-another-coding-harness)
-to give it access to your history.
-
-Build from source with Rust **1.97.1**, Git, Make, and a C compiler/linker. No
-database server or npm install is needed for installation. Linux and macOS have
-[recorded verification](docs/verification-install-recovery.md).
-
-Once installed, add the binary to your current shell's PATH and search:
+In a second terminal, add the installed binary to your shell's PATH and search:
 
 ```sh
 export PATH="$HOME/.local/codeloops-history-preview/bin:$PATH"
 codeloops history list --json
 codeloops history search "database migration" --role assistant --json
 ```
-
-Or ask your agent:
-
-> Use CodeLoops history_query to find our earlier database migration discussion.
-> Return the session and entry IDs with a short summary.
 
 ## Read next
 

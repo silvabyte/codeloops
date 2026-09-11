@@ -18,6 +18,7 @@ the Ultracite preset, and the OpenCode bridge test.
 
 | Command | Use |
 | --- | --- |
+| `make start` | Build, install, register clients, and run the service for normal use |
 | `cargo build --locked -p codeloops` | Build the debug CLI at `target/debug/codeloops` |
 | `cargo test --locked -p session-history` | Check storage/query/checkpoint/export behavior |
 | `cargo test --locked -p codeloops --test transports` | Check collectors and CLI/HTTP/MCP transport behavior |
@@ -29,6 +30,12 @@ the Ultracite preset, and the OpenCode bridge test.
 `make e2e` covers setup, recovery, hook execution, export, restart, and uninstall
 using temporary home/config/data directories. It uses fixtures, not live client
 conversations. For recorded real-client runs, see [verification](verification-install-recovery.md).
+
+The installation tests also execute real `make setup` and `make start` commands,
+including a release build, with parallel Make and isolated runtime state. They
+cover a missing installation, repeated setup/start, build/setup failures, and
+capture/recall after restart. These run in `make check` too; the first run builds
+both debug and release binaries.
 
 ## Code map
 
