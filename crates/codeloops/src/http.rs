@@ -123,10 +123,6 @@ pub async fn serve(config: Config) -> AppResult<()> {
         listener.local_addr()?,
         config.root.display()
     );
-    eprintln!("Keep this terminal open. Ctrl+C stops the service.");
-    eprintln!(
-        "Restart OpenCode or open a new Cursor Agent Chat to load your configured integration."
-    );
     let worker_config = config.clone();
     let worker = tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_millis(250));
@@ -146,9 +142,13 @@ pub async fn serve(config: Config) -> AppResult<()> {
         .route("/v1/health", post(health))
         .layer(DefaultBodyLimit::max(MAX_CAPTURE_BYTES))
         .with_state(config);
+    let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
     let result = axum::serve(listener, router)
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
+        .with_graceful_shutdown(async move {
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {},
+                _ = terminate.recv() => {},
+            }
         })
         .await;
     worker.abort();

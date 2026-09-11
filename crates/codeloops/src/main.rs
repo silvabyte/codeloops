@@ -8,6 +8,7 @@ mod installation;
 mod mcp;
 mod opencode;
 mod outbox;
+mod service;
 
 use clap::{Args, Parser, Subcommand};
 use config::Config;
@@ -39,6 +40,11 @@ enum Command {
     },
     /// Register capture and MCP once in both clients' user-global settings.
     Setup(installation::SetupArgs),
+    /// Manage the background history service.
+    Service {
+        #[command(subcommand)]
+        command: service::Command,
+    },
     /// Remove this installation's owned registration and assets; keep history.
     Uninstall {
         /// Recover even when interrupted removal deleted the installed binary.
@@ -297,10 +303,13 @@ async fn run(cli: Cli) -> AppResult<()> {
     match &cli.command {
         Command::Install { prefix } => return print(installation::install(prefix)?, cli.json),
         Command::Uninstall { prefix } => {
-            return print(installation::uninstall(prefix.as_deref())?, cli.json);
+            return print(installation::uninstall(prefix.as_deref()).await?, cli.json);
         }
         Command::VerifyExport { directory } => return print(export::verify(directory)?, cli.json),
         _ => {}
+    }
+    if let Command::Service { command } = cli.command {
+        return service::run(command, cli.json).await;
     }
     let settings = installation::settings()?;
     let config = Config::open(
@@ -313,7 +322,10 @@ async fn run(cli: Cli) -> AppResult<()> {
     )?;
     let client = http::Client::new(config.clone())?;
     let value: Value = match cli.command {
-        Command::Install { .. } | Command::Uninstall { .. } | Command::VerifyExport { .. } => {
+        Command::Install { .. }
+        | Command::Uninstall { .. }
+        | Command::VerifyExport { .. }
+        | Command::Service { .. } => {
             unreachable!()
         }
         Command::Setup(args) => {

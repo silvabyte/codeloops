@@ -14,7 +14,8 @@ Your agent can find and read those earlier sessions through MCP.
 
 ## Quick start
 
-You'll need Rust/Cargo **1.97.1**, Git, Make, and a C compiler/linker on Linux or macOS.
+You'll need Rust/Cargo **1.97.1**, Git, Make, and a C compiler/linker on Linux
+(with systemd) or macOS.
 
 ```sh
 git clone https://github.com/silvabyte/codeloops.git
@@ -23,8 +24,10 @@ make start
 ```
 
 That builds CodeLoops, installs it, connects capture and MCP to your clients, and
-starts the history service. The first build can take a few minutes. When you see
-`CodeLoops listening at ...`, you're up and running. Keep that terminal open.
+starts the history service in the background. The first build can take a few
+minutes. When it says `CodeLoops is running in the background`, you're up and
+running. **You can close the terminal.** The service starts at login and restarts
+if it crashes.
 
 **Restart OpenCode or open a new Cursor Agent Chat**, then send:
 
@@ -43,7 +46,8 @@ Automatic capture supports **Cursor desktop and OpenCode** today. Your history
 stays local, and capture starts with new messages. Other harnesses can
 [connect through MCP](docs/USAGE.md#connect-another-coding-harness) to read it.
 
-Ctrl+C stops the service. Run `make run` to start it again.
+Use `make status` to check it, `make logs` to see recent logs, and `make stop` to
+stop it and disable login startup. `make start` enables it again.
 For custom paths, configuration conflicts, or upgrades, see the
 [installation guide](docs/INSTALL_GUIDE.md).
 

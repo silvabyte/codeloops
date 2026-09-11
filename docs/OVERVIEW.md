@@ -290,3 +290,12 @@ Uninstall removes exact owned entries and only unchanged assets, preserving data
 spool identities and unrelated files. Conflicting edits are surfaced. Cursor hook
 source identity research (`codeloops-udq`) is separate: repeated setup is idempotent,
 but independent native hook invocations are not deduplicated by equal text.
+
+The installed application manages a systemd user service on Linux or a launchd
+LaunchAgent on macOS. Definitions contain absolute executable/data/address
+arguments; the native manager owns lifetime, login startup, logs, and crash restart.
+`service start` returns after authenticated health succeeds. The definition has a
+write-ahead ownership record and a profile/prefix-derived name. Repeated start
+restarts the installed binary, stop disables login startup, and uninstall removes
+the managed service before its executable. Foreground `serve` remains available
+for development. A user service does not promise execution outside its user session.
