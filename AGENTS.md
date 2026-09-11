@@ -29,6 +29,23 @@ canonical checkout. Do not import an older snapshot over current issue state.
 Include the current canonical JSONL with the related commit; never commit the
 SQLite database. Commit, push, or open a PR only when the user requests it.
 
+## Agent skills
+
+### Issue tracker
+
+Use Beads (`bd`) for all issues. External PRs are not a triage surface.
+See [issue tracker](docs/agents/issue-tracker.md).
+
+### Triage labels
+
+Use the five default triage roles as Beads labels.
+See [triage labels](docs/agents/triage-labels.md).
+
+### Domain docs
+
+Single-context: root `CONTEXT.md` and `docs/adr/`.
+See [domain docs](docs/agents/domain.md).
+
 ## Code standards
 
 - Keep functions focused and interfaces small. Follow nearby structure and naming.
