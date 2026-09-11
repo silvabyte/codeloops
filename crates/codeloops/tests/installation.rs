@@ -288,14 +288,7 @@ fn make_setup_bootstraps_and_repeats_without_duplicate_registrations() {
     fs::write(&other_config, "{\"plugin\": [\"other-plugin\"]}").unwrap();
     assert!(!fixture.binary().exists());
     let setup = || {
-        let output = make(&fixture, "setup")
-            .arg(format!(
-                "SETUP_ARGS=--opencode-version fixture --opencode-config \"{}\" --cursor-config-dir \"{}\"",
-                config.display(),
-                fixture.home.join(".cursor").display(),
-            ))
-            .output()
-            .unwrap();
+        let output = make(&fixture, "setup").output().unwrap();
         assert!(
             output.status.success(),
             "{}",
@@ -328,7 +321,17 @@ fn make_setup_bootstraps_and_repeats_without_duplicate_registrations() {
 #[test]
 fn make_start_from_fresh_prefix_captures_and_recalls_after_restart() {
     let fixture = Fixture::uninstalled();
+    let json = fixture.home.join(".config/opencode/opencode.json");
+    let jsonc = fixture.home.join(".config/opencode/opencode.jsonc");
+    let lower = "{\"plugin\": [\"lower-priority-plugin\"]}";
+    fs::write(&json, lower).unwrap();
+    fs::write(&jsonc, "{\n// keep me\n\"plugin\": [\"active-plugin\"]\n}").unwrap();
     let (service, log) = make_start(&fixture);
+    let configured = fs::read_to_string(&jsonc).unwrap();
+    assert!(configured.contains("// keep me"));
+    assert!(configured.contains("active-plugin"));
+    assert!(configured.contains("configured-history.ts"));
+    assert_eq!(fs::read_to_string(&json).unwrap(), lower);
     fixture.hook(&json!({
         "hook_event_name": "afterAgentResponse",
         "conversation_id": "quickstart-conversation",
@@ -353,6 +356,99 @@ fn make_start_from_fresh_prefix_captures_and_recalls_after_restart() {
     assert!(TcpListener::bind(&fixture.address).is_ok());
     let (_service, _) = make_start(&fixture);
     assert_eq!(fixture.run(&args, None), result);
+    assert_eq!(fs::read_to_string(jsonc).unwrap(), configured);
+    assert_eq!(fs::read_to_string(json).unwrap(), lower);
+}
+
+#[test]
+fn setup_extends_inherited_opencode_plugins_without_shadowing_them() {
+    for inherited_file in ["opencode.json", "config.json"] {
+        let fixture = Fixture::new();
+        let directory = fixture.home.join(".config/opencode");
+        let inherited = directory.join(inherited_file);
+        let jsonc = directory.join("opencode.jsonc");
+        fs::write(&inherited, "{\"plugin\": [\"existing-plugin\"]}").unwrap();
+        fs::write(
+            &jsonc,
+            "{\n// inherit plugins\n\"model\": \"fixture/model\"\n}",
+        )
+        .unwrap();
+        checked(fixture.setup());
+        let lower: Value = serde_json::from_slice(&fs::read(&inherited).unwrap()).unwrap();
+        assert_eq!(lower["plugin"][0], "existing-plugin");
+        assert_eq!(lower["plugin"].as_array().unwrap().len(), 2);
+        assert!(
+            lower["plugin"][1]
+                .as_str()
+                .unwrap()
+                .contains("configured-history.ts")
+        );
+        let upper = fs::read_to_string(&jsonc).unwrap();
+        assert!(upper.contains("// inherit plugins"));
+        assert!(upper.contains("fixture/model"));
+        assert!(upper.contains("codeloops-history-preview"));
+        assert!(!upper.contains("\"plugin\""));
+        checked(fixture.setup());
+        assert_eq!(fs::read_to_string(&jsonc).unwrap(), upper);
+        let repeated: Value = serde_json::from_slice(&fs::read(&inherited).unwrap()).unwrap();
+        assert_eq!(repeated, lower);
+        fixture.run(&["uninstall"], None);
+        let removed: Value = serde_json::from_slice(&fs::read(inherited).unwrap()).unwrap();
+        assert_eq!(removed["plugin"], json!(["existing-plugin"]));
+        assert!(!fs::read_to_string(jsonc).unwrap().contains("\"plugin\""));
+    }
+}
+
+#[test]
+fn setup_does_not_shadow_an_inherited_mcp_conflict() {
+    let fixture = Fixture::new();
+    let directory = fixture.home.join(".config/opencode");
+    let json = directory.join("opencode.json");
+    let jsonc = directory.join("opencode.jsonc");
+    let lower = "{\"mcp\": {\"codeloops-history-preview\": {\"type\": \"local\", \"command\": [\"other\"]}}}";
+    fs::write(&json, lower).unwrap();
+    fs::write(&jsonc, "{}").unwrap();
+    let output = fixture.setup();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("configuration conflict"));
+    assert_eq!(fs::read_to_string(json).unwrap(), lower);
+    assert_eq!(fs::read_to_string(jsonc).unwrap(), "{}");
+    assert!(!fixture.home.join(".cursor/hooks.json").exists());
+}
+
+#[test]
+fn setup_explicit_opencode_path_overrides_default_discovery() {
+    let fixture = Fixture::new();
+    let directory = fixture.home.join(".config/opencode");
+    let json = directory.join("opencode.json");
+    let jsonc = directory.join("opencode.jsonc");
+    let untouched = "{\n// explicitly choose the other file\n\"plugin\": []\n}";
+    fs::write(&json, "{\"plugin\": [\"existing-plugin\"]}").unwrap();
+    fs::write(&jsonc, untouched).unwrap();
+    for _ in 0..2 {
+        checked(
+            fixture
+                .command()
+                .arg("--data-dir")
+                .arg(&fixture.data)
+                .args([
+                    "--address",
+                    &fixture.address,
+                    "setup",
+                    "--opencode-version",
+                    "fixture",
+                    "--opencode-config",
+                ])
+                .arg(&json)
+                .output()
+                .unwrap(),
+        );
+    }
+    let selected: Value = serde_json::from_slice(&fs::read(json).unwrap()).unwrap();
+    assert_eq!(selected["plugin"][0], "existing-plugin");
+    assert_eq!(selected["plugin"].as_array().unwrap().len(), 2);
+    assert!(selected["mcp"]["codeloops-history-preview"].is_object());
+    assert_eq!(fs::read_to_string(jsonc).unwrap(), untouched);
 }
 
 #[test]

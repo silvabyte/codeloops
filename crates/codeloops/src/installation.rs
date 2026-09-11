@@ -215,17 +215,46 @@ fn home() -> AppResult<PathBuf> {
         .ok_or_else(|| "HOME is required".into())
 }
 
-fn opencode_path() -> AppResult<PathBuf> {
+struct OpenCodePaths {
+    config: PathBuf,
+    plugins: PathBuf,
+}
+
+fn opencode_paths(server_name: &str) -> AppResult<OpenCodePaths> {
     let root = std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .unwrap_or(home()?.join(".config"))
         .join("opencode");
     let json = root.join("opencode.json");
     let jsonc = root.join("opencode.jsonc");
-    if json.exists() && jsonc.exists() {
-        return Err("both OpenCode config files exist; select --opencode-config explicitly".into());
+    let preferred = if jsonc.exists() {
+        jsonc.clone()
+    } else {
+        json.clone()
+    };
+    let mut config = None;
+    let mut plugins = None;
+    // OpenCode loads config.json, opencode.json, then opencode.jsonc. Plugin
+    // arrays replace earlier arrays. Extend the highest-priority existing list
+    // rather than creating a new list that would hide inherited plugins.
+    for path in [jsonc, json, root.join("config.json")] {
+        let Some(bytes) = read(&path)?.filter(|bytes| !bytes.is_empty()) else {
+            continue;
+        };
+        let text = std::str::from_utf8(&bytes)?;
+        if plugins.is_none() && config_edits::contains(text, &["plugin"])? {
+            plugins = Some(path.clone());
+        }
+        // Keep existing ownership/conflict checks at the active MCP entry's
+        // source rather than silently overriding it in a higher-priority file.
+        if config.is_none() && config_edits::contains(text, &["mcp", server_name])? {
+            config = Some(path);
+        }
     }
-    Ok(if jsonc.exists() { jsonc } else { json })
+    Ok(OpenCodePaths {
+        plugins: plugins.unwrap_or_else(|| preferred.clone()),
+        config: config.unwrap_or(preferred),
+    })
 }
 
 fn absolute(path: &Path) -> AppResult<PathBuf> {
@@ -262,14 +291,19 @@ fn plan(config: &Config, args: SetupArgs, prefix: &Path) -> AppResult<Setup> {
     {
         return Err("profile must be 1..40 lowercase letters, digits or hyphens".into());
     }
-    let opencode = absolute(&match args.opencode_config {
-        Some(path) => path,
-        None => opencode_path()?,
-    })?;
+    let name = format!("codeloops-history-{}", args.profile);
+    let opencode = match args.opencode_config {
+        Some(path) => OpenCodePaths {
+            config: path.clone(),
+            plugins: path,
+        },
+        None => opencode_paths(&name)?,
+    };
+    let opencode_config = absolute(&opencode.config)?;
+    let opencode_plugins = absolute(&opencode.plugins)?;
     let cursor = absolute(&args.cursor_config_dir.unwrap_or(home()?.join(".cursor")))?;
     let binary = prefix.join("bin/codeloops");
     let root = fs::canonicalize(&config.root)?;
-    let name = format!("codeloops-history-{}", args.profile);
     let command = json!([
         binary,
         "--data-dir",
@@ -281,9 +315,9 @@ fn plan(config: &Config, args: SetupArgs, prefix: &Path) -> AppResult<Setup> {
     let url =
         reqwest::Url::from_file_path(prefix.join(WRAPPER)).map_err(|_| "invalid plugin path")?;
     let mut edits = vec![
-        edit(&opencode, &["plugin"], json!(url.as_str()), true),
+        edit(&opencode_plugins, &["plugin"], json!(url.as_str()), true),
         edit(
-            &opencode,
+            &opencode_config,
             &["mcp", &name],
             json!({
                 "type": "local",

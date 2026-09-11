@@ -33,9 +33,10 @@ conversations. For recorded real-client runs, see [verification](verification-in
 
 The installation tests also execute real `make setup` and `make start` commands,
 including a release build, with parallel Make and isolated runtime state. They
-cover a missing installation, repeated setup/start, build/setup failures, and
-capture/recall after restart. These run in `make check` too; the first run builds
-both debug and release binaries.
+cover a missing installation, both OpenCode config formats present without an
+override, inherited plugins, explicit config selection, repeated setup/start,
+build/setup failures, and capture/recall after restart. These run in `make check`
+too; the first run builds both debug and release binaries.
 
 ## Code map
 
