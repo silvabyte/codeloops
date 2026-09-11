@@ -7,7 +7,8 @@ OpenCode to use Cursor. Other harnesses can [connect through MCP](USAGE.md#conne
 ## Quick start
 
 You need Rust/Cargo **1.97.1**, Git, Make, a C compiler/linker, and standard Unix
-build tools. With rustup installed, the checkout selects the pinned toolchain.
+build tools. Linux uses a systemd user session; macOS uses launchd. With rustup
+installed, the checkout selects the pinned toolchain.
 On macOS, install the Xcode Command Line Tools with `xcode-select --install` if
 needed. SQLite and Zstandard build from bundled sources.
 
@@ -18,9 +19,10 @@ make start
 ```
 
 `make start` builds and installs CodeLoops, registers capture and MCP for both
-clients, then starts the history service in the foreground. The first build can
-take a few minutes. When you see `CodeLoops listening at ...`, keep that terminal
-open and reload your client:
+clients, then enables a background user service. The first build can take a few
+minutes. The command returns after the service passes its health check. When you
+see `CodeLoops is running in the background`, you can close the terminal and
+reload your client:
 
 - **OpenCode:** quit and restart.
 - **Cursor desktop:** open a new Agent Chat. Restart Cursor if the
@@ -39,9 +41,8 @@ Then open a fresh chat and ask:
 Expect the earlier reply and its archive IDs. Capture starts with new events;
 older client conversations are not imported.
 
-Ctrl+C stops the service. Restart it with `make run`. Reload clients after setup
-or an adapter upgrade. The service runs in this terminal; setup does not install
-a login service or start a background daemon.
+The service starts at login and restarts after a crash. Reload clients after setup
+or an adapter upgrade.
 
 Node and npm are only needed for [contributor checks](DEVELOPMENT.md).
 
@@ -49,13 +50,26 @@ Node and npm are only needed for [contributor checks](DEVELOPMENT.md).
 
 | Command | What it does |
 | --- | --- |
-| `make start` | Build, install, register clients, and start the service |
+| `make start` | Build, install, register clients, and enable/restart the background service |
 | `make setup` | Build, install, and register clients without starting the service |
 | `make install` | Build and install the binary and adapters without editing client configs |
-| `make run` | Start the installed service with its saved settings |
+| `make stop` | Stop the background service and disable login startup |
+| `make status` | Show managed process state and service health |
+| `make logs` | Show recent service logs |
+| `make run` | Run in the foreground for development; Ctrl+C stops it |
 
-Repeating `make start` after stopping the service is supported. Cargo reuses its
+Repeating `make start` updates and restarts the managed service. Cargo reuses its
 build cache, and setup preserves existing registrations without duplicating them.
+Run `make stop` before using foreground `make run` on the same address.
+
+Linux installs a systemd user unit; macOS installs a LaunchAgent. Each installation
+has a profile/prefix-derived service name to keep installations separate. Service
+definitions and ownership records are managed by CodeLoops. Linux logs go to the
+user journal; macOS logs go to `PREFIX/share/codeloops/service.log`.
+
+User services run while the user session is active and start at the next login.
+For an SSH-only Linux account that must keep running after logout, enable lingering
+with `loginctl enable-linger "$USER"`.
 
 Setup writes capture and MCP entries into both clients' user-global configuration,
 even if only one client is installed. It preserves unrelated plugins, hooks, MCP
@@ -111,7 +125,8 @@ codeloops history search "codeloops first recall check" --role assistant --json
 
 The PATH change applies to this shell. Add it to your shell configuration for
 future terminals, or call `~/.local/codeloops-history-preview/bin/codeloops` directly.
-Outside the checkout, `codeloops serve` starts the installed service.
+Outside the checkout, use `codeloops service start`, `stop`, `status`, or `logs`.
+`codeloops serve` remains the direct foreground command.
 
 Expect the assistant entry with archive session/entry IDs. Then open a fresh chat:
 
@@ -131,7 +146,8 @@ Each prefix holds one profile. For a separate archive and service:
 make start PREFIX="$HOME/.local/codeloops-review" PROFILE=review ADDRESS=127.0.0.1:47824
 ```
 
-After stopping it, restart with `make run PREFIX="$HOME/.local/codeloops-review"`.
+Use `make stop PREFIX="$HOME/.local/codeloops-review"` to stop that installation.
+Restart with the same `make start` options, or its installed `service start` command.
 
 Use that prefix's binary for queries. Its saved setup selects the data directory
 and address. Separate registered profiles each capture into their own archive;
@@ -146,7 +162,8 @@ CLI settings resolve in this order: explicit `--data-dir` / `--address`, then
 `CODELOOPS_DATA_DIR` / `CODELOOPS_ADDRESS`, then saved installation settings, then
 built-in defaults. Without saved settings, the data default uses
 `$XDG_DATA_HOME/codeloops-history/preview` or `~/.local/share/codeloops-history/preview`.
-Make supplies its own `DATA_DIR` during setup.
+Make supplies its own `DATA_DIR` during setup. Managed service commands always use
+the saved installation settings; query overrides do not reconfigure the service.
 
 Inside the data directory:
 
@@ -175,7 +192,7 @@ and checkpoint links without rescanning Git.
 
 | Symptom | Check / action |
 | --- | --- |
-| `service_unavailable` | Start `make run`. Confirm the querying binary, data path, and address match setup. |
+| `service_unavailable` | Run `make status`, `make logs`, and `make start`. Confirm the querying binary, data path, and address match setup. |
 | MCP disconnected | Check service health, then reload the client and its MCP connection. |
 | No new entries | Check client hook/plugin logs and the configured executable. Only new observed events are captured. |
 | Pending deliveries | Start the service or run `flush`. Inspect returned health for failures. |
@@ -193,13 +210,17 @@ its Git observation fails. Message delivery and file coverage are separate check
 Collectors queue locally while the service is offline. A crash after archive
 commit but before queue deletion replays the same durable delivery ID safely.
 Transient archive failures remain queued. Diagnostics go to stderr and, when
-writable, the spool health record; check the terminal running the service too.
+writable, the spool health record; check `make logs` too.
 
 ## Upgrade or recover setup
 
-Stop the service, update the checkout, then repeat `make start` with the original
-prefix/profile/path/config options. Reload your client. Installation replaces
-owned, unchanged assets and keeps the archive.
+Update the checkout, then repeat `make start` with the original prefix/profile/path/config
+options. It restarts the managed service with the updated binary. Reload your
+client. Installation replaces owned, unchanged assets and keeps the archive.
+
+If upgrading from the older foreground workflow, press Ctrl+C in that service's
+terminal once before `make start`. CodeLoops reports an occupied address rather
+than killing an unidentified listener.
 
 If installation or setup is interrupted, repeat the same command. Ownership
 records under `PREFIX/share/codeloops/` let it finish partial work. Setup refuses
@@ -221,7 +242,7 @@ archive path as `DATA_DIR` to preserve history, queued events, and identities.
 
 ## Uninstall
 
-Stop the service, then run from the checkout:
+Run from the checkout:
 
 ```sh
 make uninstall
@@ -229,8 +250,9 @@ make uninstall
 make uninstall PREFIX="$HOME/.local/codeloops-review"
 ```
 
-Reload clients to unload the integration. Uninstall removes exact owned config
-entries and unchanged installed assets. It preserves the archive, spool,
+Uninstall stops the managed service, disables login startup, and removes its owned
+definition before removing the executable. Reload clients to unload the integration.
+Uninstall removes exact owned config entries and unchanged installed assets. It preserves the archive, spool,
 credential, identities, and unrelated files. Modified owned config entries cause
 a conflict; modified binary/adapter assets are retained and reported. Empty config
 containers and lock files may remain.

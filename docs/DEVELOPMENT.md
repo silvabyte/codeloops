@@ -6,7 +6,8 @@ use this guide to change it.
 ## Build and check
 
 Install Rust **1.97.1** with rustfmt and Clippy, Git, Make, native C build tools,
-Node **22.18+**, and npm. The toolchain is pinned in `rust-toolchain.toml`.
+Node **22.18+**, npm, and Python 3 for service-manager fixtures. The toolchain is
+pinned in `rust-toolchain.toml`.
 
 ```sh
 make check
@@ -18,7 +19,8 @@ the Ultracite preset, and the OpenCode bridge test.
 
 | Command | Use |
 | --- | --- |
-| `make start` | Build, install, register clients, and run the service for normal use |
+| `make start` | Build, install, register clients, and enable the background service |
+| `make run` | Run the installed service in the foreground for development |
 | `cargo build --locked -p codeloops` | Build the debug CLI at `target/debug/codeloops` |
 | `cargo test --locked -p session-history` | Check storage/query/checkpoint/export behavior |
 | `cargo test --locked -p codeloops --test transports` | Check collectors and CLI/HTTP/MCP transport behavior |
@@ -26,6 +28,7 @@ the Ultracite preset, and the OpenCode bridge test.
 | `cargo fmt --all` | Format Rust |
 | `npm exec -- biome check --write adapters/opencode` | Format and apply safe bridge lint fixes |
 | `make e2e` | Build a release binary and exercise its installed interfaces in isolated state |
+| `make e2e-service` | Verify terminal independence, crash recovery, stop, logs, and uninstall with the real user service manager |
 
 `make e2e` covers setup, recovery, hook execution, export, restart, and uninstall
 using temporary home/config/data directories. It uses fixtures, not live client
@@ -35,8 +38,16 @@ The installation tests also execute real `make setup` and `make start` commands,
 including a release build, with parallel Make and isolated runtime state. They
 cover a missing installation, both OpenCode config formats present without an
 override, inherited plugins, explicit config selection, repeated setup/start,
-build/setup failures, and capture/recall after restart. These run in `make check`
+build/setup/manager failures, service ownership, and capture/recall after restart.
+Manager commands use a fixture transport that launches real installed processes;
+it does not register services in your daily user manager. These run in `make check`
 too; the first run builds both debug and release binaries.
+
+`make e2e-service` opts into the real systemd user manager or macOS GUI launchd
+domain. It uses a unique service name and temporary installation/client/data paths,
+checks native crash restart, and removes the service afterward. Cleanup failure
+preserves the temporary directory and prints its path for recovery. Both Linux
+and macOS CI run this native acceptance check.
 
 ## Code map
 

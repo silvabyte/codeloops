@@ -79,13 +79,19 @@ pub fn settings() -> AppResult<Option<Settings>> {
     Ok(read_json::<Setup>(&path)?.map(|setup| setup.settings))
 }
 
+pub(crate) fn profile_settings(prefix: &Path) -> AppResult<(String, Settings)> {
+    let setup = read_json::<Setup>(&prefix.join(SETUP_RECORD))?
+        .ok_or("installation is not configured; run make start from the checkout")?;
+    Ok((setup.profile, setup.settings))
+}
+
 fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> AppResult<Option<T>> {
     Ok(read(path)?
         .map(|bytes| serde_json::from_slice(&bytes))
         .transpose()?)
 }
 
-fn read(path: &Path) -> AppResult<Option<Vec<u8>>> {
+pub(crate) fn read(path: &Path) -> AppResult<Option<Vec<u8>>> {
     match fs::symlink_metadata(path) {
         Ok(metadata) if !metadata.file_type().is_file() => {
             Err(format!("expected regular file: {}", path.display()).into())
@@ -116,7 +122,7 @@ pub fn atomic_write(path: &Path, bytes: &[u8], executable: bool) -> AppResult<()
     Ok(())
 }
 
-fn lock(prefix: &Path) -> AppResult<File> {
+pub(crate) fn lock(prefix: &Path) -> AppResult<File> {
     fs::create_dir_all(prefix)?;
     let file = OpenOptions::new()
         .create(true)
@@ -505,7 +511,7 @@ pub fn setup(config: &Config, args: SetupArgs) -> AppResult<Value> {
     }))
 }
 
-pub fn uninstall(selected: Option<&Path>) -> AppResult<Value> {
+pub async fn uninstall(selected: Option<&Path>) -> AppResult<Value> {
     let prefix = match selected {
         Some(path) => absolute(path)?,
         None => prefix()?,
@@ -517,6 +523,7 @@ pub fn uninstall(selected: Option<&Path>) -> AppResult<Value> {
         }));
     }
     let _lock = lock(&prefix)?;
+    crate::service::remove(&prefix).await?;
     let installed = read_json::<Installed>(&prefix.join(INSTALL_RECORD))?;
     let pending = read_json::<Installed>(&prefix.join("share/codeloops/install-pending.json"))?;
     let setup = read_json::<Setup>(&prefix.join(SETUP_RECORD))?;
@@ -575,6 +582,6 @@ pub fn uninstall(selected: Option<&Path>) -> AppResult<Value> {
         "uninstalled": true,
         "data_preserved": setup.map(|setup| setup.settings.root),
         "modified_assets_preserved": preserved,
-        "reload": "Stop the foreground service and restart clients to unload the integration.",
+        "reload": "Restart clients to unload the integration.",
     }))
 }
