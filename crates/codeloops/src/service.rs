@@ -438,7 +438,7 @@ pub async fn run(command: Command, json_output: bool) -> AppResult<()> {
                 );
                 println!("You can close this terminal. It will start again when you log in.");
                 println!(
-                    "Restart OpenCode or open a new Cursor Agent Chat to load the integration."
+                    "Restart OpenCode and Codex, or open a new Cursor Agent Chat, to load the integration."
                 );
                 println!("Manage it with make status, make logs, and make stop.");
                 return Ok(());

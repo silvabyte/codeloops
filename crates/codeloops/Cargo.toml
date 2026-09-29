@@ -15,6 +15,7 @@ tempfile.workspace = true
 base64.workspace = true
 sha2.workspace = true
 jsonc-parser = { version = "=0.33.1", features = ["cst", "serde_json"] }
+toml_edit = "0.23"
 clap = { version = "4.5", features = ["derive", "env"] }
 tokio = { version = "1.48", features = ["macros", "rt-multi-thread", "net", "signal", "io-std", "process"] }
 axum = "0.8"

@@ -24,9 +24,9 @@ install:
 	@target/release/codeloops install --prefix "$(PREFIX)" > /dev/null
 
 setup: install
-	@printf '%s\n' 'Registering capture and MCP for Cursor and OpenCode...' >&2
+	@printf '%s\n' 'Registering capture for Cursor and OpenCode, plus MCP for Cursor, OpenCode, and Codex...' >&2
 	@"$(PREFIX)/bin/codeloops" --data-dir "$(DATA_DIR)" --address "$(ADDRESS)" setup --profile "$(PROFILE)" $(SETUP_ARGS) > /dev/null
-	@printf '%s\n' 'Capture and MCP registered.' >&2
+	@printf '%s\n' 'Client integrations registered.' >&2
 
 start: setup
 	@"$(PREFIX)/bin/codeloops" service start

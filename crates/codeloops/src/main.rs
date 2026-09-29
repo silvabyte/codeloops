@@ -1,4 +1,5 @@
 mod boundary;
+mod codex_config;
 mod config;
 mod config_edits;
 mod cursor;
@@ -38,7 +39,7 @@ enum Command {
         #[arg(long)]
         prefix: PathBuf,
     },
-    /// Register capture and MCP once in both clients' user-global settings.
+    /// Register capture and MCP in supported clients' user-global settings.
     Setup(installation::SetupArgs),
     /// Manage the background history service.
     Service {

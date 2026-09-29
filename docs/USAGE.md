@@ -132,8 +132,8 @@ For snapshot and size bounds, see the [export contract](OVERVIEW.md#snapshot-exp
 ## Query through MCP
 
 `codeloops mcp` gives coding agents shared access to your history through
-`history_query` and `history_ingest`. Setup registers it automatically for Cursor
-and OpenCode. Query arguments wrap the operation in `request`:
+`history_query` and `history_ingest`. Setup registers it automatically for Cursor,
+OpenCode, and local Codex clients. Query arguments wrap the operation in `request`:
 
 ```json
 {
