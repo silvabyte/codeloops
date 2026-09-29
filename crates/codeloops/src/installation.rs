@@ -1,7 +1,7 @@
 //! User installation and reversible client registration. A write-ahead ownership
 //! record makes interrupted setup repeatable without restoring whole client files.
 use crate::{
-    AppResult,
+    AppResult, codex_config,
     config::Config,
     config_edits::{self, Edit},
 };
@@ -34,6 +34,9 @@ pub struct SetupArgs {
     /// Override ~/.cursor for an isolated client environment.
     #[arg(long)]
     pub cursor_config_dir: Option<PathBuf>,
+    /// Override ~/.codex/config.toml for an isolated client environment.
+    #[arg(long)]
+    pub codex_config: Option<PathBuf>,
     #[arg(long, env = "CODELOOPS_OPENCODE_VERSION")]
     pub opencode_version: Option<String>,
 }
@@ -56,6 +59,8 @@ struct Setup {
     profile: String,
     settings: Settings,
     edits: Vec<Edit>,
+    #[serde(default)]
+    codex: Option<codex_config::Edit>,
     wrapper: String,
     #[serde(default)]
     previous_wrapper: Option<String>,
@@ -133,9 +138,13 @@ pub(crate) fn lock(prefix: &Path) -> AppResult<File> {
     Ok(file)
 }
 
-fn config_locks(edits: &[Edit]) -> AppResult<Vec<File>> {
+fn config_locks(edits: &[Edit], codex: Option<&codex_config::Edit>) -> AppResult<Vec<File>> {
     let mut parents = std::collections::BTreeSet::new();
     for parent in edits.iter().filter_map(|edit| edit.file.parent()) {
+        fs::create_dir_all(parent)?;
+        parents.insert(fs::canonicalize(parent)?);
+    }
+    if let Some(parent) = codex.and_then(|edit| edit.file.parent()) {
         fs::create_dir_all(parent)?;
         parents.insert(fs::canonicalize(parent)?);
     }
@@ -308,6 +317,11 @@ fn plan(config: &Config, args: SetupArgs, prefix: &Path) -> AppResult<Setup> {
     let opencode_config = absolute(&opencode.config)?;
     let opencode_plugins = absolute(&opencode.plugins)?;
     let cursor = absolute(&args.cursor_config_dir.unwrap_or(home()?.join(".cursor")))?;
+    let codex = absolute(
+        &args
+            .codex_config
+            .unwrap_or(home()?.join(".codex/config.toml")),
+    )?;
     let binary = prefix.join("bin/codeloops");
     let root = fs::canonicalize(&config.root)?;
     let command = json!([
@@ -392,10 +406,25 @@ fn plan(config: &Config, args: SetupArgs, prefix: &Path) -> AppResult<Setup> {
         schema_version: 1,
         profile: args.profile,
         settings: Settings {
-            root,
+            root: root.clone(),
             address: config.address,
         },
         edits,
+        codex: Some(codex_config::Edit {
+            file: codex,
+            server_name: name,
+            command: binary
+                .to_str()
+                .ok_or("executable path must be UTF-8")?
+                .into(),
+            args: vec![
+                "--data-dir".into(),
+                root.to_str().ok_or("data path must be UTF-8")?.into(),
+                "--address".into(),
+                config.address.to_string(),
+                "mcp".into(),
+            ],
+        }),
         wrapper,
         previous_wrapper: None,
     })
@@ -463,6 +492,16 @@ fn write_documents(documents: Documents) -> AppResult<()> {
     Ok(())
 }
 
+fn codex_document(edit: &codex_config::Edit, removing: bool, owned: bool) -> AppResult<Documents> {
+    let before = read(&edit.file)?.unwrap_or_default();
+    if before.is_empty() && removing {
+        return Ok(BTreeMap::new());
+    }
+    let text = std::str::from_utf8(&before)?;
+    let after = codex_config::apply(text, edit, removing, owned)?.into_bytes();
+    Ok(BTreeMap::from([(edit.file.clone(), (before, after))]))
+}
+
 pub fn setup(config: &Config, args: SetupArgs) -> AppResult<Value> {
     let prefix = prefix()?;
     let _lock = lock(&prefix)?;
@@ -472,11 +511,12 @@ pub fn setup(config: &Config, args: SetupArgs) -> AppResult<Value> {
     let mut planned = plan(config, args, &prefix)?;
     let record_path = prefix.join(SETUP_RECORD);
     let existing = read_json::<Setup>(&record_path)?;
-    let _config_locks = config_locks(&planned.edits)?;
+    let _config_locks = config_locks(&planned.edits, planned.codex.as_ref())?;
     if let Some(existing) = &existing
         && (existing.profile != planned.profile
             || existing.settings != planned.settings
-            || existing.edits != planned.edits)
+            || existing.edits != planned.edits
+            || existing.codex.is_some() && existing.codex != planned.codex)
     {
         return Err("installation already configured differently; \
             uninstall before changing profile or paths"
@@ -491,14 +531,38 @@ pub fn setup(config: &Config, args: SetupArgs) -> AppResult<Value> {
         return Err("configured adapter was modified or is unowned".into());
     }
     let documents = documents(&planned.edits, false, existing.is_some())?;
+    let codex_documents = planned
+        .codex
+        .as_ref()
+        .map(|edit| {
+            codex_document(
+                edit,
+                false,
+                existing
+                    .as_ref()
+                    .and_then(|setup| setup.codex.as_ref())
+                    .is_some(),
+            )
+        })
+        .transpose()?
+        .unwrap_or_default();
     planned.previous_wrapper = existing.as_ref().map(|old| old.wrapper.clone());
     // Durable intent precedes any client changes. Repeating setup finishes this
     // same plan; uninstall can remove partially registered entries after a crash.
     atomic_write(&record_path, &serde_json::to_vec_pretty(&planned)?, false)?;
     atomic_write(&prefix.join(WRAPPER), planned.wrapper.as_bytes(), false)?;
     write_documents(documents)?;
+    write_documents(codex_documents)?;
     planned.previous_wrapper = None;
     atomic_write(&record_path, &serde_json::to_vec_pretty(&planned)?, false)?;
+    let mut configuration_files = planned
+        .edits
+        .iter()
+        .map(|edit| &edit.file)
+        .collect::<std::collections::BTreeSet<_>>();
+    if let Some(edit) = &planned.codex {
+        configuration_files.insert(&edit.file);
+    }
     Ok(json!({
         "configured": true,
         "scope": "user_global",
@@ -506,8 +570,8 @@ pub fn setup(config: &Config, args: SetupArgs) -> AppResult<Value> {
         "executable": prefix.join("bin/codeloops"),
         "data_dir": planned.settings.root,
         "address": planned.settings.address,
-        "configuration_files": planned.edits.iter().map(|edit| &edit.file).collect::<std::collections::BTreeSet<_>>(),
-        "reload": "Quit and restart OpenCode; open a new Cursor Agent Chat and check MCP connection.",
+        "configuration_files": configuration_files,
+        "reload": "Restart OpenCode and Codex; open a new Cursor Agent Chat and check MCP connection.",
     }))
 }
 
@@ -528,7 +592,7 @@ pub async fn uninstall(selected: Option<&Path>) -> AppResult<Value> {
     let pending = read_json::<Installed>(&prefix.join("share/codeloops/install-pending.json"))?;
     let setup = read_json::<Setup>(&prefix.join(SETUP_RECORD))?;
     if let Some(setup) = &setup {
-        let _config_locks = config_locks(&setup.edits)?;
+        let _config_locks = config_locks(&setup.edits, setup.codex.as_ref())?;
         if let Some(bytes) = read(&prefix.join(WRAPPER))?
             && bytes != setup.wrapper.as_bytes()
             && setup.previous_wrapper.as_deref().map(str::as_bytes) != Some(bytes.as_slice())
@@ -536,6 +600,9 @@ pub async fn uninstall(selected: Option<&Path>) -> AppResult<Value> {
             return Err("configured adapter was modified; preserve it before uninstalling".into());
         }
         write_documents(documents(&setup.edits, true, true)?)?;
+        if let Some(edit) = &setup.codex {
+            write_documents(codex_document(edit, true, true)?)?;
+        }
     }
     let mut preserved = Vec::new();
     let installed = installed.or_else(|| {

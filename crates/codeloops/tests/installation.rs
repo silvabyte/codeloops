@@ -277,6 +277,7 @@ fn make_setup_bootstraps_and_repeats_without_duplicate_registrations() {
     setup();
     let first = fs::read_to_string(&config).unwrap();
     let hooks = fs::read(fixture.home.join(".cursor/hooks.json")).unwrap();
+    let codex = fs::read(fixture.home.join(".codex/config.toml")).unwrap();
     assert!(first.contains("// keep my settings"));
     assert!(first.contains("my-plugin"));
     assert!(first.contains("codeloops-history-quickstart"));
@@ -285,6 +286,15 @@ fn make_setup_bootstraps_and_repeats_without_duplicate_registrations() {
     assert_eq!(
         fs::read(fixture.home.join(".cursor/hooks.json")).unwrap(),
         hooks
+    );
+    assert_eq!(
+        fs::read(fixture.home.join(".codex/config.toml")).unwrap(),
+        codex
+    );
+    assert!(
+        String::from_utf8(codex)
+            .unwrap()
+            .contains("codeloops-history-quickstart")
     );
     assert!(fixture.binary().is_file());
     assert_eq!(
@@ -330,6 +340,7 @@ fn make_start_from_fresh_prefix_captures_and_recalls_after_restart() {
     assert!(output.contains("running in the background"));
     assert!(output.contains("You can close this terminal"));
     assert!(output.contains("Restart OpenCode"));
+    assert!(output.contains("Codex"));
     assert!(!output.contains("service_unavailable"));
     assert_eq!(fixture.run(&["service", "status"], None)["running"], true);
     let logs = fixture.run(&["service", "logs"], None);
@@ -483,6 +494,7 @@ fn setup_explicit_opencode_path_overrides_default_discovery() {
     let json = directory.join("opencode.json");
     let jsonc = directory.join("opencode.jsonc");
     let untouched = "{\n// explicitly choose the other file\n\"plugin\": []\n}";
+    let codex = fixture.home.join("custom-codex.toml");
     fs::write(&json, "{\"plugin\": [\"existing-plugin\"]}").unwrap();
     fs::write(&jsonc, untouched).unwrap();
     for _ in 0..2 {
@@ -500,6 +512,8 @@ fn setup_explicit_opencode_path_overrides_default_discovery() {
                     "--opencode-config",
                 ])
                 .arg(&json)
+                .arg("--codex-config")
+                .arg(&codex)
                 .output()
                 .unwrap(),
         );
@@ -509,6 +523,31 @@ fn setup_explicit_opencode_path_overrides_default_discovery() {
     assert_eq!(selected["plugin"].as_array().unwrap().len(), 2);
     assert!(selected["mcp"]["codeloops-history-preview"].is_object());
     assert_eq!(fs::read_to_string(jsonc).unwrap(), untouched);
+    assert!(
+        fs::read_to_string(codex)
+            .unwrap()
+            .contains("codeloops-history-preview")
+    );
+    assert!(!fixture.home.join(".codex/config.toml").exists());
+}
+
+#[test]
+fn setup_upgrades_a_legacy_record_with_codex_registration() {
+    let fixture = Fixture::new();
+    checked(fixture.setup());
+    let record_path = fixture.prefix.join("share/codeloops/setup.json");
+    let mut record: Value = serde_json::from_slice(&fs::read(&record_path).unwrap()).unwrap();
+    record.as_object_mut().unwrap().remove("codex");
+    fs::write(&record_path, serde_json::to_vec_pretty(&record).unwrap()).unwrap();
+    let codex = fixture.home.join(".codex/config.toml");
+    fs::remove_file(&codex).unwrap();
+
+    checked(fixture.setup());
+    assert!(
+        fs::read_to_string(codex)
+            .unwrap()
+            .contains("codeloops-history-preview")
+    );
 }
 
 #[test]
@@ -595,6 +634,7 @@ fn captured_file(bundle: &Path, checkpoint: &Value, layer: &str) -> Vec<u8> {
 async fn installed_global_setup_recovery_export_and_uninstall() {
     let fixture = Fixture::new();
     let opencode_path = fixture.home.join(".config/opencode/opencode.jsonc");
+    let codex_path = fixture.home.join(".codex/config.toml");
     let original = r#"{
   // Keep my client settings.
   "model": "fixture/model",
@@ -608,6 +648,12 @@ async fn installed_global_setup_recovery_export_and_uninstall() {
 }
 "#;
     fs::write(&opencode_path, original).unwrap();
+    fs::create_dir_all(codex_path.parent().unwrap()).unwrap();
+    fs::write(
+        &codex_path,
+        "# Keep my Codex settings.\nmodel = \"fixture\"\n\n[mcp_servers.other]\ncommand = \"other\"\nargs = []\n",
+    )
+    .unwrap();
     fs::write(
         fixture.home.join(".cursor/hooks.json"),
         serde_json::to_vec_pretty(&json!({
@@ -628,6 +674,10 @@ async fn installed_global_setup_recovery_export_and_uninstall() {
             .unwrap()
             .contains("// Keep my client settings.")
     );
+    let configured_codex = fs::read_to_string(&codex_path).unwrap();
+    assert!(configured_codex.contains("# Keep my Codex settings."));
+    assert!(configured_codex.contains("[mcp_servers.other]"));
+    assert!(configured_codex.contains("[mcp_servers.codeloops-history-preview]"));
     let credential = fs::read(fixture.data.join("credential")).unwrap();
     // Resume a partially applied setup using its durable ownership record.
     fs::remove_file(fixture.home.join(".cursor/mcp.json")).unwrap();
@@ -876,6 +926,10 @@ async fn installed_global_setup_recovery_export_and_uninstall() {
     assert!(restored.contains("unrelated-plugin"));
     assert!(restored.contains("// Keep my client settings."));
     assert!(!restored.contains("codeloops-history-preview"));
+    let restored_codex = fs::read_to_string(codex_path).unwrap();
+    assert!(restored_codex.contains("# Keep my Codex settings."));
+    assert!(restored_codex.contains("[mcp_servers.other]"));
+    assert!(!restored_codex.contains("codeloops-history-preview"));
     let hooks: Value =
         serde_json::from_slice(&fs::read(fixture.home.join(".cursor/hooks.json")).unwrap())
             .unwrap();
@@ -937,6 +991,8 @@ fn setup_preflight_preserves_malformed_and_conflicting_settings() {
         .arg(&opencode)
         .arg("--cursor-config-dir")
         .arg(fixture.home.join(".cursor"))
+        .arg("--codex-config")
+        .arg(fixture.home.join(".codex/config.toml"))
         .output()
         .unwrap();
     checked(second_setup);
@@ -944,6 +1000,9 @@ fn setup_preflight_preserves_malformed_and_conflicting_settings() {
     assert_eq!(config["plugin"].as_array().unwrap().len(), 2);
     assert!(config["mcp"]["codeloops-history-preview"].is_object());
     assert!(config["mcp"]["codeloops-history-review"].is_object());
+    let codex = fs::read_to_string(fixture.home.join(".codex/config.toml")).unwrap();
+    assert!(codex.contains("codeloops-history-preview"));
+    assert!(codex.contains("codeloops-history-review"));
     assert_ne!(
         fs::read(fixture.data.join("credential")).unwrap(),
         fs::read(second.data.join("credential")).unwrap()
@@ -952,6 +1011,9 @@ fn setup_preflight_preserves_malformed_and_conflicting_settings() {
     let config: Value = serde_json::from_slice(&fs::read(&opencode).unwrap()).unwrap();
     assert_eq!(config["plugin"].as_array().unwrap().len(), 1);
     assert!(config["mcp"]["codeloops-history-preview"].is_object());
+    let codex = fs::read_to_string(fixture.home.join(".codex/config.toml")).unwrap();
+    assert!(codex.contains("codeloops-history-preview"));
+    assert!(!codex.contains("codeloops-history-review"));
     let hooks_path = fixture.home.join(".cursor/hooks.json");
     let mut hooks: Value = serde_json::from_slice(&fs::read(&hooks_path).unwrap()).unwrap();
     hooks["hooks"]["preToolUse"][0]["timeout"] = 99.into();
@@ -970,6 +1032,25 @@ fn setup_preflight_preserves_malformed_and_conflicting_settings() {
         serde_json::from_slice::<Value>(&fs::read(hooks_path).unwrap()).unwrap(),
         hooks
     );
+}
+
+#[test]
+fn setup_preflight_preserves_malformed_and_conflicting_codex_settings() {
+    let fixture = Fixture::new();
+    let path = fixture.home.join(".codex/config.toml");
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(&path, "invalid = [").unwrap();
+    assert!(!fixture.setup().status.success());
+    assert_eq!(fs::read_to_string(&path).unwrap(), "invalid = [");
+    assert!(!fixture.prefix.join("share/codeloops/setup.json").exists());
+    assert!(!fixture.home.join(".cursor/hooks.json").exists());
+    assert!(!fixture.home.join(".config/opencode/opencode.json").exists());
+
+    let conflict = "[mcp_servers.codeloops-history-preview]\ncommand = \"user-owned\"\nargs = []\n";
+    fs::write(&path, conflict).unwrap();
+    assert!(!fixture.setup().status.success());
+    assert_eq!(fs::read_to_string(path).unwrap(), conflict);
+    assert!(!fixture.home.join(".cursor/hooks.json").exists());
 }
 
 #[test]

@@ -29,11 +29,12 @@ minutes. When it says `CodeLoops is running in the background`, you're up and
 running. **You can close the terminal.** The service starts at login and restarts
 if it crashes.
 
-**Restart OpenCode or open a new Cursor Agent Chat**, then send:
+Restart OpenCode and Codex, or open a new Cursor Agent Chat. In **Cursor or
+OpenCode**, send:
 
 > Reply with exactly: codeloops first recall check
 
-Open a **fresh chat** and ask:
+Open a **fresh chat in any connected client, including Codex**, and ask:
 
 > Use CodeLoops history_query to find the earlier assistant message containing
 > "codeloops first recall check". Return its text, session ID, and entry ID.
@@ -42,9 +43,11 @@ Open a **fresh chat** and ask:
 You should get the earlier reply back with its archive IDs. That's your first
 conversation recalled across chats. Now try it from your other agent.
 
-Automatic capture supports **Cursor desktop and OpenCode** today. Your history
-stays local, and capture starts with new messages. Other harnesses can
-[connect through MCP](docs/USAGE.md#connect-another-coding-harness) to read it.
+Automatic capture supports **Cursor desktop and OpenCode** today. Codex Desktop,
+CLI, and the IDE extension are connected automatically through their shared MCP
+configuration for recall. Your history stays local, and capture starts with new
+messages. Other harnesses can [connect through MCP](docs/USAGE.md#connect-another-coding-harness)
+to read it.
 
 Use `make status` to check it, `make logs` to see recent logs, and `make stop` to
 stop it and disable login startup. `make start` enables it again.

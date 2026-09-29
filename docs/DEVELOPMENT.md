@@ -36,9 +36,10 @@ conversations. For recorded real-client runs, see [verification](verification-in
 
 The installation tests also execute real `make setup` and `make start` commands,
 including a release build, with parallel Make and isolated runtime state. They
-cover a missing installation, both OpenCode config formats present without an
-override, inherited plugins, explicit config selection, repeated setup/start,
-build/setup/manager failures, service ownership, and capture/recall after restart.
+cover a missing installation, OpenCode config precedence, inherited plugins,
+explicit config selection, Codex TOML preservation/conflicts, legacy setup upgrades,
+repeated setup/start, build/setup/manager failures, service ownership, and
+capture/recall after restart.
 Manager commands use a fixture transport that launches real installed processes;
 it does not register services in your daily user manager. These run in `make check`
 too; the first run builds both debug and release binaries.
@@ -57,6 +58,7 @@ and macOS CI run this native acceptance check.
 | `crates/codeloops/src/` | CLI, service, MCP, collectors, queue, installation, client config edits |
 | `adapters/opencode/` | Small TypeScript bridge and its test |
 | `adapters/cursor/hooks.example.json` | Embedded Cursor hook set |
+| `crates/codeloops/src/codex_config.rs` | Ownership-aware Codex MCP TOML edits |
 | `crates/*/tests/` | Persistence, transport, and installation integration tests |
 | `docs/OVERVIEW.md` | Architecture and wire contracts |
 

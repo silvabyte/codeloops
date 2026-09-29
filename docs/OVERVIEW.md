@@ -8,14 +8,16 @@ For commands, read [usage](USAGE.md). For setup and recovery, read
 MCP is the shared access layer for coding harnesses. Any harness that supports
 local stdio MCP servers can [connect to the archive](USAGE.md#connect-another-coding-harness).
 Automatic conversation capture uses harness-specific integrations. Cursor and
-OpenCode are the first; additional integrations use the same ingestion and query
-contracts.
+OpenCode are the first. Codex clients can query the same archive through MCP;
+automatic Codex capture is not implemented yet. Additional integrations use the
+same ingestion and query contracts.
 
 | Surface | Capture and evidence |
 | --- | --- |
 | OpenCode | Native messages, part revisions/deltas, lifecycle, and exposed tools. Live Linux 1.18.30 checks cover capture, Git changes, restart, and recall. |
 | Cursor desktop Agent Chat | Prompt and response hooks, lifecycle, and generic tool hooks where emitted. Final Cursor 3.18.25 acceptance on macOS covers conversation capture and fresh-chat MCP recall. |
 | Cursor Agent CLI | Separate hook surface. A `2026.09.08-6caf4ff` probe delivered lifecycle/tool hooks but no prompt/response/stop hooks. Do not assume desktop conversation coverage. |
+| Codex Desktop, CLI, and IDE extension | Shared user-global MCP registration for archive recall. No automatic conversation capture or live-client acceptance is recorded yet. |
 
 See [verification](verification-install-recovery.md) for exact revisions, earlier
 cross-client tests, and evidence boundaries.
@@ -277,7 +279,8 @@ The binary embeds client-loadable adapter assets; Make wraps locked Cargo builds
 and installed CLI commands. A prefix holds one named profile with explicit data
 and service defaults. The generated OpenCode wrapper passes per-installation
 options without changing process-global environment variables. Both clients are
-registered once at user-global scope.
+registered once at user-global scope. Codex receives an MCP entry in its shared
+user-global `config.toml`; it does not receive capture hooks.
 
 Setup edits individual JSONC properties/array entries while preserving unrelated
 configuration and comments. A write-ahead ownership record permits finishing or

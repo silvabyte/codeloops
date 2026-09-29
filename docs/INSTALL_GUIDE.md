@@ -1,8 +1,9 @@
 # Install CodeLoops
 
 Set up a shared history for your coding agents. This guide configures automatic
-capture for Cursor and OpenCode across projects. You do not need to install
-OpenCode to use Cursor. Other harnesses can [connect through MCP](USAGE.md#connect-another-coding-harness).
+capture for Cursor and OpenCode across projects, plus MCP recall for Codex Desktop,
+CLI, and the IDE extension. You do not need to install every client. Other harnesses
+can [connect through MCP](USAGE.md#connect-another-coding-harness).
 
 ## Quick start
 
@@ -18,21 +19,24 @@ cd codeloops
 make start
 ```
 
-`make start` builds and installs CodeLoops, registers capture and MCP for both
-clients, then enables a background user service. The first build can take a few
+`make start` builds and installs CodeLoops, registers capture for Cursor and
+OpenCode, registers MCP for Cursor, OpenCode, and Codex, then enables a background
+user service. The first build can take a few
 minutes. The command returns after the service passes its health check. When you
 see `CodeLoops is running in the background`, you can close the terminal and
 reload your client:
 
 - **OpenCode:** quit and restart.
+- **Codex Desktop, CLI, or IDE extension:** restart the client, then use `/mcp`
+  to confirm `codeloops-history-preview` is connected.
 - **Cursor desktop:** open a new Agent Chat. Restart Cursor if the
   `codeloops-history-preview` MCP server does not appear enabled and connected.
 
-Send:
+In Cursor or OpenCode, send:
 
 > Reply with exactly: codeloops first recall check
 
-Then open a fresh chat and ask:
+Then open a fresh chat in any connected client, including Codex, and ask:
 
 > Use CodeLoops history_query to find the earlier assistant message containing
 > "codeloops first recall check". Return its text, session ID, and entry ID.
@@ -71,10 +75,12 @@ User services run while the user session is active and start at the next login.
 For an SSH-only Linux account that must keep running after logout, enable lingering
 with `loginctl enable-linger "$USER"`.
 
-Setup writes capture and MCP entries into both clients' user-global configuration,
-even if only one client is installed. It preserves unrelated plugins, hooks, MCP
-servers, and JSONC comments. Generated commands contain absolute executable/data
-paths, so desktop launches do not need your shell's PATH or environment variables.
+Setup writes capture entries for Cursor and OpenCode and MCP entries for Cursor,
+OpenCode, and Codex at user-global scope, even if a client is not installed. It
+preserves unrelated plugins, hooks, MCP servers, and JSONC/TOML comments. Generated
+commands contain absolute executable/data paths, so desktop launches do not need
+your shell's PATH or environment variables. Codex can recall captured Cursor and
+OpenCode history, but CodeLoops does not automatically capture Codex conversations yet.
 
 | Setting | Default |
 | --- | --- |
@@ -84,6 +90,7 @@ paths, so desktop launches do not need your shell's PATH or environment variable
 | Profile / MCP server name | `preview` / `codeloops-history-preview` |
 | OpenCode config | `$XDG_CONFIG_HOME/opencode/opencode.json` or `.jsonc`, normally under `~/.config` |
 | Cursor config | `~/.cursor/hooks.json` and `~/.cursor/mcp.json` |
+| Codex config | `~/.codex/config.toml` |
 
 If both OpenCode config filenames exist, setup uses `opencode.jsonc` for new MCP
 entries, matching OpenCode's precedence. It adds the capture plugin to the highest-priority
@@ -99,9 +106,9 @@ make start SETUP_ARGS="--opencode-config '$HOME/.config/opencode/opencode.json'"
 ```
 
 Use that same option when repeating setup. `--cursor-config-dir DIRECTORY` selects
-a different Cursor config directory. `--opencode-version VERSION` supplies source
-version metadata; otherwise setup tries `opencode --version` and records `unknown`
-if unavailable.
+a different Cursor config directory. `--codex-config FILE` selects a different
+Codex TOML config. `--opencode-version VERSION` supplies source version metadata;
+otherwise setup tries `opencode --version` and records `unknown` if unavailable.
 
 Make prints progress and reports failures. For a detailed JSON setup report, call
 the installed binary's `setup --json` command with the same profile and config
